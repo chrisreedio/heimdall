@@ -3,6 +3,7 @@
 package anomaly
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"fmt"
 	"io"
@@ -22,6 +23,7 @@ type env struct {
 	now time.Time
 	eng *Engine
 	seq int
+	gap time.Duration // between pushes; 0 = a day
 }
 
 func newEnv(t *testing.T) *env {
@@ -57,10 +59,10 @@ type snap struct {
 	sha    string
 }
 
-// push stores a snapshot a day after the previous one and runs the rules.
+// push stores a report a day (or e.gap) after the previous one and runs the rules.
 func (e *env) push(h store.IngestHost, s snap) []string {
 	e.t.Helper()
-	e.now = e.now.Add(24 * time.Hour)
+	e.now = e.now.Add(cmp.Or(e.gap, 24*time.Hour))
 	e.seq++
 	if s.kernel == "" {
 		s.kernel = "6.1.0-26"

@@ -62,6 +62,7 @@ func cmdServe(a *app, args []string) error {
 		}
 	}
 	tripwires := &anomaly.Engine{Store: s, Now: time.Now, Log: log}
+	startTamperChecks(a.ctx, cfg, s, h, tripwires, log) // fast silence alerts; rules for unchanged reports
 	newsSync := newNewsSyncer(cfg, s, log)
 	go runFindings(a.ctx, syncer, newsSync, tripwires, cfg.Hosts.StaleAfter.Duration, reported,
 		cfg.Feeds.SyncInterval.Duration, cfg.News.Interval.Duration, log)

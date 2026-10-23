@@ -75,8 +75,8 @@ func newEnv(t *testing.T, mutate func(*config.Ingest)) *env {
 }
 
 type req struct {
-	method, path, token, contentType, encoding, remote, xff, hostname string
-	body                                                              []byte
+	method, path, token, contentType, encoding, remote, xff, hostname, triggers string
+	body                                                                        []byte
 }
 
 func (e *env) do(r req) *httptest.ResponseRecorder {
@@ -110,6 +110,9 @@ func (e *env) do(r req) *httptest.ResponseRecorder {
 	}
 	if r.hostname != "" {
 		hr.Header.Set(HostnameHeader, r.hostname)
+	}
+	if r.triggers != "" {
+		hr.Header.Set(TriggersHeader, r.triggers)
 	}
 	w := httptest.NewRecorder()
 	e.h.ServeHTTP(w, hr)
@@ -257,7 +260,8 @@ func TestAuthFailureLockout(t *testing.T) {
 	e.expect(req{remote: "198.51.100.7:1234"}, http.StatusTooManyRequests)
 	e.expect(req{remote: "198.51.100.8:1234"}, http.StatusCreated)
 	e.now = e.now.Add(time.Minute)
-	e.expect(req{remote: "198.51.100.7:1234", body: []byte(strings.Replace(string(e.body), "04:17:03", "04:18:03", 1))}, http.StatusCreated)
+	// Same inventory a minute later: recorded as an unchanged report.
+	e.expect(req{remote: "198.51.100.7:1234", body: []byte(strings.Replace(string(e.body), "04:17:03", "04:18:03", 1))}, http.StatusOK)
 }
 
 func TestHostRateLimit(t *testing.T) {

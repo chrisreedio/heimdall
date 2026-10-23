@@ -200,7 +200,7 @@ Supported platforms: **Ubuntu 22.04/24.04, Debian 12, Rocky 9, AlmaLinux 9 and A
 - Every field is validated and normalized: lengths, character sets, version formats
 - Rate-limited per token and per IP. Failed authentication attempts are logged.
 - Tokens are 256-bit random values, stored as SHA-256 hashes, scoped to one host, and revocable. Rotate them with `heimdall host token --rotate`.
-- Snapshots are append-only, so a host can't edit or delete its own history
+- Snapshots are append-only, so a host can't edit or delete its own history. A report with an unchanged inventory is stored as a small heartbeat instead of a new snapshot.
 
 ### Web UI
 - **Microsoft Entra ID (Azure AD) SSO** via OpenID Connect. See [Single sign-on](#single-sign-on-microsoft-entra-id).
@@ -364,6 +364,7 @@ endoflife = true
 
 [hosts]
 stale_after = "72h"
+alert_after = "3h"   # quiet this long: silence anomaly + immediate notice ("0" = off)
 
 [news]                             # threat news, off by default
 enabled  = false
@@ -409,6 +410,7 @@ organizations ─┬─ environments ─── hosts ─┬─ ingest_tokens (ha
                └─ memberships ── users*   │             ├─ runtimes
                                           └─ tags       └─ containers
 snapshots ── sites ── app_packages        (per-site composer.lock)
+heartbeats = unchanged reports (time, uptime) of a host's latest snapshot
 advisories ── affected_ranges            (cached from feeds)
 findings   = snapshot packages × advisories (materialized on ingest/sync)
 anomalies  = rule hits per host (open / acknowledged / suppressed)

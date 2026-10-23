@@ -138,6 +138,9 @@ type Feeds struct {
 
 type Hosts struct {
 	StaleAfter Duration `toml:"stale_after"`
+	// AlertAfter: a host quiet for this long raises a silence anomaly and an
+	// immediate notification (once per silence). 0 disables it.
+	AlertAfter Duration `toml:"alert_after"`
 	// Snapshot retention: older than KeepFor are deleted, but each host
 	// always keeps at least KeepMin (and its latest).
 	KeepFor Duration `toml:"keep_snapshots_for"`
@@ -170,7 +173,7 @@ func Default() Config {
 			EPSS:         true,
 			EndOfLife:    true,
 		},
-		Hosts:   Hosts{StaleAfter: Duration{72 * time.Hour}, KeepFor: Duration{180 * 24 * time.Hour}, KeepMin: 30},
+		Hosts:   Hosts{StaleAfter: Duration{72 * time.Hour}, AlertAfter: Duration{3 * time.Hour}, KeepFor: Duration{180 * 24 * time.Hour}, KeepMin: 30},
 		Notify:  Notify{SMTPPort: 587, WebhookFormat: "slack"},
 		MCP:     MCP{Listen: "127.0.0.1:8090", BaseURL: "http://127.0.0.1:8090"},
 		Updates: Updates{Check: true},

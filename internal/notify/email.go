@@ -39,6 +39,15 @@ const smtpTimeout = 30 * time.Second
 
 // Send delivers the digest to every recipient in one message.
 func (e *Email) Send(ctx context.Context, d Digest) error {
+	return e.send(ctx, d.Subject(), d.Text())
+}
+
+// SendAlert delivers a silence alert the same way.
+func (e *Email) SendAlert(ctx context.Context, a Alert) error {
+	return e.send(ctx, a.Subject(), a.Text())
+}
+
+func (e *Email) send(ctx context.Context, subject, text string) error {
 	from, to, err := e.addresses()
 	if err != nil {
 		return err
@@ -46,7 +55,7 @@ func (e *Email) Send(ctx context.Context, d Digest) error {
 	if e.Host == "" || e.Port <= 0 || e.Port > 65535 {
 		return errors.New("notify: email needs a host and port")
 	}
-	msg, err := buildMessage(from, to, d, time.Now())
+	msg, err := buildMessage(from, to, subject, text, time.Now())
 	if err != nil {
 		return err
 	}
@@ -166,7 +175,7 @@ func (e *Email) addresses() (*mail.Address, []*mail.Address, error) {
 }
 
 // buildMessage renders an RFC 5322 message with a plain-text body.
-func buildMessage(from *mail.Address, to []*mail.Address, d Digest, now time.Time) ([]byte, error) {
+func buildMessage(from *mail.Address, to []*mail.Address, subject, text string, now time.Time) ([]byte, error) {
 	id := make([]byte, 16)
 	rand.Read(id)
 	domain := "heimdall.invalid"
@@ -182,7 +191,7 @@ func buildMessage(from *mail.Address, to []*mail.Address, d Digest, now time.Tim
 	header := func(k, v string) { fmt.Fprintf(&b, "%s: %s\r\n", k, v) }
 	header("From", from.String())
 	header("To", strings.Join(rcpts, ", "))
-	header("Subject", mime.QEncoding.Encode("utf-8", clean(d.Subject(), 200)))
+	header("Subject", mime.QEncoding.Encode("utf-8", clean(subject, 200)))
 	header("Date", now.UTC().Format(time.RFC1123Z))
 	header("Message-ID", "<"+hex.EncodeToString(id)+"@"+domain+">")
 	header("MIME-Version", "1.0")
@@ -190,7 +199,7 @@ func buildMessage(from *mail.Address, to []*mail.Address, d Digest, now time.Tim
 	header("Content-Transfer-Encoding", "8bit")
 	header("Auto-Submitted", "auto-generated")
 	b.WriteString("\r\n")
-	for _, line := range strings.Split(strings.TrimRight(d.Text(), "\n"), "\n") {
+	for _, line := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
 		b.WriteString(line)
 		b.WriteString("\r\n")
 	}

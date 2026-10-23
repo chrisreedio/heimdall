@@ -4,6 +4,9 @@
 // counts and a link to the UI: no hostnames, package names, versions or
 // advisory IDs, so a leaked email or chat message doesn't reveal where the
 // fleet is weak. The Digest type has no field that could hold such details.
+//
+// The one exception is the silence Alert (alert.go): it names the hosts
+// that stopped (or resumed) reporting, and nothing else about them.
 package notify
 
 import (

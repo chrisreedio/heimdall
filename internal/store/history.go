@@ -114,6 +114,19 @@ func (s *Store) Tags(ctx context.Context) (map[string]int, error) {
 	return out, rows.Err()
 }
 
+// CountRows counts the rows of one inventory table (for tests and storage
+// figures). Only the tables named here can be counted.
+func (s *Store) CountRows(ctx context.Context, table string) (int, error) {
+	switch table {
+	case "snapshots", "heartbeats", "packages", "sites", "app_packages", "containers", "anomalies":
+	default:
+		return 0, fmt.Errorf("can't count %q", table)
+	}
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM `+table).Scan(&n)
+	return n, err
+}
+
 // PruneSnapshots deletes snapshots older than olderThan, always keeping
 // each host's newest keepPerHost (and its latest). It returns how many went.
 func (s *Store) PruneSnapshots(ctx context.Context, olderThan time.Time, keepPerHost int) (int64, error) {
@@ -123,17 +136,29 @@ func (s *Store) PruneSnapshots(ctx context.Context, olderThan time.Time, keepPer
 		res, err := tx.ExecContext(ctx, `
 			DELETE FROM snapshots WHERE received_at < ?
 			  AND id NOT IN (SELECT last_snapshot_id FROM hosts WHERE last_snapshot_id IS NOT NULL)
+			  AND id NOT IN (SELECT snapshot_id FROM heartbeats WHERE received_at >= ?) -- still reported recently
 			  AND id NOT IN (
 			      SELECT id FROM (
 			          SELECT id, row_number() OVER (PARTITION BY host_id ORDER BY received_at DESC, id DESC) AS rn
 			          FROM snapshots) WHERE rn <= ?)`,
-			olderThan.UTC().Format(timeLayout), keepPerHost)
+			olderThan.UTC().Format(timeLayout), olderThan.UTC().Format(timeLayout), keepPerHost)
 		if err != nil {
 			return err
 		}
 		n, _ = res.RowsAffected()
-		if n > 0 {
-			return audit(ctx, tx, AuditEntry{Actor: "heimdall", Action: "snapshots.prune", Detail: map[string]any{"deleted": n}})
+		// Heartbeats of deleted snapshots went with them (ON DELETE CASCADE).
+		// The rest age out the same way, keeping each host's newest, since an
+		// unchanged host's latest snapshot is kept however old it is.
+		res, err = tx.ExecContext(ctx, `
+			DELETE FROM heartbeats WHERE received_at < ?
+			  AND id NOT IN (SELECT max(id) FROM heartbeats GROUP BY host_id)`, olderThan.UTC().Format(timeLayout))
+		if err != nil {
+			return err
+		}
+		beats, _ := res.RowsAffected()
+		if n > 0 || beats > 0 {
+			return audit(ctx, tx, AuditEntry{Actor: "heimdall", Action: "snapshots.prune",
+				Detail: map[string]any{"deleted": n, "heartbeats": beats}})
 		}
 		return nil
 	})

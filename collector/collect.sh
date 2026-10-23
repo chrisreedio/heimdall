@@ -615,6 +615,42 @@ EOF
 
 # ── Push ────────────────────────────────────────────────────────────────────
 
+# triggers_state: what makes this collector run, for the hub to notice one
+# being switched off (sent as X-Heimdall-Triggers, never in the snapshot):
+#   systemd: timer=<is-enabled>,<is-active>; changes=<is-enabled>,<is-active>
+#   other:   cron=present|absent; hook=present|absent
+# "missing" is a unit that isn't installed, "unknown" one systemctl couldn't
+# ask about (e.g. no D-Bus).
+triggers_state() {
+	if [ -d /run/systemd/system ] && have systemctl; then
+		out=
+		for t in timer:heimdall-collect.timer changes:heimdall-collect-changes.path; do
+			en=$(systemctl is-enabled "${t#*:}" 2>&1 | head -n 1)
+			case $en in
+			enabled | enabled-runtime | disabled | static | masked | masked-runtime | indirect | generated | alias | linked | linked-runtime | transient) ;;
+			*'No such file'* | *not-found* | *'not loaded'*) en=missing ;;
+			*) en=unknown ;;
+			esac
+			act=$(systemctl is-active "${t#*:}" 2>&1 | head -n 1)
+			case $act in
+			active | inactive | failed | activating | deactivating | reloading | refreshing) ;;
+			*) act=unknown ;;
+			esac
+			out="$out${out:+; }${t%%:*}=$en,$act"
+		done
+		printf '%s' "$out"
+		return
+	fi
+	cron=absent hook=absent
+	for f in /etc/cron.daily/heimdall-collect /etc/periodic/daily/heimdall-collect; do
+		[ ! -e "$f" ] || cron=present
+	done
+	for f in /etc/apk/commit_hooks.d/heimdall* /etc/apt/apt.conf.d/*heimdall*; do
+		[ ! -e "$f" ] || hook=present
+	done
+	printf 'cron=%s; hook=%s' "$cron" "$hook"
+}
+
 push() {
 	url=${HEIMDALL_URL:-}
 	token_file=${HEIMDALL_TOKEN_FILE:-/etc/heimdall/token}
@@ -654,13 +690,17 @@ push() {
 	hostname_header=
 	hn=$(uname -n 2>/dev/null | tr -cd 'A-Za-z0-9._-' | cut -c1-253)
 	[ -z "$hn" ] || hostname_header="header = \"X-Heimdall-Hostname: $hn\""
+	# The state of this collector's own timer and change watch.
+	triggers_header=
+	tr_state=$(triggers_state | tr -cd 'a-z,=; -' | cut -c1-240)
+	[ -z "$tr_state" ] || triggers_header="header = \"X-Heimdall-Triggers: $tr_state\""
 
 	# The token goes to curl on stdin via --config (printf is a shell
 	# builtin), so it never appears in any process's arguments.
 	status=$(printf '%s\n' \
 		"header = \"Authorization: Bearer $token\"" \
 		'header = "Content-Type: application/json"' \
-		"$encoding" "$cacert" "$hostname_header" |
+		"$encoding" "$cacert" "$hostname_header" "$triggers_header" |
 		curl --config - --silent --show-error \
 			--proto '=https,http' --tlsv1.2 \
 			--connect-timeout 10 --max-time 120 \

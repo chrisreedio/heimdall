@@ -18,6 +18,7 @@ import (
 	"github.com/chrisreedio/heimdall/internal/config"
 	"github.com/chrisreedio/heimdall/internal/secret"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/triggers"
 )
 
 // Path is the only route the ingest listener serves.
@@ -33,6 +34,12 @@ const (
 // not a snapshot field, so collectors and hubs of different versions still
 // accept each other's requests.
 const HostnameHeader = "X-Heimdall-Hostname"
+
+// TriggersHeader carries the state of the collector's own triggers (its
+// timer, change watch or hooks), e.g. "timer=enabled,active;
+// changes=enabled,active", so the hub notices one being switched off. A
+// header for the same reason as HostnameHeader; see anomaly.Triggers.
+const TriggersHeader = "X-Heimdall-Triggers"
 
 // VersionHeader tells an authenticated collector which release the hub
 // runs, so it can say when it's behind and upgrade to match.
@@ -54,6 +61,9 @@ type Handler struct {
 	// OnStored, if set, is called after a new snapshot is stored (e.g. to
 	// recompute the host's findings). It must not block.
 	OnStored func(store.IngestHost)
+	// OnSeen, if set, is called after an unchanged report is recorded as a
+	// heartbeat (e.g. to run the reboot rules). It must not block.
+	OnSeen func(store.IngestHost)
 }
 
 func NewHandler(st *store.Store, cfg config.Ingest, log *slog.Logger, now func() time.Time) (*Handler, error) {
@@ -173,8 +183,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if res.Status == http.StatusCreated || res.Unchanged {
+		raised, err := triggers.Check(r.Context(), h.store, host.ID, res.SnapshotID, r.Header.Get(TriggersHeader), h.acc.Now())
+		if err != nil {
+			log.Warn("collector trigger state not recorded", "err", err)
+		}
+		for _, a := range raised {
+			log.Warn("anomaly", "rule", a.Rule, "severity", a.Severity, "summary", a.Summary)
+		}
+	}
 	if res.Status == http.StatusCreated && h.OnStored != nil {
 		h.OnStored(host)
+	}
+	if res.Unchanged && h.OnSeen != nil {
+		h.OnSeen(host)
 	}
 	respond(w, res.Status, res.Message)
 }

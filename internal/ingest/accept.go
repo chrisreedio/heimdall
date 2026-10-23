@@ -29,8 +29,11 @@ type Result struct {
 	Status     int // HTTP status code
 	Message    string
 	SnapshotID int64
-	Snapshot   *snapshot.Snapshot // nil if decoding failed
-	Anomalies  []store.Anomaly
+	// Unchanged: the inventory matched the host's latest snapshot, so the
+	// report was stored as a heartbeat (SnapshotID is that snapshot).
+	Unchanged bool
+	Snapshot  *snapshot.Snapshot // nil if decoding failed
+	Anomalies []store.Anomaly
 }
 
 type Accepter struct {
@@ -73,7 +76,7 @@ func (a *Accepter) Accept(ctx context.Context, host store.IngestHost, source str
 		anomalies = append(anomalies, *skew)
 	}
 
-	id, err := a.Store.SaveSnapshot(ctx, store.NewSnapshot{
+	saved, err := a.Store.SaveReport(ctx, store.NewSnapshot{
 		Host: host, Source: source, ReceivedAt: now, PayloadSHA256: hash, Snapshot: snap,
 	}, anomalies)
 	if errors.Is(err, store.ErrExists) { // lost a race with an identical retry
@@ -82,7 +85,11 @@ func (a *Accepter) Accept(ctx context.Context, host store.IngestHost, source str
 	if err != nil {
 		return Result{}, err
 	}
-	return Result{Status: http.StatusCreated, Message: "stored", SnapshotID: id, Snapshot: snap, Anomalies: anomalies}, nil
+	if saved.Unchanged {
+		return Result{Status: http.StatusOK, Message: "unchanged", SnapshotID: saved.SnapshotID, Unchanged: true,
+			Snapshot: snap, Anomalies: anomalies}, nil
+	}
+	return Result{Status: http.StatusCreated, Message: "stored", SnapshotID: saved.SnapshotID, Snapshot: snap, Anomalies: anomalies}, nil
 }
 
 // Check validates raw without storing anything (`heimdall import --check`).

@@ -50,6 +50,7 @@ endoflife     = true
 
 [hosts]
 stale_after        = "72h"
+alert_after        = "3h"      # quiet this long: silence anomaly + immediate notice; "0" disables
 keep_snapshots_for = "4320h"   # 180 days; "0" keeps everything
 keep_snapshots_min = 30        # per host, whatever their age
 
@@ -79,6 +80,8 @@ check = true
 
 [notify]
 # Counts-only digest (no hostnames, packages or CVEs), e.g. every = "24h".
+# The same channels get immediate silence alerts (hosts.alert_after), which
+# name the quiet hosts and nothing else.
 every          = "0"
 # email_to     = ["ops@example.com"]
 # email_from   = "heimdall@example.com"
