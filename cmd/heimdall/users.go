@@ -84,9 +84,20 @@ func (in *input) newPassword() (string, error) {
 // it, so nobody ends up with an account they can't sign in to.
 func (in *input) enrollTOTP(email string) (secret []byte, step int64, err error) {
 	secret = newTOTPSecret()
-	fmt.Fprintf(in.a.stderr, "\nAdd this account to your authenticator app (1Password, Aegis, Google Authenticator, ...):\n"+
-		"  Account: %s (%s)\n  Secret:  %s\n  URI:     %s\n\n",
-		totpIssuer, email, groupBy4(auth.TOTPSecretBase32(secret)), auth.TOTPURI(totpIssuer, email, secret))
+	uri := auth.TOTPURI(totpIssuer, email, secret)
+	fmt.Fprintf(in.a.stderr, "\nAdd this account to your authenticator app (1Password, Aegis, Google Authenticator, ...)")
+	// Draw a scannable code only on a real terminal (never into a file or pipe).
+	if f, ok := in.a.stderr.(*os.File); ok && isTerminal(f) {
+		fmt.Fprint(in.a.stderr, " by scanning this code:\n\n")
+		if err := writeQR(in.a.stderr, uri); err != nil {
+			return nil, 0, err
+		}
+		fmt.Fprint(in.a.stderr, "\nOr enter it manually:\n")
+	} else {
+		fmt.Fprint(in.a.stderr, ":\n")
+	}
+	fmt.Fprintf(in.a.stderr, "  Account: %s (%s)\n  Secret:  %s\n  URI:     %s\n\n",
+		totpIssuer, email, groupBy4(auth.TOTPSecretBase32(secret)), uri)
 	code, err := in.line("Enter the current 6-digit code to confirm: ", false)
 	if err != nil {
 		return nil, 0, err

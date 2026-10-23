@@ -262,7 +262,7 @@ Heimdall acts as a confidential OIDC client using the **authorization code flow 
 | UI | Server-rendered HTML, one CSS file, a little vanilla JS from `'self'` | No bundler, no `node_modules`, strict CSP possible |
 | Collector | POSIX `sh` | Runs anywhere and can be audited at a glance |
 
-Direct dependencies: **four** (SQLite, x/crypto, TOML and filippo.io/age for encrypted backups). TOTP, OIDC, CSRF, rate limiting and sessions are implemented with the standard library.
+Direct dependencies: **five** (SQLite, x/crypto, TOML, filippo.io/age for encrypted backups and rsc.io/qr for the TOTP enrollment QR code). TOTP, OIDC, CSRF, rate limiting and sessions are implemented with the standard library.
 
 ---
 

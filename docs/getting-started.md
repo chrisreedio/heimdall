@@ -61,7 +61,7 @@ To use a config file other than `./heimdall.toml`, put `-c` **before** the comma
 ## 4. Signing in to the web UI
 
 ```sh
-heimdall user create --admin you@example.com   # password twice, then scan or type the TOTP secret
+heimdall user create --admin you@example.com   # password twice, then scan the QR code shown in the terminal
 heimdall serve                                 # UI on 127.0.0.1:8080, ingest on its own port
 ```
 

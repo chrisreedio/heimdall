@@ -216,3 +216,20 @@ func TestBackupRoundTrip(t *testing.T) {
 		t.Errorf("plaintext temp left behind: %v", entries)
 	}
 }
+
+func TestWriteQR(t *testing.T) {
+	var buf bytes.Buffer
+	uri := "otpauth://totp/Heimdall:you@example.com?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=Heimdall&algorithm=SHA1&digits=6&period=30"
+	if err := writeQR(&buf, uri); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(buf.String(), "\n"), "\n")
+	// Square: rows of half blocks cover two modules each.
+	cells := strings.Count(lines[0], "▀")
+	if cells < 25 || len(lines) != (cells+1)/2 {
+		t.Errorf("%d lines × %d cells", len(lines), cells)
+	}
+	if !strings.Contains(buf.String(), "\x1b[30;") || !strings.HasSuffix(lines[0], "\x1b[0m") {
+		t.Error("expected explicit colours and a reset at line end")
+	}
+}
