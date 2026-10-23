@@ -12,7 +12,7 @@ The hub needs exactly two things:
 |---|---|---|
 | **Small VPS** (Hetzner, DigitalOcean, Vultr, Linode) | You want the simplest always-on setup, and some servers aren't on your tailnet | You patch the VPS yourself (Heimdall will tell you when) |
 | **Local box** (mini PC, NAS VM, Raspberry Pi 4/5) + Tailscale | Every server is on your tailnet, or you use Tailscale Funnel for ingest | Power and internet outages show up as "silent hosts", so back up off-box |
-| **AWS** (Lightsail or a small EC2) | An org's policy says "it lives in our AWS", or you already manage AWS well | More moving parts than the job needs. Keep it to one small instance. |
+| **AWS** (Lightsail or a small EC2) | An org's policy says "it lives in our AWS", or you already manage AWS well | More moving parts than the job needs. Keep it to one small instance. Lightsail is the simple, flat-priced option; EC2 when the org needs its VPC, IAM roles or security tooling. |
 | **Azure** (a small VM) | The org runs on Microsoft and you use Entra SSO anyway | Same as AWS |
 
 **Recommendation:** a small VPS or Lightsail instance per organization, with Tailscale on it. Use AWS or Azure when an org asks for it.
@@ -61,9 +61,15 @@ Keep the UI on `serve`, never `funnel`.
    - EC2: a security group with **inbound 443 from 0.0.0.0/0** (or your servers' CIDRs) and **no port 22**.
 3. **Access without SSH keys on the internet:** Tailscale (`tailscale up --ssh`), or AWS **Systems Manager Session Manager** on EC2. Attach `AmazonSSMManagedInstanceCore` and leave port 22 closed.
 4. **Static address and DNS:** a Lightsail static IP, or an Elastic IP. Point `ingest.<yourdomain>` at it, and Caddy fetches the certificate.
-5. **Backups:**
-   - A private S3 bucket with Block Public Access on, versioning, and an expiry lifecycle rule.
-   - Give the instance a role allowed only `s3:PutObject` on that bucket's prefix, and copy the age-encrypted files:
+5. **Backups:** copy the age-encrypted backups to a bucket. How the instance gets access depends on which one you used:
+   - **Lightsail** has no IAM instance roles. Create a **Lightsail bucket** (private by default) and grant the instance access to it, so no keys are stored on the box:
+     ```sh
+     aws lightsail create-bucket --bucket-name heimdall-acme-backups --bundle-id small_1_0
+     aws lightsail set-resource-access-for-bucket --bucket-name heimdall-acme-backups \
+       --resource-name heimdall-acme --access read_write
+     ```
+   - **EC2:** a private S3 bucket with Block Public Access, versioning and an expiry lifecycle rule. Attach an **instance role** allowed only `s3:PutObject` on that bucket's prefix.
+   - Then, on the hub (from cron or a systemd timer):
      ```sh
      heimdall backup --to /var/backups/h-$(date +%F).age --age-recipient age1… && \
        aws s3 cp /var/backups/h-$(date +%F).age s3://<bucket>/heimdall/
