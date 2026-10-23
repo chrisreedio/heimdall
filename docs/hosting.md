@@ -26,8 +26,10 @@ Don't use serverless, containers-as-a-service or managed databases. Heimdall is 
 1. **Ubuntu 24.04 or Debian 12**, fully updated, with unattended-upgrades on.
 2. **Tailscale**, so you reach the box (and the UI, and MCP) without opening SSH to the internet:
    ```sh
-   curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --ssh
+   curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --ssh --hostname heimdall-acme
    ```
+   **Pin the name** with `--hostname`. The hub's UI address (`ui.base_url`), `tailscale serve`, its HTTPS certificate and the Entra redirect URI all use `<name>.<tailnet>.ts.net`. Without it, the tailnet name follows the OS hostname, which cloud images reset on boot (Lightsail's `ip-172-…`). If the name changes, the UI stops answering at the old address. If that happens, `sudo tailscale set --hostname <old-name>` brings it back.
+   In the Tailscale admin console, also **disable key expiry** for the hub, or it drops off the tailnet when its key expires (180 days by default).
 3. **Heimdall**, following [deployment.md](deployment.md). UI and MCP via `tailscale serve`, ingest via Caddy (or `tailscale serve` too, if every server is on the tailnet).
 4. **Firewall:** inbound **443 only** (Caddy's public ingest), and nothing at all if ingest is tailnet-only. The cloud firewall and `ufw` should agree.
 5. **Backups:** schedule `heimdall backup --age-recipient …` and copy the `.age` files off the box (object storage or another machine).
