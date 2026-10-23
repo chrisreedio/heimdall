@@ -38,7 +38,11 @@ jobs:
           got=$(sed -n 's/^VERSION=//p' collector/collect.sh)
           [ "$got" = "$want" ] || { echo "collect.sh VERSION=$got but tag is $GITHUB_REF_NAME"; exit 1; }
 
-      - run: make -j4 --output-sync=target check
+      # The tagged commit already passed CI with identical code, so vet and
+      # staticcheck would only repeat themselves. govulncheck runs again
+      # (its database changes daily: a new advisory blocks the release), and
+      # so do the tests, on exactly what's being published.
+      - run: make -j2 --output-sync=target vuln test
 
   reproducible:
     runs-on: ubuntu-24.04
