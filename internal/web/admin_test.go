@@ -132,9 +132,11 @@ func TestAdminGrantRevokeDisable(t *testing.T) {
 		t.Error("bob still disabled")
 	}
 
-	w = e.adminPost("disable", url.Values{"email": {"Admin@Example.com"}})
-	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "can&#39;t disable your own account") {
-		t.Errorf("self-disable: %d", w.Code)
+	for _, self := range []string{"Admin@Example.com", "#1"} {
+		w = e.adminPost("disable", url.Values{"email": {self}})
+		if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "can&#39;t disable the account you&#39;re signed in with") {
+			t.Errorf("self-disable %s: %d", self, w.Code)
+		}
 	}
 	if u, _ := e.st.UserByID(ctx, 1); u.Disabled {
 		t.Error("admin disabled themselves")

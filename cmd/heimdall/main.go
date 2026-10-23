@@ -67,6 +67,7 @@ Commands:
   sso setup                    Set up Entra ID single sign-on (asks, writes, restarts)
   sso set-secret               Store or rotate the Entra client secret (never echoed)
   upgrade [--check]            Upgrade this hub to the latest release (sudo)
+  restart                      Restart the hub (after config changes) and check it's up (sudo)
   ingest cert                  Install a certificate for public ingest, e.g. a Cloudflare Origin cert (sudo)
   version                      Print version
 
@@ -115,6 +116,7 @@ var commands = map[string]command{
 	}),
 	"sso":     group("sso", map[string]command{"setup": cmdSSOSetup, "set-secret": cmdSSOSetSecret}),
 	"upgrade": cmdUpgrade,
+	"restart": cmdRestart,
 	"ingest":  group("ingest", map[string]command{"cert": cmdIngestCert}),
 	"serve":   cmdServe,
 	"import":  cmdImport,
@@ -137,6 +139,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if !ok {
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", fs.Arg(0), usage)
 		return errUsage
+	}
+	if err := asHubUser(*configPath, fs.Args()); err != nil {
+		return err
 	}
 	return cmd(&app{ctx: ctx, configPath: *configPath, stdout: stdout, stderr: stderr}, fs.Args()[1:])
 }

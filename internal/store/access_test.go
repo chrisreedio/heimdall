@@ -4,6 +4,7 @@ package store
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -148,5 +149,38 @@ func TestAuthRequestsAreSingleUse(t *testing.T) {
 	s.PutAuthRequest(ctx, state, AuthRequest{Nonce: "n", Verifier: "v", CreatedAt: now})
 	if _, err := s.TakeAuthRequest(ctx, state, now.Add(11*time.Minute), 10*time.Minute); !errors.Is(err, ErrNotFound) {
 		t.Errorf("expired take: %v", err)
+	}
+}
+
+func TestUserRefDisambiguates(t *testing.T) {
+	s, ctx := newStore(t), t.Context()
+	if _, err := s.CreateOrg(ctx, "test", "acme", "Acme"); err != nil {
+		t.Fatal(err)
+	}
+	local, err := s.CreateLocalUser(ctx, "test", "chris@example.com", "", true, "x-hash", []byte("secret"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entra, err := s.CreateEntraUser(ctx, "test", tenantA, "", "chris@example.com", "Chris", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Grant(ctx, "test", "chris@example.com", "acme", RoleViewer); err == nil || !strings.Contains(err.Error(), "#") {
+		t.Fatalf("ambiguous email should ask for an ID: %v", err)
+	}
+	if err := s.Grant(ctx, "test", UserRef(entra), "acme", RoleOperator); err != nil {
+		t.Fatal(err)
+	}
+	if ms, _ := s.Memberships(ctx, entra); len(ms) != 1 || ms[0].Role != RoleOperator {
+		t.Errorf("entra memberships = %+v", ms)
+	}
+	if ms, _ := s.Memberships(ctx, local); len(ms) != 0 {
+		t.Errorf("local account got the role: %+v", ms)
+	}
+	if err := s.SetUserDisabled(ctx, "test", UserRef(local), true); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Revoke(ctx, "test", "#999", "acme"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown id: %v", err)
 	}
 }

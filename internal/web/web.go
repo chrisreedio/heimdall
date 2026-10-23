@@ -409,6 +409,7 @@ func parsePages() (map[string]*template.Template, error) {
 var severities = map[string]bool{"critical": true, "high": true, "medium": true, "low": true}
 
 var funcs = template.FuncMap{
+	"userRef": store.UserRef,
 	"hostURL": func(org, host string) string {
 		return "/hosts/" + url.PathEscape(org) + "/" + url.PathEscape(host)
 	},

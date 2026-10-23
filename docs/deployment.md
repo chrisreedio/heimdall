@@ -62,7 +62,7 @@ Follow the [quick start](../README.md#quick-start), then:
 | Trust the collector release | `hd collector trust --version 0.3.0 <sha256 of collect.sh>` |
 | Digest | Set `[notify]` and add `LoadCredential=heimdall-smtp:…` or `heimdall-webhook:…` |
 
-(`hd` = `sudo -u heimdall-hub heimdall -c /etc/heimdall/heimdall.toml`)
+(`hd` = `sudo heimdall`: on an installed hub it runs as `heimdall-hub` with `/etc/heimdall/heimdall.toml`)
 
 ## Backups
 

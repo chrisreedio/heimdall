@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -135,7 +136,7 @@ func (s *Store) Grant(ctx context.Context, actor, email, orgSlug string, role Ro
 		return err
 	}
 	return s.tx(ctx, func(tx *sql.Tx) error {
-		uid, err := userIDByEmail(ctx, tx, email)
+		uid, email, err := userIDByRef(ctx, tx, email)
 		if err != nil {
 			return err
 		}
@@ -157,7 +158,7 @@ func (s *Store) Grant(ctx context.Context, actor, email, orgSlug string, role Ro
 // Revoke removes a user's role in an org.
 func (s *Store) Revoke(ctx context.Context, actor, email, orgSlug string) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
-		uid, err := userIDByEmail(ctx, tx, email)
+		uid, email, err := userIDByRef(ctx, tx, email)
 		if err != nil {
 			return err
 		}
@@ -176,33 +177,58 @@ func (s *Store) Revoke(ctx context.Context, actor, email, orgSlug string) error 
 	})
 }
 
-// userIDByEmail finds a user of either kind by email. Entra users are
-// unique per tenant, so an email shared across tenants is ambiguous.
-func userIDByEmail(ctx context.Context, tx *sql.Tx, email string) (int64, error) {
-	email, err := NormalizeEmail(email)
+// UserRef formats a reference to one user that never matches another
+// user with the same email: "#<id>".
+func UserRef(id int64) string { return "#" + strconv.FormatInt(id, 10) }
+
+// userIDByRef finds a user by "#<id>" or by email, returning the email for
+// audit entries. An email shared by several users (a local and an Entra
+// account, or Entra accounts in several tenants) is ambiguous.
+func userIDByRef(ctx context.Context, tx *sql.Tx, ref string) (int64, string, error) {
+	ref = strings.TrimSpace(ref)
+	if n, ok := strings.CutPrefix(ref, "#"); ok {
+		id, err := strconv.ParseInt(n, 10, 64)
+		if err != nil || id <= 0 {
+			return 0, "", &ValidationError{"user", "must be an email or #<id>"}
+		}
+		var email sql.NullString
+		if err := tx.QueryRowContext(ctx, `SELECT email FROM users WHERE id = ?`, id).Scan(&email); errors.Is(err, sql.ErrNoRows) {
+			return 0, "", fmt.Errorf("user %s: %w", ref, ErrNotFound)
+		} else if err != nil {
+			return 0, "", err
+		}
+		if email.String == "" {
+			return id, ref, nil
+		}
+		return id, email.String, nil
+	}
+	email, err := NormalizeEmail(ref)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT id FROM users WHERE email = ?`, email)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	defer rows.Close()
 	var ids []int64
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			return 0, err
+			return 0, "", err
 		}
 		ids = append(ids, id)
 	}
+	if err := rows.Err(); err != nil {
+		return 0, "", err
+	}
 	switch len(ids) {
 	case 0:
-		return 0, fmt.Errorf("user %s: %w", email, ErrNotFound)
+		return 0, "", fmt.Errorf("user %s: %w", email, ErrNotFound)
 	case 1:
-		return ids[0], nil
+		return ids[0], email, nil
 	}
-	return 0, fmt.Errorf("several users share %s (local and Entra, or several tenants); manage them by ID", email)
+	return 0, "", &ValidationError{"user", fmt.Sprintf("several accounts use %s (a local and a Microsoft one); say which with --local or --entra, or by ID from `heimdall user list`, e.g. '#%d'", email, ids[0])}
 }
 
 // ── Entra users ────────────────────────────────────────────────────────────

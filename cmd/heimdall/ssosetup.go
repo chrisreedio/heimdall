@@ -197,7 +197,7 @@ app's Overview, and create a secret under Certificates & secrets.
 		do = !strings.HasPrefix(strings.ToLower(strings.TrimSpace(ans)), "n")
 	}
 	if !do {
-		fmt.Fprintln(a.stderr, "Apply with: sudo systemctl daemon-reload && sudo systemctl restart heimdall")
+		fmt.Fprintln(a.stderr, "Apply with: sudo heimdall restart")
 		return nil
 	}
 	if err := systemctl(a, "daemon-reload"); err != nil {

@@ -6,8 +6,8 @@
 #   sudo install -m 0644 heimdall.service /etc/systemd/system/
 #   sudo systemctl enable --now heimdall
 #
-# Admin commands run as the same user:
-#   sudo -u heimdall-hub heimdall -c /etc/heimdall/heimdall.toml host list
+# Admin commands run as the same user; `sudo heimdall` does that for you:
+#   sudo heimdall host list
 
 [Unit]
 Description=Heimdall hub (inventory ingest)

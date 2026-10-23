@@ -61,7 +61,7 @@ func cmdSSOSetSecret(a *app, args []string) error {
 	fmt.Fprintf(a.stderr, "Stored the client secret in %s (owner-only).\n", *path)
 	if *path == defaultEntraSecretFile {
 		fmt.Fprintln(a.stderr, "Make sure the unit has `LoadCredential="+entraCredential+":"+defaultEntraSecretFile+
-			"` (uncomment it in /etc/systemd/system/heimdall.service), then: systemctl daemon-reload && systemctl restart heimdall")
+			"` (uncomment it in /etc/systemd/system/heimdall.service), then: sudo heimdall restart")
 	}
 	return nil
 }

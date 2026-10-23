@@ -26,8 +26,10 @@ Don't use serverless, containers-as-a-service or managed databases. Heimdall is 
 1. **Ubuntu 24.04 or Debian 12**, fully updated, with unattended-upgrades on.
 2. **Tailscale**, so you reach the box (and the UI, and MCP) without opening SSH to the internet:
    ```sh
-   curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --ssh
+   curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --ssh --hostname heimdall-acme
    ```
+   **Pin the name** with `--hostname`. The hub's UI address (`ui.base_url`), `tailscale serve`, its HTTPS certificate and the Entra redirect URI all use `<name>.<tailnet>.ts.net`. Without it, the tailnet name follows the OS hostname, which cloud images reset on boot (Lightsail's `ip-172-…`). If the name changes, the UI stops answering at the old address. If that happens, `sudo tailscale set --hostname <old-name>` brings it back.
+   In the Tailscale admin console, also **disable key expiry** for the hub, or it drops off the tailnet when its key expires (180 days by default).
 3. **Heimdall**, following [deployment.md](deployment.md). UI and MCP via `tailscale serve`, ingest via Caddy (or `tailscale serve` too, if every server is on the tailnet).
 4. **Firewall:** inbound **443 only** (Caddy's public ingest), and nothing at all if ingest is tailnet-only. The cloud firewall and `ufw` should agree.
 5. **Backups:** schedule `heimdall backup --age-recipient …` and copy the `.age` files off the box (object storage or another machine).
@@ -40,7 +42,51 @@ To keep Cloudflare (WAF, DDoS protection) in front of public ingest, Caddy can't
 2. On the hub: `sudo heimdall ingest cert`. Paste the certificate, then the private key (hidden). It checks that they match and cover the ingest host, installs them for Caddy and reloads it. `install-hub.sh` keeps the certificate on later runs.
 3. In Cloudflare: set **SSL/TLS** to **Full (strict)**.
 4. Collectors are plain `curl`. If **Bot Fight Mode** or a challenge rule is on, add a WAF skip rule for `/api/v1/ingest`, or servers will be challenged instead of reporting.
-5. Optional: allow inbound 443 only from [Cloudflare's IP ranges](https://www.cloudflare.com/ips/) in the cloud firewall, so the origin can't be reached around the WAF.
+5. **Allow 443 only from Cloudflare**, so nobody can reach the origin around the WAF. See below.
+
+Check it: `curl -i https://<ingest-host>/` returns `404` (from Caddy, through Cloudflare), and `curl -k --connect-timeout 5 https://<origin-ip>/` from anywhere else times out.
+
+#### Allowing 443 only from Cloudflare's IP ranges
+
+Cloudflare publishes its ranges at <https://www.cloudflare.com/ips-v4> and <https://www.cloudflare.com/ips-v6>. They change rarely; re-run this every few months, or when Cloudflare announces a change. Run it from a machine with the cloud CLI logged in.
+
+**Lightsail.** The command **replaces every firewall rule on the instance**. The one below leaves only 443 from Cloudflare, so SSH and port 80 end up closed. That's what you want with Tailscale SSH and an Origin certificate.
+```sh
+v4=$(curl -fsS https://www.cloudflare.com/ips-v4 | sed 's/.*/"&"/' | paste -sd, -)
+v6=$(curl -fsS https://www.cloudflare.com/ips-v6 | sed 's/.*/"&"/' | paste -sd, -)
+aws lightsail put-instance-public-ports --instance-name <instance> --port-infos \
+  "[{\"fromPort\":443,\"toPort\":443,\"protocol\":\"tcp\",\"cidrs\":[$v4],\"ipv6Cidrs\":[$v6]}]"
+aws lightsail get-instance-port-states --instance-name <instance>   # check
+```
+In the console, the same thing is **Networking → IPv4 firewall → HTTPS → Restrict to IP address**, adding each range, then the same under **IPv6 firewall**.
+
+**EC2.** A security group allowing 443 from each range:
+```sh
+for c in $(curl -fsS https://www.cloudflare.com/ips-v4); do
+  aws ec2 authorize-security-group-ingress --group-id <sg-id> --ip-permissions "IpProtocol=tcp,FromPort=443,ToPort=443,IpRanges=[{CidrIp=$c,Description=cloudflare}]"
+done
+for c in $(curl -fsS https://www.cloudflare.com/ips-v6); do
+  aws ec2 authorize-security-group-ingress --group-id <sg-id> --ip-permissions "IpProtocol=tcp,FromPort=443,ToPort=443,Ipv6Ranges=[{CidrIpv6=$c,Description=cloudflare}]"
+done
+```
+Then remove any `0.0.0.0/0` or `::/0` rule for 443.
+
+**Azure.** NSG rules accept a list of prefixes:
+```sh
+az network nsg rule create -g <rg> --nsg-name <nsg> -n https-cloudflare --priority 100 \
+  --access Allow --protocol Tcp --destination-port-ranges 443 \
+  --source-address-prefixes $(curl -fsS https://www.cloudflare.com/ips-v4) $(curl -fsS https://www.cloudflare.com/ips-v6)
+```
+Then delete any broader 443 rule.
+
+**On the box itself (any provider)**, with `ufw`, as an extra layer or where there's no cloud firewall. Allow Tailscale first so you don't lock yourself out:
+```sh
+sudo ufw allow in on tailscale0
+for c in $(curl -fsS https://www.cloudflare.com/ips-v4 https://www.cloudflare.com/ips-v6); do
+  sudo ufw allow proto tcp from "$c" to any port 443 comment cloudflare
+done
+sudo ufw default deny incoming && sudo ufw enable
+```
 
 ### Tailnet-only, with no public ports at all
 

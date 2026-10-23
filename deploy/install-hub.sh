@@ -226,12 +226,12 @@ EOF
 
 # setup_admin creates the first admin (with --admin) if missing.
 setup_admin() {
-	if [ -n "$admin" ] && ! hd user list 2>/dev/null | grep -q "^$admin "; then
+	if [ -n "$admin" ] && ! hd user list 2>/dev/null | awk -v e="$admin" '$2 == e && $3 == "local" { f = 1 } END { exit !f }'; then
 		if [ -t 0 ]; then
 			say "Creating admin $admin (choose a password, then add the TOTP secret to your authenticator)"
 			hd user create --admin "$admin"
 		else
-			say "No terminal: create the admin later with: cd /var/lib/heimdall && sudo runuser -u heimdall-hub -- heimdall -c /etc/heimdall/heimdall.toml user create --admin $admin"
+			say "No terminal: create the admin later with: sudo heimdall user create --admin $admin"
 		fi
 	fi
 }
@@ -264,7 +264,7 @@ EOF
 cat >&2 <<EOF
 
 Next:
-  sudo -u heimdall-hub heimdall -c /etc/heimdall/heimdall.toml user create --admin you@example.com   (if not done)
+  sudo heimdall user create --admin you@example.com   (if not done)
   Sign in to the UI, then Hosts → Add a host for each server.
 EOF
 [ -z "$ingest_host" ] || printf '  Point DNS for %s at this machine and allow inbound 80/443.\n' "$ingest_host" >&2

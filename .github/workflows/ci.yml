@@ -9,7 +9,9 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  # Static checks and tests run side by side; "check" (the required status)
+  # passes only if both did.
+  lint:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -21,7 +23,14 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: false
+          # Build and module cache. Each job needs its own key: caches can't
+          # be overwritten, and with a shared key the first job to finish
+          # saves its (small) cache for everyone. CI only: releases build
+          # without a cache.
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            Makefile
 
       - name: Verify dependencies
         run: |
@@ -29,12 +38,42 @@ jobs:
           go mod vendor
           git diff --exit-code -- vendor go.mod go.sum
 
-      - run: make fmt vet lint vuln
+      - run: make -j4 --output-sync=target fmt vet lint vuln
+
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      # Actions are pinned to commit SHAs, not mutable tags.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # Build and module cache, with a key of its own (see lint).
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            .github/workflows/ci.yml
 
       - name: Test (with race detector)
         run: CGO_ENABLED=1 go test -race -mod=vendor ./...
 
       - run: make build
+
+  check:
+    needs: [lint, test]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # A skipped or cancelled dependency must fail this, not pass it.
+      - run: test "$LINT" = success && test "$TEST" = success
+        env:
+          LINT: ${{ needs.lint.result }}
+          TEST: ${{ needs.test.result }}
 
   collector:
     runs-on: ubuntu-24.04
@@ -47,6 +86,8 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
+          # No cache: this job builds one small package, and it must not
+          # claim a key the other jobs need.
           cache: false
 
       - run: make test-collector
