@@ -13,9 +13,9 @@
     </form>
   </details>{{end}}
   {{template "sitebadges" .Site}}
+  <span class="site-meta">{{template "icon" "server"}} on <a href="{{hostURL .Org .Host}}">{{.Host}}</a> <span aria-hidden="true">·</span> {{.Env}}</span>
   <a class="button secondary head-action" href="{{hostURL .Org .Host}}">Open host</a>
 </div>
-<p class="site-meta">{{template "icon" "server"}} on <a href="{{hostURL .Org .Host}}">{{.Host}}</a> <span aria-hidden="true">·</span> <span class="muted">{{.Env}} environment</span></p>
 {{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 
 <section class="facts card site-facts">
