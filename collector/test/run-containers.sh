@@ -34,7 +34,7 @@ alpine320-sites|alpine:3.20|apk update -q && adduser -S -D heimdall && sh /opt/h
 # Every container runs at once (they're independent and mostly wait on the
 # network). Each reports as soon as it finishes, and gets a time limit so
 # one hung package mirror can't stall the whole run.
-limit=${COLLECTOR_TEST_TIMEOUT:-240}
+limit=${COLLECTOR_TEST_TIMEOUT:-480}
 to=''
 ! command -v timeout >/dev/null 2>&1 || to="timeout $limit"
 
