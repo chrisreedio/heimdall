@@ -182,7 +182,8 @@ func TestErrors(t *testing.T) {
 			t.Errorf("org slug %q: want ValidationError, got %v", slug, err)
 		}
 	}
-	for _, name := range []string{"", "web 01", "web;rm", "-web", "web/01"} {
+	// An empty name is valid: the host takes its reported hostname.
+	for _, name := range []string{"web 01", "web;rm", "-web", "web/01"} {
 		if _, _, err := s.AddHost(ctx, "test", "acme", "prod", name, nil); !errors.As(err, &ve) {
 			t.Errorf("host %q: want ValidationError, got %v", name, err)
 		}

@@ -75,8 +75,8 @@ func newEnv(t *testing.T, mutate func(*config.Ingest)) *env {
 }
 
 type req struct {
-	method, path, token, contentType, encoding, remote, xff string
-	body                                                    []byte
+	method, path, token, contentType, encoding, remote, xff, hostname string
+	body                                                              []byte
 }
 
 func (e *env) do(r req) *httptest.ResponseRecorder {
@@ -107,6 +107,9 @@ func (e *env) do(r req) *httptest.ResponseRecorder {
 	}
 	if r.xff != "" {
 		hr.Header.Set("X-Forwarded-For", r.xff)
+	}
+	if r.hostname != "" {
+		hr.Header.Set(HostnameHeader, r.hostname)
 	}
 	w := httptest.NewRecorder()
 	e.h.ServeHTTP(w, hr)
@@ -308,4 +311,24 @@ func TestBehindProxy(t *testing.T) {
 		c.AllowCIDRs = []string{"203.0.113.0/24"}
 	})
 	e2.expect(req{remote: "198.51.100.7:1234", xff: "203.0.113.9"}, http.StatusForbidden)
+}
+
+func TestReportedHostnameNamesAutoHosts(t *testing.T) {
+	e := newEnv(t, nil)
+	ctx := t.Context()
+	// A named host ignores the header.
+	e.expect(req{hostname: "attacker-chosen"}, http.StatusCreated)
+	if _, err := e.st.HostByName(ctx, "acme", "web-01"); err != nil {
+		t.Fatalf("named host was renamed: %v", err)
+	}
+	// A host added without a name takes it from its first stored report.
+	auto, token, err := e.st.AddHost(ctx, "test", "acme", "prod", "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e.expect(req{token: token, hostname: "Web-01"}, http.StatusCreated)
+	h, err := e.st.HostByName(ctx, "acme", "web-01-2")
+	if err != nil || h.ID != auto.ID || h.AutoName {
+		t.Fatalf("auto host after first report: %+v %v", h, err)
+	}
 }

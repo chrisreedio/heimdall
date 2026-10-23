@@ -13,12 +13,12 @@
 {{if .Added}}
 <section class="card done-head">
   <span class="tick" aria-hidden="true">✓</span>
-  <div><h2>{{.Host.Name}} is registered</h2><p class="muted">{{.Host.OrgSlug}} / {{.Host.EnvSlug}}{{if .Host.Tags}} · {{range $i, $t := .Host.Tags}}{{if $i}}, {{end}}{{$t}}{{end}}{{end}}</p></div>
+  <div><h2>{{if .Host.AutoName}}New host registered{{else}}{{.Host.Name}} is registered{{end}}</h2><p class="muted">{{.Host.OrgSlug}} / {{.Host.EnvSlug}}{{if .Host.Tags}} · {{range $i, $t := .Host.Tags}}{{if $i}}, {{end}}{{$t}}{{end}}{{end}}{{if .Host.AutoName}} · named after the server's hostname on its first report{{end}}</p></div>
 </section>
 
 <section class="card step">
   <h2>Copy the ingest token</h2>
-  <p class="muted">The installer asks for it. <strong>It's shown only this once</strong>; Heimdall keeps just a hash. If it's lost, issue a new one with <code>sudo heimdall host token {{.Host.Name}}</code>.</p>
+  <p class="muted">The installer asks for it. <strong>It's shown only this once</strong>; Heimdall keeps just a hash. If it's lost, issue a new one with <code>sudo heimdall host token {{if .Host.AutoName}}&lt;name&gt;{{else}}{{.Host.Name}}{{end}}</code>.</p>
   <div class="codebox"><code id="token">{{.Token}}</code><button type="button" class="copy" data-copy="token" hidden>Copy</button></div>
 </section>
 
@@ -48,7 +48,7 @@
   <h2>Wait for the first report</h2>
   <p class="muted">It arrives as soon as the installer finishes, and then every few hours.</p>
   <div class="actions start">
-    <a class="button" href="{{hostURL .Host.OrgSlug .Host.Name}}">Open {{.Host.Name}}</a>
+    {{if .Host.AutoName}}<a class="button" href="/hosts">Go to Hosts</a>{{else}}<a class="button" href="{{hostURL .Host.OrgSlug .Host.Name}}">Open {{.Host.Name}}</a>{{end}}
     <a class="button secondary" href="/hosts/new">Add another host</a>
   </div>
 </section>
@@ -58,9 +58,9 @@
 <form method="post" action="/hosts/new" class="card stack">
   <input type="hidden" name="csrf" value="{{$csrf}}">
   <div class="field">
-    <label for="name">Hostname</label>
-    <input id="name" name="name" required maxlength="253" placeholder="web-01" autocomplete="off" autocapitalize="none" spellcheck="false" autofocus value="{{.Form.Name}}">
-    <p class="hint">How the server appears in Heimdall, usually its own hostname.</p>
+    <label for="name">Name <span class="optional">optional</span></label>
+    <input id="name" name="name" maxlength="253" placeholder="the server's hostname" autocomplete="off" autocapitalize="none" spellcheck="false" autofocus value="{{.Form.Name}}">
+    <p class="hint">Leave it blank to use the server's own hostname when it first reports. You can rename the host any time.</p>
   </div>
   <div class="field">
     <label for="env">Environment</label>
@@ -76,8 +76,8 @@
   </div>
   <div class="field">
     <label for="tags">Tags <span class="optional">optional</span></label>
-    <input id="tags" name="tags" maxlength="300" placeholder="web, role:lb" autocomplete="off" autocapitalize="none" spellcheck="false" value="{{.Form.Tags}}">
-    <p class="hint">Comma-separated. Drift compares servers that share a tag.</p>
+    <input id="tags" name="tags" maxlength="300" placeholder="web, role:lb" autocomplete="off" autocapitalize="none" spellcheck="false" value="{{.Form.Tags}}" data-tags>
+    <p class="hint">Press Enter or comma after each tag. Drift compares servers that share a tag.</p>
   </div>
   <div class="actions">
     <a class="button secondary" href="/hosts">Cancel</a>

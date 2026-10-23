@@ -5,6 +5,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -278,6 +279,11 @@ func (s *server) hostsPage(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 
 type hostBody struct {
 	Org, Name   string
+	AutoName    bool // takes the hostname it reports first
+	Tags        []string
+	CanAdmin    bool   // may rename the host
+	Notice      string // fixed messages only (see renameNotices)
+	RenameError string
 	Reported    bool
 	Summary     store.SnapshotSummary
 	Reboot      string
@@ -315,7 +321,13 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		s.notFound(w, r, v) // same response as a missing host: no existence leak
 		return
 	}
-	body := hostBody{Org: host.OrgSlug, Name: host.Name}
+	body := hostBody{Org: host.OrgSlug, Name: host.Name, AutoName: host.AutoName, CanAdmin: v.Scope.CanAdmin(host.OrgID)}
+	if body.Tags, err = s.st.HostTags(ctx, host.ID); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	body.Notice = renameNotices[r.URL.Query().Get("renamed")]
+	body.RenameError = renameErrors[r.URL.Query().Get("rename_error")]
 
 	orgs, err := s.st.ListOrgs(ctx)
 	if err != nil {
@@ -602,4 +614,66 @@ func otpField(r *http.Request) string {
 		return v
 	}
 	return r.PostForm.Get("code")
+}
+
+// Fixed messages a rename redirect can ask the host page to show, so the
+// query string can't inject text.
+var (
+	renameNotices = map[string]string{"1": "Host renamed.", "tags": "Tags saved."}
+	renameErrors  = map[string]string{
+		"invalid": "Names are letters, digits, '.', '-' or '_', starting and ending with a letter or digit.",
+		"exists":  "Another host in this organization already has that name.",
+		"tags":    "Tags are up to 64 lowercase letters, digits or ':._-'.",
+	}
+)
+
+// hostRename renames a host (org admins only).
+func (s *server) hostRename(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	host, err := s.st.HostByName(r.Context(), r.PathValue("org"), r.PathValue("host"))
+	if err != nil || !v.Scope.CanAdmin(host.OrgID) {
+		s.notFound(w, r, v)
+		return
+	}
+	newName := strings.ToLower(strings.TrimSpace(r.PostForm.Get("name")))
+	back := "/hosts/" + url.PathEscape(host.OrgSlug) + "/" + url.PathEscape(host.Name)
+	if newName == host.Name {
+		http.Redirect(w, r, back, http.StatusSeeOther)
+		return
+	}
+	var verr *store.ValidationError
+	switch err := s.st.RenameHost(r.Context(), actorOf(v), host.OrgSlug, host.Name, newName); {
+	case errors.As(err, &verr):
+		http.Redirect(w, r, back+"?rename_error=invalid", http.StatusSeeOther)
+	case errors.Is(err, store.ErrExists):
+		http.Redirect(w, r, back+"?rename_error=exists", http.StatusSeeOther)
+	case err != nil:
+		s.fail(w, r, v, err)
+	default:
+		http.Redirect(w, r, "/hosts/"+url.PathEscape(host.OrgSlug)+"/"+url.PathEscape(newName)+"?renamed=1", http.StatusSeeOther)
+	}
+}
+
+// hostTags replaces a host's tags (org admins only).
+func (s *server) hostTags(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	host, err := s.st.HostByName(r.Context(), r.PathValue("org"), r.PathValue("host"))
+	if err != nil || !v.Scope.CanAdmin(host.OrgID) {
+		s.notFound(w, r, v)
+		return
+	}
+	var tags []string
+	for t := range strings.SplitSeq(r.PostForm.Get("tags"), ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			tags = append(tags, t)
+		}
+	}
+	back := "/hosts/" + url.PathEscape(host.OrgSlug) + "/" + url.PathEscape(host.Name)
+	var verr *store.ValidationError
+	switch err := s.st.SetHostTags(r.Context(), actorOf(v), host.ID, tags); {
+	case errors.As(err, &verr):
+		http.Redirect(w, r, back+"?rename_error=tags", http.StatusSeeOther)
+	case err != nil:
+		s.fail(w, r, v, err)
+	default:
+		http.Redirect(w, r, back+"?renamed=tags", http.StatusSeeOther)
+	}
 }

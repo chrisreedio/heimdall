@@ -22,8 +22,10 @@
   --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 12px 32px rgba(16, 24, 40, .10);
   color-scheme: light dark;
 }
+/* Dark tokens: from the system setting unless the viewer picked light,
+   or always when they picked dark (theme.js sets data-theme). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #111418;
     --surface: #1a1e24;
     --border: #2f3640;
@@ -42,8 +44,32 @@
     --kev-bg: #d23a44;  --kev-fg: #ffffff;
     --ms-bg: #2f2f2f; --ms-fg: #ffffff; --ms-border: #5c5c5c; --ms-hover: #3a3a3a;
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45);
+  
   }
 }
+:root[data-theme="dark"] {
+  --bg: #111418;
+  --surface: #1a1e24;
+  --border: #2f3640;
+  --text: #e6e9ee;
+  --muted: #9aa4b2;
+  --link: #8ab4f8;
+  --accent: #3b6fb6;
+  --code-bg: #232932;
+  --stale: #f0b35a;
+  --crit-bg: #4a1518; --crit-fg: #ffb3b8;
+  --high-bg: #47250f; --high-fg: #ffc49a;
+  --med-bg: #3d330c;  --med-fg: #f3d977;
+  --low-bg: #142c4a;  --low-fg: #a9cdf5;
+  --unk-bg: #2a3038;  --unk-fg: #c3cad4;
+  --ok-bg: #133a20;   --ok-fg: #9ee0b0;
+  --kev-bg: #d23a44;  --kev-fg: #ffffff;
+  --ms-bg: #2f2f2f; --ms-fg: #ffffff; --ms-border: #5c5c5c; --ms-hover: #3a3a3a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45);
+
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -384,3 +410,86 @@ details.nofix > summary { font-weight: 600; color: var(--muted); margin: 12px 0;
   .tabs > label { padding: 6px 9px; margin-right: 2px; font-size: 13px; }
   .wizard .card { padding: 16px; }
 }
+
+/* Dev builds: the one-click test sign-in. */
+.dev-login { margin: 0 0 18px; padding-bottom: 18px; border-bottom: 1px dashed var(--border); }
+.dev-login button {
+  width: 100%; padding: 10px; font-weight: 600;
+  background: var(--med-bg); color: var(--med-fg); border: 1px dashed var(--med-fg);
+}
+.dev-login .fine { margin: 8px 0 0; }
+
+/* Theme switcher: System -> Light -> Dark. Hidden until app.js wires it. */
+.theme-toggle {
+  display: inline-grid; place-items: center; width: 34px; height: 34px; margin-left: 12px; padding: 0;
+  background: none; color: var(--muted); border: 1px solid var(--border); border-radius: 8px;
+}
+.theme-toggle:hover { color: var(--text); background: var(--code-bg); filter: none; }
+.theme-toggle svg { width: 18px; height: 18px; }
+.theme-toggle svg { display: none; }
+.theme-toggle[data-mode="system"] .i-system, .theme-toggle[data-mode="light"] .i-light,
+.theme-toggle[data-mode="dark"] .i-dark { display: block; }
+.top > .brand + .theme-toggle { margin-left: auto; }
+@media (max-width: 760px) {
+  .theme-toggle { order: 1; margin-left: auto; }
+  .nav-button { order: 2; margin-left: 8px; }
+  .nav-wrap { order: 3; }
+}
+
+/* Host page: Rename opens a small form under the header. */
+details.rename { margin: 0; }
+details.rename > summary { list-style: none; cursor: pointer; margin: 0; font-weight: 400; }
+details.rename > summary::-webkit-details-marker { display: none; }
+details.rename[open] > form { position: absolute; right: 16px; z-index: 5; margin-top: 8px; box-shadow: var(--shadow); }
+.head { position: relative; }
+
+/* Drift: compare and tag side by side. */
+.drift-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+.drift-grid .card { margin-top: 0; }
+.drift-grid .card > p.muted { margin: 0; }
+.tag-hosts { display: grid; gap: 14px; }
+.tag-hosts > label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 600; }
+.tag-hosts input[name=tag] { font-size: 14px; font-weight: 400; padding: 8px 10px; }
+.tag-hosts fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.tag-hosts legend { font-size: 13px; font-weight: 600; padding: 0; margin-bottom: 6px; }
+.host-picks { max-height: 260px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; padding: 4px 0; }
+.host-picks label.check { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 12px; font-size: 14px; }
+.host-picks label.check:hover { background: var(--code-bg); }
+.tag-hosts button { justify-self: start; padding: 9px 18px; font-weight: 600; }
+
+/* Host page tags. */
+.host-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -6px 0 14px; }
+.edit-tags > summary { list-style: none; cursor: pointer; color: var(--link); font-size: 13px; margin: 0 0 0 6px; font-weight: 400; }
+.edit-tags > summary::-webkit-details-marker { display: none; }
+.edit-tags[open] { flex-basis: 100%; }
+.edit-tags form { margin-top: 10px; max-width: 640px; }
+
+/* Tag badge input (app.js): chips plus a text box, inside one field. */
+.tag-input {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; min-width: 220px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px; cursor: text;
+}
+.tag-input:focus-within { outline: 2px solid var(--link); outline-offset: 2px; }
+.tag-input .chip-tag {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 9px; border-radius: 999px;
+  background: var(--code-bg); border: 1px solid var(--border); font-size: 13px; font-weight: 500;
+}
+.tag-input .chip-tag button {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; padding: 0; border-radius: 50%;
+  background: none; color: var(--muted); font-size: 14px; line-height: 1;
+}
+.tag-input .chip-tag button:hover { background: var(--border); color: var(--text); filter: none; }
+.tag-input input { flex: 1; min-width: 90px; border: 0 !important; padding: 3px 2px !important; background: none; outline: none; font-size: 14px; font-weight: 400; }
+.tag-input .chip-tag.bad { border-color: var(--crit-fg); color: var(--crit-fg); }
+.field .tag-input { width: 100%; }
+
+/* Chip remove buttons keep their size inside forms with large buttons. */
+.card form.row .tag-input .chip-tag button, form.row.card .tag-input .chip-tag button,
+.tag-input .chip-tag button { padding: 0; width: 18px; height: 18px; font-size: 14px; font-weight: 400; }
+.card form.row .tag-input, form.row.card .tag-input { min-width: 260px; }
+/* A <summary> styled as a secondary button (Rename). */
+summary.button {
+  display: inline-block; padding: .5rem 1rem; border-radius: 6px; font-weight: 600;
+  background: none; color: var(--text); border: 1px solid var(--border);
+}
+summary.button:hover { background: var(--code-bg); }

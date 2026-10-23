@@ -44,7 +44,7 @@ Commands:
   serve                        Run the web UI, ingest listener and scheduled feed sync
   org  create|list             Manage organizations
   env  create|list --org       Manage environments within an org
-  host add|list|show|rm        Manage hosts
+  host add|list|show|rm|rename Manage hosts (add without a name to use the server's hostname)
   host history|diff            Snapshots over time and what changed between them
   drift <tag>                  Packages that differ across hosts with a tag
   sbom <hostname>              Export a host's inventory as a CycloneDX SBOM
@@ -93,7 +93,7 @@ var commands = map[string]command{
 	"org":     group("org", map[string]command{"create": cmdOrgCreate, "list": cmdOrgList}),
 	"env":     group("env", map[string]command{"create": cmdEnvCreate, "list": cmdEnvList}),
 	"host": group("host", map[string]command{
-		"add": cmdHostAdd, "list": cmdHostList, "show": cmdHostShow, "rm": cmdHostRm, "token": cmdHostToken,
+		"add": cmdHostAdd, "list": cmdHostList, "show": cmdHostShow, "rm": cmdHostRm, "token": cmdHostToken, "rename": cmdHostRename,
 		"diff": cmdHostDiff, "history": cmdHostHistory,
 	}),
 	"collector": group("collector", map[string]command{"trust": cmdCollectorTrust, "list": cmdCollectorList}),

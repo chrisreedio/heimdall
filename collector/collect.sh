@@ -27,7 +27,7 @@ export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
-VERSION=0.4.8
+VERSION=0.4.9
 FORMAT=heimdall.snapshot/v3
 
 die() { printf 'heimdall-collect: %s\n' "$*" >&2; exit 1; }
@@ -650,12 +650,17 @@ push() {
 		cacert="cacert = \"$HEIMDALL_CA_FILE\""
 	fi
 
+	# The machine's hostname names a host added without one (on the hub).
+	hostname_header=
+	hn=$(uname -n 2>/dev/null | tr -cd 'A-Za-z0-9._-' | cut -c1-253)
+	[ -z "$hn" ] || hostname_header="header = \"X-Heimdall-Hostname: $hn\""
+
 	# The token goes to curl on stdin via --config (printf is a shell
 	# builtin), so it never appears in any process's arguments.
 	status=$(printf '%s\n' \
 		"header = \"Authorization: Bearer $token\"" \
 		'header = "Content-Type: application/json"' \
-		"$encoding" "$cacert" |
+		"$encoding" "$cacert" "$hostname_header" |
 		curl --config - --silent --show-error \
 			--proto '=https,http' --tlsv1.2 \
 			--connect-timeout 10 --max-time 120 \

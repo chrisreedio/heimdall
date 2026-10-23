@@ -96,8 +96,8 @@ func TestUsageErrors(t *testing.T) {
 		{"bogus"},
 		{"org"},
 		{"org", "create"},
-		{"host", "add", "--org", "acme"}, // missing hostname and --env
-		{"org", "create", "a", "b"},      // too many args
+		{"host", "add", "a", "b"},   // too many names
+		{"org", "create", "a", "b"}, // too many args
 	} {
 		if _, _, err := c.run(args...); !errors.Is(err, errUsage) {
 			t.Errorf("heimdall %v: want usage error, got %v", args, err)

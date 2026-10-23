@@ -4,7 +4,9 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -54,9 +56,81 @@ func (s *server) changesPage(w http.ResponseWriter, r *http.Request, v *auth.Vie
 
 type driftBody struct {
 	Tag   string
-	Tags  []string
+	Tags  []string // shared by 2+ hosts: comparable
 	Hosts []string
 	Rows  []history.DriftRow
+	// Tagging (org admins).
+	AllTags  []string // every tag, for suggestions
+	Taggable []store.Host
+	ShowOrgs bool
+	Notice   string
+	Error    string
+}
+
+// adminHosts lists the visible hosts in orgs the viewer administers.
+func (s *server) adminHosts(r *http.Request, v *auth.Viewer) ([]store.Host, bool, error) {
+	orgs, err := s.st.ListOrgs(r.Context())
+	if err != nil {
+		return nil, false, err
+	}
+	admin := map[string]bool{}
+	for _, o := range orgs {
+		admin[o.Slug] = v.Scope.CanAdmin(o.ID)
+	}
+	all, err := s.visibleHosts(r, v, "")
+	if err != nil {
+		return nil, false, err
+	}
+	var out []store.Host
+	for _, h := range all {
+		if admin[h.OrgSlug] {
+			out = append(out, h)
+		}
+	}
+	return out, len(orgs) > 1, nil
+}
+
+// driftTag adds a tag to the chosen hosts (org admins only).
+func (s *server) driftTag(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	hosts, _, err := s.adminHosts(r, v)
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	allowed := map[int64]bool{}
+	for _, h := range hosts {
+		allowed[h.ID] = true
+	}
+	var ids []int64
+	for _, raw := range r.PostForm["host"] {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || !allowed[id] {
+			s.notFound(w, r, v) // a host this viewer can't tag
+			return
+		}
+		ids = append(ids, id)
+	}
+	tag := strings.ToLower(strings.TrimSpace(r.PostForm.Get("tag")))
+	if len(ids) == 0 {
+		http.Redirect(w, r, "/drift?tag_error=nohosts", http.StatusSeeOther)
+		return
+	}
+	n, err := s.st.TagHosts(r.Context(), actorOf(v), tag, ids)
+	var verr *store.ValidationError
+	if errors.As(err, &verr) {
+		http.Redirect(w, r, "/drift?tag_error=invalid", http.StatusSeeOther)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	http.Redirect(w, r, "/drift?tag="+url.QueryEscape(tag)+"&tagged="+strconv.Itoa(n), http.StatusSeeOther)
+}
+
+var driftTagErrors = map[string]string{
+	"nohosts": "Pick at least one host to tag.",
+	"invalid": "Tags are up to 64 lowercase letters, digits or ':._-'.",
 }
 
 func (s *server) driftPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
@@ -73,6 +147,18 @@ func (s *server) driftPage(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		}
 	}
 	slices.Sort(body.Tags)
+	for t := range tags {
+		body.AllTags = append(body.AllTags, t)
+	}
+	slices.Sort(body.AllTags)
+	if body.Taggable, body.ShowOrgs, err = s.adminHosts(r, v); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if n, err := strconv.Atoi(r.URL.Query().Get("tagged")); err == nil {
+		body.Notice = fmt.Sprintf("Tag added to %d host%s.", n, map[bool]string{true: "", false: "s"}[n == 1])
+	}
+	body.Error = driftTagErrors[r.URL.Query().Get("tag_error")]
 	if body.Tag != "" {
 		if body.Hosts, body.Rows, err = history.Drift(ctx, s.st, body.Tag, v.Scope); err != nil {
 			s.fail(w, r, v, err)

@@ -1,13 +1,34 @@
-{{define "content"}}{{with .Body}}
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
 <nav class="crumbs" aria-label="Breadcrumb"><a href="/hosts">Hosts</a> <span aria-hidden="true">/</span> {{.Name}}</nav>
 <div class="head">
   <h1>{{.Name}}</h1>
   {{if .ShowOrgName}}<span class="muted">org {{.Org}}</span>{{end}}
   <a class="button secondary head-action" href="{{hostURL .Org .Name}}/changes">What changed</a>
+  {{if .CanAdmin}}<details class="rename">
+    <summary class="button secondary">Rename</summary>
+    <form method="post" action="{{hostURL .Org .Name}}/rename" class="row card">
+      <input type="hidden" name="csrf" value="{{$csrf}}">
+      <label>New name <input name="name" value="{{.Name}}" required maxlength="253" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+      <button type="submit">Rename</button>
+    </form>
+  </details>{{end}}
 </div>
+<div class="host-tags">
+  {{range .Tags}}<span class="tag">{{.}}</span>{{else}}<span class="muted small">No tags</span>{{end}}
+  {{if .CanAdmin}}<details class="edit-tags">
+    <summary class="link">Edit tags</summary>
+    <form method="post" action="{{hostURL .Org .Name}}/tags" class="row card">
+      <input type="hidden" name="csrf" value="{{$csrf}}">
+      <label>Tags <input name="tags" value="{{join .Tags ", "}}" maxlength="300" data-tags autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="web, role:lb"></label>
+      <button type="submit">Save tags</button>
+    </form>
+  </details>{{end}}
+</div>
+{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{with .RenameError}}<p class="alert" role="alert">{{.}}</p>{{end}}
 
 {{if not .Reported}}
-<p class="empty">This host hasn't reported yet. It appears here after the installer from <a href="/hosts/new">Add a host</a> finishes on the server.</p>
+<p class="empty">This host hasn't reported yet. It appears here after the installer from <a href="/hosts/new">Add a host</a> finishes on the server.{{if .AutoName}} It's then renamed to the server's own hostname.{{end}}</p>
 {{else}}
 <section class="facts card">
   <dl>
