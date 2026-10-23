@@ -22,8 +22,10 @@
   --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 12px 32px rgba(16, 24, 40, .10);
   color-scheme: light dark;
 }
+/* Dark tokens: from the system setting unless the viewer picked light,
+   or always when they picked dark (theme.js sets data-theme). */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #111418;
     --surface: #1a1e24;
     --border: #2f3640;
@@ -42,8 +44,32 @@
     --kev-bg: #d23a44;  --kev-fg: #ffffff;
     --ms-bg: #2f2f2f; --ms-fg: #ffffff; --ms-border: #5c5c5c; --ms-hover: #3a3a3a;
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45);
+  
   }
 }
+:root[data-theme="dark"] {
+  --bg: #111418;
+  --surface: #1a1e24;
+  --border: #2f3640;
+  --text: #e6e9ee;
+  --muted: #9aa4b2;
+  --link: #8ab4f8;
+  --accent: #3b6fb6;
+  --code-bg: #232932;
+  --stale: #f0b35a;
+  --crit-bg: #4a1518; --crit-fg: #ffb3b8;
+  --high-bg: #47250f; --high-fg: #ffc49a;
+  --med-bg: #3d330c;  --med-fg: #f3d977;
+  --low-bg: #142c4a;  --low-fg: #a9cdf5;
+  --unk-bg: #2a3038;  --unk-fg: #c3cad4;
+  --ok-bg: #133a20;   --ok-fg: #9ee0b0;
+  --kev-bg: #d23a44;  --kev-fg: #ffffff;
+  --ms-bg: #2f2f2f; --ms-fg: #ffffff; --ms-border: #5c5c5c; --ms-hover: #3a3a3a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45);
+
+}
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -392,3 +418,20 @@ details.nofix > summary { font-weight: 600; color: var(--muted); margin: 12px 0;
   background: var(--med-bg); color: var(--med-fg); border: 1px dashed var(--med-fg);
 }
 .dev-login .fine { margin: 8px 0 0; }
+
+/* Theme switcher: System -> Light -> Dark. Hidden until app.js wires it. */
+.theme-toggle {
+  display: inline-grid; place-items: center; width: 34px; height: 34px; margin-left: 12px; padding: 0;
+  background: none; color: var(--muted); border: 1px solid var(--border); border-radius: 8px;
+}
+.theme-toggle:hover { color: var(--text); background: var(--code-bg); filter: none; }
+.theme-toggle svg { width: 18px; height: 18px; }
+.theme-toggle svg { display: none; }
+.theme-toggle[data-mode="system"] .i-system, .theme-toggle[data-mode="light"] .i-light,
+.theme-toggle[data-mode="dark"] .i-dark { display: block; }
+.top > .brand + .theme-toggle { margin-left: auto; }
+@media (max-width: 760px) {
+  .theme-toggle { order: 1; margin-left: auto; }
+  .nav-button { order: 2; margin-left: 8px; }
+  .nav-wrap { order: 3; }
+}
