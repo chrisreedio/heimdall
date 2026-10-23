@@ -224,6 +224,35 @@ ul.plain li { padding: 2px 0; }
   .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
+/* Header: on desktop the nav sits inline; on narrow screens it folds
+   behind a Menu button (a checkbox, so it needs no script). */
+.nav-wrap { display: contents; }
+.nav-toggle { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+.nav-button { display: none; }
+@media (max-width: 760px) {
+  .top { flex-wrap: wrap; gap: 0; padding: 10px 16px; }
+  .nav-button {
+    display: inline-flex; align-items: center; gap: 8px; margin-left: auto; padding: 6px 12px;
+    border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .bars, .bars::before, .bars::after { display: block; width: 14px; height: 2px; border-radius: 1px; background: currentColor; }
+  .bars { position: relative; }
+  .bars::before, .bars::after { content: ""; position: absolute; left: 0; }
+  .bars::before { top: -5px; }
+  .bars::after { top: 5px; }
+  .nav-toggle:focus-visible + .nav-button { outline: 2px solid var(--link); outline-offset: 2px; }
+  .nav-toggle:checked + .nav-button { background: var(--code-bg); }
+  .nav-wrap { display: none; width: 100%; padding-top: 10px; }
+  .nav-toggle:checked ~ .nav-wrap { display: block; }
+  .top nav { flex-direction: column; gap: 2px; }
+  .top nav a { padding: 10px 12px; font-size: 15px; }
+  .who {
+    margin: 8px 0 0; padding: 12px 12px 4px; width: 100%;
+    border-top: 1px solid var(--border); justify-content: space-between;
+  }
+  .who .email { max-width: 65vw; }
+}
+
 @media (max-width: 600px) {
   .who { margin-left: 0; width: 100%; justify-content: space-between; }
   .filter { margin-left: 0; }
@@ -349,3 +378,9 @@ details.nofix > summary { font-weight: 600; color: var(--muted); margin: 12px 0;
 .cmd { margin: 0 0 14px; }
 .cmd-label { font-weight: 600; font-size: 13px; margin-bottom: 6px; }
 .facts dl { gap: 12px 24px; }
+
+/* Narrow screens, after the component styles so these win. */
+@media (max-width: 600px) {
+  .tabs > label { padding: 6px 9px; margin-right: 2px; font-size: 13px; }
+  .wizard .card { padding: 16px; }
+}

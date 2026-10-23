@@ -14,6 +14,9 @@
 <header class="top">
   <a class="brand" href="/"><img src="/static/icon.svg" alt="" width="22" height="22"> Heimdall</a>
   {{if .Viewer}}
+  <input type="checkbox" id="nav-toggle" class="nav-toggle" aria-label="Show navigation">
+  <label for="nav-toggle" class="nav-button" aria-hidden="true"><span class="bars"></span>Menu</label>
+  <div class="nav-wrap">
   <nav aria-label="Main">
     <a href="/"{{if eq .Nav "dashboard"}} aria-current="page"{{end}}>Dashboard</a>
     <a href="/hosts"{{if eq .Nav "hosts"}} aria-current="page"{{end}}>Hosts</a>
@@ -30,6 +33,7 @@
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <button type="submit" class="link">Sign out</button>
     </form>
+  </div>
   </div>
   {{end}}
 </header>
