@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/chrisreedio/heimdall/internal/report"
 )
@@ -78,5 +79,30 @@ func TestFixCommandUsesBinaryNames(t *testing.T) {
 	}
 	if cmd, _, _ := fixCommand("pacman", list); cmd != nil {
 		t.Error("no command for package managers without one")
+	}
+}
+
+func TestDayAgo(t *testing.T) {
+	now := time.Date(2026, 10, 25, 15, 0, 0, 0, time.Local)
+	at := func(y int, m time.Month, d int) *time.Time {
+		v := time.Date(y, m, d, 9, 0, 0, 0, time.Local)
+		return &v
+	}
+	for _, c := range []struct {
+		t    *time.Time
+		want string
+	}{{at(2026, 10, 25), "today"}, {at(2026, 10, 24), "yesterday"}, {at(2026, 10, 22), "3 days ago"},
+		{at(2026, 9, 1), "Sep 1, 2026"}, {at(2026, 11, 2), "Nov 2, 2026"}, {nil, ""}} {
+		if got := dayAgo(c.t, now); got != c.want {
+			t.Errorf("dayAgo(%v) = %q, want %q", c.t, got, c.want)
+		}
+	}
+}
+
+func TestFullDateKeepsPlainDates(t *testing.T) {
+	fullDate := funcs["fullDate"].(func(*time.Time) string)
+	d := time.Date(2025, 2, 4, 0, 0, 0, 0, time.UTC) // a lifecycle date
+	if got := fullDate(&d); got != "Tuesday, February 4, 2025" {
+		t.Errorf("plain date shifted: %q", got)
 	}
 }

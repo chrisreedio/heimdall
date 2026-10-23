@@ -458,13 +458,13 @@ var funcs = template.FuncMap{
 		if t.IsZero() {
 			return "never"
 		}
-		return t.Local().Format("2006-01-02 15:04")
+		return t.Local().Format("Jan 2, 2006 3:04 PM")
 	},
 	"day": func(t time.Time) string {
 		if t.IsZero() {
 			return ""
 		}
-		return t.Local().Format("2006-01-02")
+		return asDay(t).Format("Jan 2, 2006")
 	},
 	// fixable keeps the findings that have (want=true) or lack a fix.
 	"fixable": func(fs []report.Finding, want bool) []report.Finding {
@@ -480,7 +480,7 @@ var funcs = template.FuncMap{
 		if t == nil {
 			return ""
 		}
-		return t.Format(time.DateOnly)
+		return asDay(*t).Format("Jan 2, 2006")
 	},
 	// month and longDate are friendlier dates for prose and pills
 	// ("Feb 2025", "4 Feb 2025"); tables keep ISO dates.
@@ -488,15 +488,23 @@ var funcs = template.FuncMap{
 		if t == nil {
 			return ""
 		}
-		return t.Format("Jan 2006")
+		return asDay(*t).Format("Jan 2006")
 	},
 	"longDate": func(t *time.Time) string {
 		if t == nil {
 			return ""
 		}
-		return t.Format("2 Jan 2006")
+		return asDay(*t).Format("Jan 2, 2006")
 	},
-	"ago": ago,
+	// fullDate is for tooltips: "Friday, October 23, 2026".
+	"fullDate": func(t *time.Time) string {
+		if t == nil {
+			return ""
+		}
+		return asDay(*t).Format("Monday, January 2, 2006")
+	},
+	"dayAgo": func(t *time.Time) string { return dayAgo(t, time.Now()) },
+	"ago":    ago,
 	// sev maps a severity to a CSS class suffix from a fixed set.
 	"sev": func(s string) string {
 		if severities[s] {
@@ -565,4 +573,36 @@ func ago(t time.Time) string {
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	}
 	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+}
+
+// dayAgo describes a date relative to today: "today", "yesterday",
+// "3 days ago", then "Oct 23, 2026" once it's a month or more back.
+func dayAgo(t *time.Time, now time.Time) string {
+	if t == nil {
+		return ""
+	}
+	y1, m1, d1 := asDay(*t).Date()
+	y2, m2, d2 := now.Local().Date()
+	days := int(time.Date(y2, m2, d2, 0, 0, 0, 0, time.UTC).Sub(time.Date(y1, m1, d1, 0, 0, 0, 0, time.UTC)).Hours() / 24)
+	switch {
+	case days < 0:
+		return t.Format("Jan 2, 2006")
+	case days == 0:
+		return "today"
+	case days == 1:
+		return "yesterday"
+	case days < 30:
+		return fmt.Sprintf("%d days ago", days)
+	}
+	return t.Format("Jan 2, 2006")
+}
+
+// asDay is t in the viewer's time zone, except plain dates (lifecycle
+// dates, stored as midnight UTC), which would otherwise shift to the day
+// before for anyone west of UTC.
+func asDay(t time.Time) time.Time {
+	if u := t.UTC(); u.Hour() == 0 && u.Minute() == 0 && u.Second() == 0 && u.Nanosecond() == 0 {
+		return u
+	}
+	return t.Local()
 }
