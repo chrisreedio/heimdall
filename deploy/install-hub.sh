@@ -68,7 +68,7 @@ if [ "$upgrade" = 1 ]; then
 	# Existing hub: networking (tailscale serve, Caddy) and the org stay as
 	# they are; only the software is upgraded.
 	# --ingest-host and --admin still finish those steps if given.
-	org=${org:-existing} tailnet_only=1 use_ts=0
+	org=${org:-existing} use_ts=0
 fi
 [ -n "$org" ] || usage
 case $org in *[!a-z0-9-]* | -* | *-) die "--org must be lowercase letters, digits and '-'" ;; esac
