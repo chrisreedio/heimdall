@@ -186,6 +186,7 @@ Supported platforms: **Ubuntu 22.04/24.04, Debian 12, Rocky 9, AlmaLinux 9 and A
 - Pins the hub's TLS certificate or a private CA if you want (`HEIMDALL_CA_FILE`)
 - Ignores the response body completely, so the hub can't send instructions back
 - Token is read from a `0400` file owned by the `heimdall` user, never passed on the command line
+- Reports hourly, 3 minutes after boot and about a minute after packages change (a systemd path unit, or apk/apt hooks without systemd), so the hub's tripwires see changes within minutes. A sudoers-limited one-liner reports after deploys. See [When it reports](docs/collector.md#when-it-reports).
 
 ---
 
@@ -321,7 +322,7 @@ sudo systemctl start heimdall-collect.service     # first push now, instead of w
 
 Then check from the hub: `hd host show web-01`.
 
-Both units are sandboxed. `systemd-analyze security` rates the hub **1.4** and the collector **1.6**, where lower means less exposed. The timer runs daily with a random delay of up to an hour. See [docs/collector.md](docs/collector.md) for details and troubleshooting.
+Both units are sandboxed. `systemd-analyze security` rates the hub **1.4** and the collector **1.6**, where lower means less exposed. The timer runs hourly, at a fixed random offset of up to 15 minutes per host; unchanged reports are stored as small heartbeats. See [docs/collector.md](docs/collector.md) for details and troubleshooting.
 
 ---
 
@@ -354,7 +355,7 @@ listen        = ":8443"
 tls_cert      = "/etc/heimdall/tls/cert.pem"
 tls_key       = "/etc/heimdall/tls/key.pem"
 max_body      = "5MB"
-rate_per_host = "10/h"
+rate_per_host = "30/h"
 # allow_cidrs = ["203.0.113.0/24"]  # optional
 
 [feeds]
@@ -556,6 +557,7 @@ Builds on M6 patch plans and M7 history. See [docs/anomaly-signals.md](docs/anom
 - [x] **Splash page on the public ingest host.** `GET /` returns a minimal dark page with the centered logo and no text, instead of a bare 404. Caddy serves it as static HTML with the logo inline, so the hub isn't involved. Headers give nothing away: no `Server` or `Via`, `Cache-Control: no-store`, a strict CSP (`default-src 'none'`, the style pinned by hash), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`. Every other path stays an empty 404, and nothing names Heimdall or a version. Existing hubs pick it up when they re-run `install-hub.sh --ingest-host`.
 - [x] **Environments that fit:** create one on the fly from Add a host ("New environment…"), move a host between environments from its page, and filter Hosts by environment. Name them after what the servers are (`shared-hosting`, `internal`), not just prod and staging.
 - [x] **Site labels:** each site is Production, Staging or Development, suggested from its name (`staging.`, `dev.`, `test.`…) and overridable by org admins. Sites can be filtered by label, and the host page shows the labels.
+- [x] **Event-driven reports:** a report about a minute after packages change (one per `apt upgrade`, however many packages), 3 minutes after boot so "reboot required" clears quickly, and after deploys with a one-line, sudoers-limited snippet. See [When it reports](docs/collector.md#when-it-reports).
 - [ ] **Threat news (draft, Phase 1 built):** cross-reference a curated "what's being exploited now" feed such as pwn.watch with the inventory, so the UI can say "this is in the news and it affects 3 of your hosts". Phase 1 (feed, confirmed CVE matches, News page, dashboard strip, Patch first boost) is in; turn it on with `[news] enabled = true`. See [docs/threat-news.md](docs/threat-news.md).
 
 ---

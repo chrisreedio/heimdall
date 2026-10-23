@@ -52,8 +52,10 @@ record() {
 		rm -f "$f.$$" 2>/dev/null
 	fi
 
-	# Report soon, in the background. heimdall-collect-soon.timer, when
-	# installed, debounces a burst of logins into one push.
+	# Report soon, in the background, through the same debounce as package
+	# changes: a burst of logins becomes one push about a minute after the
+	# last. Restarting the timer resets its countdown (starting a running
+	# one does nothing). Without systemd, soon.sh does the same.
 	if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
 		unit=heimdall-collect.service
 		for d in /etc/systemd/system /usr/lib/systemd/system /lib/systemd/system; do
@@ -62,7 +64,9 @@ record() {
 				break
 			fi
 		done
-		systemctl start --no-block "$unit" </dev/null >/dev/null 2>&1 &
+		systemctl restart --no-block "$unit" </dev/null >/dev/null 2>&1 &
+	elif [ -x /usr/local/lib/heimdall-collect/soon.sh ]; then
+		/usr/local/lib/heimdall-collect/soon.sh </dev/null >/dev/null 2>&1
 	fi
 	return 0
 }

@@ -688,7 +688,7 @@ triggers_state() {
 		return
 	fi
 	cron=absent hook=absent
-	for f in /etc/cron.daily/heimdall-collect /etc/periodic/daily/heimdall-collect; do
+	for f in /etc/cron.hourly/heimdall-collect /etc/periodic/hourly/heimdall-collect /etc/cron.daily/heimdall-collect /etc/periodic/daily/heimdall-collect; do
 		[ ! -e "$f" ] || cron=present
 	done
 	for f in /etc/apk/commit_hooks.d/heimdall* /etc/apt/apt.conf.d/*heimdall*; do

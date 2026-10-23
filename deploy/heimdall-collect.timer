@@ -1,11 +1,16 @@
 [Unit]
-Description=Daily Heimdall inventory push
+Description=Hourly Heimdall inventory push
 
 [Timer]
-OnBootSec=15min
-OnCalendar=*-*-* 04:00:00
-# Spread hosts out so they don't all report at once.
-RandomizedDelaySec=1h
+# Soon after boot, so the hub sees the reboot and clears "reboot required".
+OnBootSec=3min
+# Hourly, so a silent host stands out within hours ([hosts] alert_after on
+# the hub). Unchanged reports are stored as small heartbeats.
+OnCalendar=hourly
+# Spread hosts out so they don't all report at once, at a fixed offset per
+# host so reports stay about an hour apart.
+RandomizedDelaySec=15min
+FixedRandomDelay=yes
 Persistent=true
 
 [Install]

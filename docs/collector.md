@@ -101,7 +101,7 @@ The collector runs on every server you manage, so it's built to be **boring, rea
 
 ## Installing
 
-**Quickest:** **Hosts → Add a host** in the UI gives you a one-line command running `install.sh` from the release. It verifies checksums (and the Sigstore signature when `cosign` is installed), creates the user and token, schedules daily pushes (systemd, or cron on Alpine and other non-systemd systems) and sends the first report. On the hub's own box it uses `/etc/heimdall-collect`, so the hub's config is never touched.
+**Quickest:** **Hosts → Add a host** in the UI gives you a one-line command running `install.sh` from the release. It verifies checksums (and the Sigstore signature when `cosign` is installed), creates the user and token, schedules pushes (hourly, after boot and after package changes; see [When it reports](#when-it-reports)) and sends the first report. On the hub's own box it uses `/etc/heimdall-collect`, so the hub's config is never touched.
 
 To install by hand:
 
@@ -120,19 +120,91 @@ sudo install -m 0400 -o heimdall /dev/stdin /etc/heimdall/token   # paste the to
 
 # 4. Point it at the hub and schedule it
 sudo install -m 0644 collect.env.example /etc/heimdall/collect.env   # set HEIMDALL_URL
-sudo install -m 0644 heimdall-collect.service heimdall-collect.timer /etc/systemd/system/
-sudo systemctl enable --now heimdall-collect.timer
+sudo install -m 0644 heimdall-collect.service heimdall-collect.timer heimdall-collect-soon.timer \
+  heimdall-collect-changes.service heimdall-collect-changes.path /etc/systemd/system/
+#    (optional) delete the PathChanged= lines in heimdall-collect-changes.path for package
+#    managers this box doesn't have; install.sh does that for you
+sudo systemctl enable --now heimdall-collect.timer heimdall-collect-changes.path
 
 # 5. Push once now and check the result
 sudo systemctl start heimdall-collect.service
 journalctl -u heimdall-collect -n 5
 ```
 
-The service runs as `heimdall` under systemd sandboxing (`systemd-analyze security` rates it 1.6), with the filesystem read-only, no capabilities and a restricted set of system calls. The timer fires daily at a random time between 04:00 and 05:00.
+The service runs as `heimdall` under systemd sandboxing (`systemd-analyze security` rates it 1.6), with the filesystem read-only, no capabilities and a restricted set of system calls. The timer fires hourly, at a fixed random offset of up to 15 minutes per host, and 3 minutes after boot.
 
 **Collecting on the hub's own box?** The hub owns `/etc/heimdall`, so give the collector its own directory, e.g. `/etc/heimdall-collect`. Set `HEIMDALL_TOKEN_FILE` in its env file and `EnvironmentFile=` in the unit.
 
 **Alpine:** run `apk add curl` for push mode. busybox `wget` isn't supported, because it would expose the token in process arguments.
+
+## When it reports
+
+| When | systemd | Without systemd |
+|---|---|---|
+| Hourly | `heimdall-collect.timer`: a fixed random offset of up to 15 minutes past each hour | cron (`/etc/periodic/hourly` or `/etc/cron.hourly`), after a random delay of up to 15 minutes |
+| After boot | 3 minutes after boot (`OnBootSec=3min`), so the hub sees the reboot and clears "reboot required" | Not yet |
+| After package changes | About a minute after the last change: `heimdall-collect-changes.path` | About a minute after the last change: an apk commit hook or an apt `DPkg::Post-Invoke` hook |
+| After a deploy | One line in your deploy script, see [below](#report-after-deploys) | The same, with `soon.sh` |
+
+The hub runs its tripwire rules on every report, so these event reports let it see changes within minutes instead of the next morning.
+
+### After package changes
+
+**systemd.** Three small units, none of which change the collector's own sandbox:
+
+1. `heimdall-collect-changes.path` watches the package database: `/var/lib/dpkg/status` (dpkg), `/var/lib/rpm/rpmdb.sqlite` (rpm 4.16+, as on RHEL/Rocky/Alma 9) or `/var/lib/rpm/Packages` (older rpm), `/lib/apk/db/installed` (apk) and `/var/lib/pacman/local` (pacman). `install.sh` keeps only the paths that exist on the box.
+2. Each change starts `heimdall-collect-changes.service`, which only runs `systemctl restart --no-block heimdall-collect-soon.timer`. It runs as root (to talk to systemd) with no network, no capabilities and a read-only filesystem; `systemd-analyze security` rates it 1.1.
+3. `heimdall-collect-soon.timer` (`OnActiveSec=60s`) then starts the usual `heimdall-collect.service`.
+
+Restarting the timer restarts its countdown, so the report goes out 60 seconds after the *last* change. A whole `apt upgrade` sends one report, about a minute after it ends. A change made while a report is running restarts the countdown too, so it gets a report of its own a minute later.
+
+For rpm the path unit watches `rpmdb.sqlite` itself, not `/var/lib/rpm`: read-only queries by root (`dnf makecache`, `rpm -q`) rewrite the sqlite `-shm` and `-wal` files beside it, but `rpmdb.sqlite` changes only when packages do.
+
+**Without systemd** (Alpine with OpenRC, Debian without systemd, containers), `install.sh` adds a hook for the package manager it finds:
+
+| Package manager | Hook |
+|---|---|
+| apk | `/etc/apk/commit_hooks.d/heimdall-collect` (on `post-commit`) |
+| apt | `/etc/apt/apt.conf.d/80heimdall-collect` (`DPkg::Post-Invoke`) |
+
+Both run `/usr/local/lib/heimdall-collect/soon.sh` as root. It returns at once and always succeeds, so it can't slow down or break the package manager. A background process waits until there have been no changes for 60 seconds (a lock directory in `/run` holds the time of the last change), then pushes as the `heimdall` user, just like the hourly cron job. Its output goes to syslog (`logger -t heimdall-collect`). There's no hook for rpm or pacman without systemd; those boxes report hourly.
+
+Event reports count toward the hub's rate limit of 30 reports per hour per host (`[ingest] rate_per_host`; hubs set up before v0.4.13 have `"10/h"` in their config, which still fits hourly reports plus a few events). The 60-second wait keeps a busy upgrade to one of them.
+
+### Report after deploys
+
+Add this as the last line of your deploy script (for example, Laravel Forge's deploy script), so the hub sees new Composer packages right away:
+
+```sh
+sudo -n systemctl start --no-block heimdall-collect.service || true
+```
+
+It returns at once: `--no-block` doesn't wait for the report, and `|| true` means a problem with reporting never fails the deploy.
+
+A deploy user like `forge` can't start system services by itself (`Access denied`), and a sudo password prompt would hang the deploy. So allow exactly this one command, and nothing else, with a sudoers drop-in:
+
+```sh
+echo 'forge ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block heimdall-collect.service' |
+  sudo tee /etc/sudoers.d/heimdall-collect
+sudo chmod 0440 /etc/sudoers.d/heimdall-collect && sudo visudo -cf /etc/sudoers.d/heimdall-collect
+```
+
+sudo matches the arguments exactly, so the user can't stop the timer, start any other unit or even drop `--no-block`. The report still runs as `heimdall` in its sandbox. `/bin/systemctl` matches too, where `/bin` links to `/usr/bin`.
+
+**Without systemd**, use the same debounced script as the package hooks, which also returns at once:
+
+```sh
+sudo -n /usr/local/lib/heimdall-collect/soon.sh || true
+# sudoers: forge ALL=(root) NOPASSWD: /usr/local/lib/heimdall-collect/soon.sh
+```
+
+**By hand**, as a user who can already use sudo (this one waits for the push):
+
+```sh
+sudo -u heimdall sh -c 'set -a; . /etc/heimdall/collect.env; exec /usr/local/bin/heimdall-collect --push'
+```
+
+On the hub's own box the collector's settings are in `/etc/heimdall-collect/collect.env`.
 
 ## Usage
 
@@ -188,7 +260,7 @@ Re-running `install.sh`, and `sudo heimdall-collect upgrade` (which runs it), ke
 
 **What it records:** `sudo`, `su`, and `root-ssh` (an SSH login as root). SSH logins as other users are ignored. With `--watch-privilege-users`, the invoking user (`PAM_RUSER`, else `PAM_USER`) is added if it matches `[a-z_][a-z0-9_.-]{0,31}`, and `?` otherwise. Never commands, arguments, terminals or source addresses.
 
-**It never blocks or slows a login.** The PAM line is `optional`, the hook always exits 0, makes no network requests, does nothing unless the session is opening, and gives up quietly if the events directory is missing or the disk is full. A broken hook (not executable, deleted, or its directory gone) still lets sudo, su and SSH work. After recording, it starts `heimdall-collect-soon.timer` if installed (a short debounce), otherwise `heimdall-collect.service`, in the background with errors ignored, so the hub hears about it within a minute or so. Without systemd (cron installs), events wait for the next daily push.
+**It never blocks or slows a login.** The PAM line is `optional`, the hook always exits 0, makes no network requests, does nothing unless the session is opening, and gives up quietly if the events directory is missing or the disk is full. A broken hook (not executable, deleted, or its directory gone) still lets sudo, su and SSH work. After recording, it restarts `heimdall-collect-soon.timer` (the same 60-second debounce as package changes, so a burst of logins is one push), or runs `soon.sh` without systemd, in the background with errors ignored. The hub hears about it within a minute or so.
 
 **How it's reported:** the collector itself stays unprivileged and read-only. On each push it reads the events file and sends the last 7 days, deduplicated and capped at 200 (about 8 KB), in a request header, `X-Heimdall-Privilege: v1 <ts>:<kind>[:<user>],...`. It also sends `X-Heimdall-Privilege-Watch: on|off|partial`: `on` means the hook is executable, the events file exists and every existing PAM file of the three has its line; `off` means none of it is there; `partial` is anything in between. They're headers, not snapshot fields, so collectors and hubs of different versions still work together. The collector keeps no state, so it resends recent events every time and the hub dedupes them on (host, time, kind, user). Malformed or oversized headers are dropped without failing the push. The hub keeps events for 180 days.
 
@@ -239,7 +311,7 @@ A site the collector can't read is still reported, with its hostnames and PHP ve
 | `HEIMDALL_URL must use https://` | Use an `https://` URL, or a local `http://127.0.0.1` proxy |
 | `hub rejected the token (HTTP 401/403)` | The token was rotated or the host removed. Get a new one with `heimdall host add`. |
 | `hub rejected the snapshot as invalid (HTTP 422)` | Run `--print` and check the output with `heimdall import --check` |
-| `rate limited by the hub (HTTP 429)` | It's running too often. The default limit is 10 per hour per host. |
+| `rate limited by the hub (HTTP 429)` | It's running too often. The default limit is 30 per hour per host (`[ingest] rate_per_host`). |
 | `curl is required for --push` | Install curl |
 
 ## Testing changes to the collector

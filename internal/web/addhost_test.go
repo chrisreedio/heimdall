@@ -36,6 +36,15 @@ func TestAddHost(t *testing.T) {
 	if strings.Contains(body, "127.0.0.1:8080/install") {
 		t.Error("install command must never point at the hub")
 	}
+	for _, want := range []string{
+		`<pre id="cmd-deploy">sudo -n systemctl start --no-block heimdall-collect.service || true</pre>`,
+		`data-copy="cmd-deploy"`,
+		`NOPASSWD: /usr/bin/systemctl start --no-block heimdall-collect.service`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("deploy hint missing %q", want)
+		}
+	}
 	if h, err := e.st.HostByName(t.Context(), "acme", "db-07"); err != nil || h.Name != "db-07" {
 		t.Errorf("host not created: %v", err)
 	}

@@ -13,8 +13,11 @@
 #      Sigstore signature when cosign is installed). Never from the hub.
 #   2. creates the unprivileged `heimdall` user, installs the token (0400)
 #      and /etc/heimdall/collect.env
-#   3. schedules a daily push (systemd timer, or cron without systemd) and
-#      runs the first push.
+#   3. schedules an hourly push (systemd timer, or cron without systemd), a
+#      push a minute after packages change (a systemd path unit, or apk/apt
+#      hooks) and, with systemd, one 3 minutes after boot. Then it runs the
+#      first push. Re-running it (as `heimdall-collect upgrade` does)
+#      refreshes all of this.
 set -eu
 umask 022
 export LC_ALL=C
@@ -109,7 +112,8 @@ fetch() { # fetch NAME into $work
 }
 
 say "Fetching Heimdall collector $version"
-for f in SHA256SUMS collect.sh heimdall-collect.service heimdall-collect.timer privilege-watch.sh privilege-hook; do fetch "$f"; done
+units='heimdall-collect.service heimdall-collect.timer heimdall-collect-soon.timer heimdall-collect-changes.service heimdall-collect-changes.path'
+for f in SHA256SUMS collect.sh $units privilege-watch.sh privilege-hook; do fetch "$f"; done
 if fetch_sig=$(fetch SHA256SUMS.sigstore.json 2>/dev/null && echo ok) && [ "$fetch_sig" = ok ] && have cosign; then
 	say "Verifying the Sigstore signature on SHA256SUMS"
 	cosign verify-blob "$work/SHA256SUMS" --bundle "$work/SHA256SUMS.sigstore.json" \
@@ -118,8 +122,12 @@ if fetch_sig=$(fetch SHA256SUMS.sigstore.json 2>/dev/null && echo ok) && [ "$fet
 		die "SHA256SUMS signature verification FAILED"
 fi
 say "Verifying checksums"
-(cd "$work" && grep -E ' (collect\.sh|heimdall-collect\.service|heimdall-collect\.timer|privilege-watch\.sh|privilege-hook)$' SHA256SUMS | sha256sum -c - >/dev/null) ||
-	die "checksum verification FAILED; not installing"
+# Check exactly the files fetched above; each one must be listed.
+for f in collect.sh $units; do
+	awk -v f="$f" '$2 == f { print; found = 1 } END { exit !found }' "$work/SHA256SUMS" ||
+		die "$f isn't in SHA256SUMS; not installing"
+done >"$work/check"
+(cd "$work" && sha256sum -c check >/dev/null) || die "checksum verification FAILED; not installing"
 
 say "Installing"
 # On the hub's own box /etc/heimdall belongs to the hub; never touch it.
@@ -152,37 +160,141 @@ chmod 0400 "$conf/token"
 } >"$conf/collect.env"
 chmod 0644 "$conf/collect.env"
 
+# Root runs these, so they live in a root-owned directory, not in $conf
+# (which the heimdall user owns). The push itself reads collect.env as heimdall.
+lib=/usr/local/lib/heimdall-collect
+apt_hook=/etc/apt/apt.conf.d/80heimdall-collect
+apk_hook=/etc/apk/commit_hooks.d/heimdall-collect
 if [ -d /run/systemd/system ] && have systemctl; then
 	sed "s#/etc/heimdall/collect.env#$conf/collect.env#" "$work/heimdall-collect.service" >/etc/systemd/system/heimdall-collect.service
-	install -m 0644 "$work/heimdall-collect.timer" /etc/systemd/system/
+	for f in heimdall-collect.timer heimdall-collect-soon.timer heimdall-collect-changes.service; do
+		install -m 0644 "$work/$f" /etc/systemd/system/
+	done
+	# Report after package changes: watch only the databases this box has.
+	# (A comment line right above a PathChanged= line goes with it.)
+	watching=0 note=
+	while IFS= read -r line; do
+		case $line in
+		'# '*) [ -z "$note" ] || printf '%s\n' "$note"; note=$line; continue ;;
+		PathChanged=*)
+			if [ ! -e "${line#PathChanged=}" ]; then note=; continue; fi
+			watching=1
+			;;
+		esac
+		[ -z "$note" ] || printf '%s\n' "$note"
+		note=
+		printf '%s\n' "$line"
+	done <"$work/heimdall-collect-changes.path" >"$work/changes.path"
+	if [ "$watching" = 1 ]; then
+		install -m 0644 "$work/changes.path" /etc/systemd/system/heimdall-collect-changes.path
+	else
+		systemctl disable --now heimdall-collect-changes.path >/dev/null 2>&1 || true
+		rm -f /etc/systemd/system/heimdall-collect-changes.path
+	fi
+	# Left from a non-systemd install:
+	rm -rf "$apt_hook" "$apk_hook" "$lib" /etc/periodic/daily/heimdall-collect /etc/cron.daily/heimdall-collect \
+		/etc/periodic/hourly/heimdall-collect /etc/cron.hourly/heimdall-collect
 	systemctl daemon-reload
 	systemctl enable --now heimdall-collect.timer >/dev/null 2>&1
-	scheduler="systemd timer (daily, random delay up to 1h)"
+	scheduler="systemd timer (hourly, and 3 minutes after boot)"
+	if [ "$watching" = 1 ]; then
+		systemctl enable heimdall-collect-changes.path >/dev/null 2>&1
+		systemctl restart heimdall-collect-changes.path # picks up a changed watch list
+		scheduler="$scheduler, and a minute after packages change"
+	fi
 	run_now() { systemctl start heimdall-collect.service; }
 else
-	# No systemd (e.g. Alpine/OpenRC, containers): a daily cron job.
-	cat >"$conf/cron.sh" <<EOF
+	# No systemd (e.g. Alpine/OpenRC, containers): an hourly cron job, plus
+	# apk/apt hooks that report a minute after packages change.
+	install -d -m 0755 "$lib"
+	cat >"$lib/cron.sh" <<EOF
 #!/bin/sh
-set -a; . $conf/collect.env; set +a
-sleep "\$(awk 'BEGIN { srand(); print int(rand() * 3600) }')"
-exec su -s /bin/sh heimdall -c 'HEIMDALL_URL=\$HEIMDALL_URL HEIMDALL_TOKEN_FILE=\$HEIMDALL_TOKEN_FILE HEIMDALL_SITES=\${HEIMDALL_SITES:-} HEIMDALL_LOCKFILES=\${HEIMDALL_LOCKFILES:-} /usr/local/bin/heimdall-collect --push'
+# Heimdall: push a report as the heimdall user. Run as root by cron (hourly,
+# after a random delay of up to 15 minutes) and by soon.sh (--now). Written by install.sh.
+[ "\${1:-}" = --now ] || sleep "\$(awk 'BEGIN { srand(); print int(rand() * 900) }')"
+exec su -s /bin/sh heimdall -c 'set -a; . $conf/collect.env; set +a; exec /usr/local/bin/heimdall-collect --push'
 EOF
-	chmod 0755 "$conf/cron.sh"
-	if [ -d /etc/periodic/daily ]; then
-		ln -sf "$conf/cron.sh" /etc/periodic/daily/heimdall-collect
-	elif [ -d /etc/cron.daily ]; then
-		ln -sf "$conf/cron.sh" /etc/cron.daily/heimdall-collect
+	cat >"$lib/soon.sh" <<'EOF'
+#!/bin/sh
+# Heimdall: push a report about a minute after the LAST package change, in
+# the background. Run as root by the apk and apt hooks (and deploy scripts).
+# It returns at once and never fails, so it can't block or break them.
+# Written by install.sh.
+lock=/run/heimdall-collect-soon
+quiet=60
+if [ "${1:-}" = --wait ]; then
+	echo $$ >"$lock/pid"
+	while :; do
+		last=$(cat "$lock/last" 2>/dev/null) || last=0
+		case $last in '' | *[!0-9]*) last=0 ;; esac
+		age=$(($(date +%s) - last))
+		[ "$age" -lt "$quiet" ] || break
+		sleep $((quiet - age))
+	done
+	# Unlock first: a change during the push starts a new countdown.
+	rm -rf "$lock"
+	if command -v logger >/dev/null 2>&1; then
+		/usr/local/lib/heimdall-collect/cron.sh --now 2>&1 | logger -t heimdall-collect
 	else
-		die "no systemd and no cron.daily directory; schedule $conf/cron.sh yourself"
+		/usr/local/lib/heimdall-collect/cron.sh --now
 	fi
-	scheduler="cron (daily)"
-	run_now() {
-		set -a
-		# shellcheck disable=SC1090,SC1091 # written above
-		. "$conf/collect.env"
-		set +a
-		su -s /bin/sh heimdall -c "HEIMDALL_URL=$HEIMDALL_URL HEIMDALL_TOKEN_FILE=$HEIMDALL_TOKEN_FILE HEIMDALL_SITES='${HEIMDALL_SITES:-}' HEIMDALL_LOCKFILES='${HEIMDALL_LOCKFILES:-}' /usr/local/bin/heimdall-collect --push"
-	}
+	exit 0
+fi
+{
+	if ! mkdir "$lock"; then
+		pid=$(cat "$lock/pid") || pid=
+		if [ -n "$pid" ] && kill -0 "$pid"; then
+			date +%s >"$lock/last" # a countdown is running: push it back
+			exit 0
+		fi
+		if [ -z "$pid" ] && [ -z "$(find "$lock" -maxdepth 0 -mmin +1)" ]; then
+			date +%s >"$lock/last" # a countdown is just starting
+			exit 0
+		fi
+		rm -rf "$lock" # left by a countdown that died
+		mkdir "$lock" || exit 0
+	fi
+	date +%s >"$lock/last"
+	if command -v setsid >/dev/null; then
+		setsid /usr/local/lib/heimdall-collect/soon.sh --wait &
+	else
+		/usr/local/lib/heimdall-collect/soon.sh --wait &
+	fi
+} </dev/null >/dev/null 2>&1
+exit 0
+EOF
+	chmod 0755 "$lib/cron.sh" "$lib/soon.sh"
+	rm -f "$conf/cron.sh" # before 0.4.12 it lived here
+	rm -f /etc/periodic/daily/heimdall-collect /etc/cron.daily/heimdall-collect # daily before 0.4.13
+	if [ -d /etc/periodic/hourly ]; then
+		ln -sf "$lib/cron.sh" /etc/periodic/hourly/heimdall-collect
+	elif [ -d /etc/cron.hourly ]; then
+		ln -sf "$lib/cron.sh" /etc/cron.hourly/heimdall-collect
+	else
+		die "no systemd and no cron.hourly directory; schedule $lib/cron.sh yourself"
+	fi
+	scheduler="cron (hourly)"
+	if [ -d /etc/apk ]; then
+		install -d -m 0755 /etc/apk/commit_hooks.d
+		cat >"$apk_hook" <<EOF
+#!/bin/sh
+# Heimdall: report about a minute after packages change. Written by install.sh.
+[ "\$1" = post-commit ] || exit 0
+[ ! -x $lib/soon.sh ] || $lib/soon.sh
+exit 0
+EOF
+		chmod 0755 "$apk_hook"
+		scheduler="$scheduler, and a minute after apk changes packages"
+	fi
+	if [ -d /etc/apt/apt.conf.d ]; then
+		cat >"$apt_hook" <<EOF
+// Heimdall: report about a minute after packages change. Written by install.sh.
+DPkg::Post-Invoke { "[ ! -x $lib/soon.sh ] || $lib/soon.sh || true"; };
+EOF
+		chmod 0644 "$apt_hook"
+		scheduler="$scheduler, and a minute after apt changes packages"
+	fi
+	run_now() { "$lib/cron.sh" --now; }
 fi
 case $privilege in
 on | users) sh "$work/privilege-watch.sh" install "$work/privilege-hook" "$privilege" ;;

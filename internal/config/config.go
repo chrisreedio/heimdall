@@ -164,7 +164,7 @@ func Default() Config {
 		Ingest: Ingest{
 			Listen:      "127.0.0.1:8443",
 			MaxBody:     5 << 20,
-			RatePerHost: Rate{N: 10, Per: time.Hour},
+			RatePerHost: Rate{N: 30, Per: time.Hour}, // hourly reports plus event-driven ones
 		},
 		Feeds: Feeds{
 			SyncInterval: Duration{6 * time.Hour},
