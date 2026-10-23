@@ -1,38 +1,89 @@
 {{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
-<p><a href="/hosts">← Hosts</a></p>
+<div class="wizard">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/hosts">Hosts</a> <span aria-hidden="true">/</span> Add a host</nav>
 <h1>Add a host</h1>
+<p class="lede">Register a server here, then run one command on it. The collector reports installed software and versions, never secrets or file contents.</p>
+<ol class="steps" aria-label="Progress">
+  <li class="{{if .Added}}done{{else}}current{{end}}"{{if not .Added}} aria-current="step"{{end}}><span>1</span>Register</li>
+  <li class="{{if .Added}}current{{end}}"{{if .Added}} aria-current="step"{{end}}><span>2</span>Install on the server</li>
+  <li><span>3</span>First report</li>
+</ol>
 {{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+
 {{if .Added}}
-<section class="card">
-  <h2>{{.Host.Name}} is registered</h2>
-  <p><strong>Ingest token, shown once.</strong> You'll paste it on the server when the installer asks. Heimdall keeps only its hash.</p>
-  <div class="copy"><code id="token">{{.Token}}</code> <button type="button" class="link" data-copy="token" hidden>copy</button></div>
-  {{if .Unpinned}}<p class="alert">This hub isn't a tagged release build, so replace <code>vX.Y.Z</code> below with the release you're using.</p>{{end}}
-
-  <h3>Linux</h3>
-  <p class="muted">Downloads the collector from the signed GitHub release (never from this hub), verifies its checksum, installs it as an unprivileged user and sends a first report.</p>
-  <pre id="cmd-linux">{{.Linux}}</pre> <button type="button" class="link" data-copy="cmd-linux" hidden>copy</button>
-
-  <details><summary>New VM? cloud-init user data</summary>
-  <p class="muted">Paste as the VM's user data. It contains the token, and cloud metadata is readable by processes on that VM, so use it only for VMs you're creating fresh.</p>
-  <pre id="cmd-cloud">{{.Cloud}}</pre> <button type="button" class="link" data-copy="cmd-cloud" hidden>copy</button>
-  </details>
-
-  <details><summary>Windows (elevated PowerShell)</summary>
-  <pre id="cmd-win">{{.Windows}}</pre> <button type="button" class="link" data-copy="cmd-win" hidden>copy</button>
-  </details>
-
-  <p><a href="{{hostURL .Host.OrgSlug .Host.Name}}">Go to {{.Host.Name}}</a> · it appears after the first report.</p>
+<section class="card done-head">
+  <span class="tick" aria-hidden="true">✓</span>
+  <div><h2>{{.Host.Name}} is registered</h2><p class="muted">{{.Host.OrgSlug}} / {{.Host.EnvSlug}}{{if .Host.Tags}} · {{range $i, $t := .Host.Tags}}{{if $i}}, {{end}}{{$t}}{{end}}{{end}}</p></div>
 </section>
+
+<section class="card step">
+  <h2>Copy the ingest token</h2>
+  <p class="muted">The installer asks for it. <strong>It's shown only this once</strong>; Heimdall keeps just a hash. If it's lost, issue a new one with <code>sudo heimdall host token {{.Host.Name}}</code>.</p>
+  <div class="codebox"><code id="token">{{.Token}}</code><button type="button" class="copy" data-copy="token" hidden>Copy</button></div>
+</section>
+
+<section class="card step">
+  <h2>Run the installer on the server</h2>
+  {{if .Unpinned}}<p class="alert">This hub isn't a tagged release build, so replace <code>vX.Y.Z</code> below with the release you're using.</p>{{end}}
+  <div class="tabs">
+    <input type="radio" name="os" id="os-linux" checked><label for="os-linux">Linux</label>
+    <input type="radio" name="os" id="os-windows"><label for="os-windows">Windows</label>
+    <input type="radio" name="os" id="os-cloud"><label for="os-cloud">New VM (cloud-init)</label>
+    <div class="panel" id="panel-linux">
+      <p class="muted">As a user with sudo. It downloads the collector from the signed GitHub release (never from this hub), checks it, installs it to run as an unprivileged user, and sends a first report.</p>
+      <div class="codebox"><pre id="cmd-linux">{{.Linux}}</pre><button type="button" class="copy" data-copy="cmd-linux" hidden>Copy</button></div>
+    </div>
+    <div class="panel" id="panel-windows">
+      <p class="muted">In an elevated PowerShell. It runs as the built-in LocalService account on a daily schedule.</p>
+      <div class="codebox"><pre id="cmd-win">{{.Windows}}</pre><button type="button" class="copy" data-copy="cmd-win" hidden>Copy</button></div>
+    </div>
+    <div class="panel" id="panel-cloud">
+      <p class="muted">Paste as a new VM's user data. It contains the token, and cloud metadata is readable on that VM, so use it only for VMs you're creating fresh.</p>
+      <div class="codebox"><pre id="cmd-cloud">{{.Cloud}}</pre><button type="button" class="copy" data-copy="cmd-cloud" hidden>Copy</button></div>
+    </div>
+  </div>
+</section>
+
+<section class="card step">
+  <h2>Wait for the first report</h2>
+  <p class="muted">It arrives as soon as the installer finishes, and then every few hours.</p>
+  <div class="actions start">
+    <a class="button" href="{{hostURL .Host.OrgSlug .Host.Name}}">Open {{.Host.Name}}</a>
+    <a class="button secondary" href="/hosts/new">Add another host</a>
+  </div>
+</section>
+
 {{else}}
 {{if not .IngestURL}}<p class="alert">Set <code>ingest.public_url</code> in heimdall.toml so the install commands point at the right address.</p>{{end}}
-<form method="post" action="/hosts/new" class="card">
+<form method="post" action="/hosts/new" class="card stack">
   <input type="hidden" name="csrf" value="{{$csrf}}">
-  <label>Organization <select name="org">{{range .Orgs}}<option value="{{.Slug}}">{{.Name}}</option>{{end}}</select></label>
-  <label>Environment <select name="env">{{range $org, $envs := .Envs}}{{range $envs}}<option value="{{.Slug}}">{{$org}} / {{.Slug}}</option>{{end}}{{end}}</select></label>
-  <label>Hostname <input name="name" required maxlength="253" placeholder="web-01" autocomplete="off"></label>
-  <label>Tags <input name="tags" maxlength="300" placeholder="web, role:lb"></label>
-  <button type="submit">Register host</button>
+  <div class="field">
+    <label for="name">Hostname</label>
+    <input id="name" name="name" required maxlength="253" placeholder="web-01" autocomplete="off" autocapitalize="none" spellcheck="false" autofocus value="{{.Form.Name}}">
+    <p class="hint">How the server appears in Heimdall, usually its own hostname.</p>
+  </div>
+  <div class="field">
+    <label for="env">Environment</label>
+    <select id="env" name="env" required>
+      {{$envs := .Envs}}{{$sel := .Form.Env}}{{$single := eq (len .Orgs) 1}}
+      {{range .Orgs}}{{$org := .Slug}}
+      {{if not $single}}<optgroup label="{{.Name}}">{{end}}
+      {{range index $envs $org}}<option value="{{$org}}/{{.Slug}}"{{if eq $sel (print $org "/" .Slug)}} selected{{end}}>{{.Slug}}</option>{{end}}
+      {{if not $single}}</optgroup>{{end}}
+      {{end}}
+    </select>
+    <p class="hint">Groups servers, for example prod and staging.</p>
+  </div>
+  <div class="field">
+    <label for="tags">Tags <span class="optional">optional</span></label>
+    <input id="tags" name="tags" maxlength="300" placeholder="web, role:lb" autocomplete="off" autocapitalize="none" spellcheck="false" value="{{.Form.Tags}}">
+    <p class="hint">Comma-separated. Drift compares servers that share a tag.</p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/hosts">Cancel</a>
+    <button type="submit">Register host</button>
+  </div>
 </form>
 {{end}}
+</div>
 {{end}}{{end}}

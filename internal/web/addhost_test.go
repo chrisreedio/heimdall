@@ -46,3 +46,25 @@ func TestAddHost(t *testing.T) {
 		t.Errorf("operator post: %d", w.Code)
 	}
 }
+
+func TestAddHostFormDetails(t *testing.T) {
+	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
+		c.IngestURL, c.Version = "https://ingest.example.com", "v0.4.0"
+	})
+	e.seed()
+	// One org: the environment picker isn't grouped by org.
+	if body := e.get("/hosts/new", signedIn(e)).Body.String(); strings.Contains(body, "<optgroup") || !strings.Contains(body, `value="acme/prod"`) {
+		t.Errorf("environment options:\n%s", body)
+	}
+	// The picker's "org/env" value is accepted.
+	f := url.Values{"csrf": {auth.CSRFToken(goodToken)}, "env": {"acme/prod"}, "name": {"web-09"}}
+	if w := e.post("/hosts/new", f, signedIn(e), origin(e.baseURL)); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "web-09 is registered") {
+		t.Fatalf("add with org/env: %d", w.Code)
+	}
+	// A rejected submit keeps what was typed.
+	f = url.Values{"csrf": {auth.CSRFToken(goodToken)}, "env": {"acme/prod"}, "name": {"Bad Name!"}, "tags": {"web, role:lb"}}
+	w := e.post("/hosts/new", f, signedIn(e), origin(e.baseURL))
+	if body := w.Body.String(); w.Code != http.StatusBadRequest || !strings.Contains(body, `value="Bad Name!"`) || !strings.Contains(body, `value="web, role:lb"`) || !strings.Contains(body, `value="acme/prod" selected`) {
+		t.Errorf("rejected submit should keep its values: %d", w.Code)
+	}
+}

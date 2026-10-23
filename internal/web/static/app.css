@@ -231,6 +231,8 @@ ul.plain li { padding: 2px 0; }
 
 /* Sign-in and admin forms */
 a.button { display: inline-block; padding: .5rem 1rem; border-radius: 6px; background: var(--accent); color: var(--accent-text); text-decoration: none; font-weight: 600; }
+a.button.secondary, button.secondary { background: none; color: var(--text); border: 1px solid var(--border); }
+a.button.secondary:hover, button.secondary:hover { background: var(--code-bg); filter: none; }
 .notice { padding: .5rem .75rem; border-radius: 6px; background: var(--ok-bg); color: var(--ok-fg); }
 form.inline { display: inline-flex; gap: .25rem; align-items: center; margin: 0 .25rem .25rem 0; }
 form.row { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; }
@@ -239,3 +241,60 @@ label.check { display: inline-flex; gap: .35rem; align-items: center; }
 /* Logo mark beside the product name */
 .brand { display: inline-flex; align-items: center; gap: .45rem; }
 .brand img { display: block; }
+
+/* Add a host: a narrow, stepped page */
+.wizard { max-width: 760px; margin: 0 auto; }
+.crumbs { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+.lede { color: var(--muted); margin: 0 0 20px; max-width: 62ch; }
+.steps { list-style: none; display: flex; flex-wrap: wrap; gap: 8px 24px; padding: 0; margin: 0 0 20px; font-size: 14px; color: var(--muted); }
+.steps li { display: flex; align-items: center; gap: 8px; }
+.steps span {
+  display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  border: 1px solid var(--border); font-size: 12px; font-weight: 700;
+}
+.steps .current { color: var(--text); font-weight: 600; }
+.steps .current span { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.steps .done span { background: var(--ok-bg); border-color: var(--ok-bg); color: var(--ok-fg); }
+.wizard .card { padding: 20px 22px; margin-bottom: 16px; }
+.wizard .card h2 { margin: 0 0 6px; font-size: 17px; }
+.wizard .card > p.muted { margin: 0 0 14px; }
+.stack { display: grid; gap: 18px; }
+.field label { font-weight: 600; margin-bottom: 6px; }
+.field input, .field select { width: 100%; padding: 9px 11px; }
+.hint { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
+.optional { color: var(--muted); font-weight: 400; font-size: 12px; margin-left: 4px; }
+.actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.actions.start { justify-content: flex-start; }
+.actions button, .actions .button { padding: 9px 18px; font-weight: 600; }
+.done-head { display: flex; align-items: center; gap: 14px; }
+.done-head .muted { margin: 0; }
+.tick {
+  flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
+  background: var(--ok-bg); color: var(--ok-fg); font-weight: 700; font-size: 18px;
+}
+.step { counter-increment: step; }
+.wizard { counter-reset: step; }
+.step h2::before {
+  content: counter(step); display: inline-grid; place-items: center; width: 22px; height: 22px;
+  margin-right: 10px; border-radius: 50%; background: var(--code-bg); font-size: 12px; vertical-align: 2px;
+}
+.codebox { position: relative; }
+.codebox pre, .codebox code {
+  display: block; margin: 0; padding: 12px 84px 12px 14px;
+  background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.codebox .copy {
+  position: absolute; top: 8px; right: 8px; padding: 4px 12px; font-size: 12px; font-weight: 600;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border);
+}
+.tabs > input { position: absolute; opacity: 0; pointer-events: none; }
+.tabs > label {
+  display: inline-block; padding: 8px 14px; margin: 0 4px 12px 0; border-radius: 6px;
+  border: 1px solid var(--border); cursor: pointer; font-size: 14px; font-weight: 600; color: var(--muted);
+}
+.tabs > input:checked + label { background: var(--code-bg); color: var(--text); border-color: var(--link); }
+.tabs > input:focus-visible + label { outline: 2px solid var(--link); outline-offset: 2px; }
+.tabs .panel { display: none; }
+#os-linux:checked ~ #panel-linux, #os-windows:checked ~ #panel-windows, #os-cloud:checked ~ #panel-cloud { display: block; }
