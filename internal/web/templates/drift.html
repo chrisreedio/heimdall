@@ -1,17 +1,48 @@
-{{define "content"}}{{with .Body}}
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
 <h1>Drift</h1>
-<p class="muted">Hosts that share a tag should usually match. This shows packages that are missing on some of them or installed at different versions.</p>
-<form method="get" class="row card">
-  <label>Tag <select name="tag">{{range .Tags}}<option value="{{.}}"{{if eq . $.Body.Tag}} selected{{end}}>{{.}}</option>{{end}}</select></label>
-  <button type="submit">Compare</button>
-</form>
+<p class="lede">Hosts that share a tag should usually match. Drift shows the packages that are missing on some of them, or installed at different versions.</p>
+{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{with .Error}}<p class="alert" role="alert">{{.}}</p>{{end}}
+<div class="drift-grid">
+  <section class="card">
+    <h2>Compare</h2>
+    {{if .Tags}}
+    <form method="get" class="row">
+      <label>Tag <select name="tag">{{range .Tags}}<option value="{{.}}"{{if eq . $.Body.Tag}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <button type="submit">Compare</button>
+    </form>
+    {{else}}
+    <p class="muted">No tag is shared by two or more hosts yet.{{if .Taggable}} Give a few hosts the same tag (for example <code>web</code>), then compare them here.{{end}}</p>
+    {{end}}
+  </section>
+  {{if .Taggable}}
+  <section class="card">
+    <h2>Tag hosts</h2>
+    <form method="post" action="/drift/tag" class="tag-hosts">
+      <input type="hidden" name="csrf" value="{{$csrf}}">
+      <label>Tag <input name="tag" list="known-tags" required maxlength="64" placeholder="web" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+      <datalist id="known-tags">{{range .AllTags}}<option value="{{.}}">{{end}}</datalist>
+      <fieldset>
+        <legend>Hosts</legend>
+        <div class="host-picks">
+        {{range .Taggable}}<label class="check"><input type="checkbox" name="host" value="{{.ID}}"> <span>{{.Name}}{{if $.Body.ShowOrgs}} <span class="muted">({{.OrgSlug}})</span>{{end}}</span> <span class="muted small">{{.EnvSlug}}</span>{{range .Tags}} <span class="tag">{{.}}</span>{{end}}</label>{{end}}
+        </div>
+      </fieldset>
+      <button type="submit">Add tag</button>
+    </form>
+  </section>
+  {{end}}
+</div>
 {{if .Tag}}
-  {{if lt (len .Hosts) 2}}<p>Fewer than two reporting hosts you can see are tagged <code>{{.Tag}}</code>.</p>
-  {{else if not .Rows}}<p>All {{len .Hosts}} hosts tagged <code>{{.Tag}}</code> have identical packages.</p>
+<section>
+  <h2>Hosts tagged <code>{{.Tag}}</code></h2>
+  {{if lt (len .Hosts) 2}}<p class="empty">Fewer than two reporting hosts you can see are tagged <code>{{.Tag}}</code>. Hosts appear here once they've reported.</p>
+  {{else if not .Rows}}<p class="empty">All {{len .Hosts}} hosts tagged <code>{{.Tag}}</code> have identical packages.</p>
   {{else}}{{$hosts := .Hosts}}
   <div class="scroll"><table>
     <thead><tr><th>Package</th>{{range $hosts}}<th>{{.}}</th>{{end}}</tr></thead>
     <tbody>{{range .Rows}}{{$vs := .Versions}}<tr><td>{{.Name}}</td>{{range $hosts}}<td>{{with index $vs .}}{{.}}{{else}}<span class="muted">—</span>{{end}}</td>{{end}}</tr>{{end}}</tbody>
   </table></div>{{end}}
+</section>
 {{end}}
 {{end}}{{end}}

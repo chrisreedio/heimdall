@@ -61,3 +61,31 @@ func TestAutoNamedHosts(t *testing.T) {
 		t.Error("hand-renamed host still auto-names")
 	}
 }
+
+func TestTagging(t *testing.T) {
+	s, ctx := newStore(t), t.Context()
+	s.CreateOrg(ctx, "test", "acme", "")
+	s.CreateEnv(ctx, "test", "acme", "prod", "")
+	a, _, _ := s.AddHost(ctx, "test", "acme", "prod", "a", []string{"web"})
+	b, _, _ := s.AddHost(ctx, "test", "acme", "prod", "b", nil)
+	if n, err := s.TagHosts(ctx, "test", "Role:LB", []int64{a.ID, b.ID}); err != nil || n != 2 {
+		t.Fatalf("tag: %d %v", n, err)
+	}
+	if n, _ := s.TagHosts(ctx, "test", "role:lb", []int64{a.ID}); n != 0 {
+		t.Error("re-adding a tag counted")
+	}
+	if _, err := s.TagHosts(ctx, "test", "bad tag", []int64{a.ID}); err == nil {
+		t.Error("invalid tag accepted")
+	}
+	if err := s.SetHostTags(ctx, "test", a.ID, []string{"db", "db", "Prod"}); err != nil {
+		t.Fatal(err)
+	}
+	hs, _ := s.ListHosts(ctx, "acme")
+	got := map[string]string{}
+	for _, h := range hs {
+		got[h.Name] = strings.Join(h.Tags, ",")
+	}
+	if got["a"] != "db,prod" || got["b"] != "role:lb" {
+		t.Errorf("tags = %v", got)
+	}
+}

@@ -275,3 +275,84 @@ func (s *Store) RenameHost(ctx context.Context, actor, orgSlug, oldName, newName
 			Detail: map[string]any{"from": oldName}})
 	})
 }
+
+// TagHosts adds a tag to hosts (by ID), keeping their other tags. It
+// returns how many hosts gained the tag.
+func (s *Store) TagHosts(ctx context.Context, actor, tag string, hostIDs []int64) (int, error) {
+	tags, err := normalizeTags([]string{tag})
+	if err != nil {
+		return 0, err
+	}
+	tag = tags[0]
+	added := 0
+	err = s.tx(ctx, func(tx *sql.Tx) error {
+		for _, id := range hostIDs {
+			var orgID int64
+			var name string
+			if err := tx.QueryRowContext(ctx, `SELECT org_id, name FROM hosts WHERE id = ?`, id).Scan(&orgID, &name); errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("host %d: %w", id, ErrNotFound)
+			} else if err != nil {
+				return err
+			}
+			res, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO host_tags (host_id, tag) VALUES (?, ?)`, id, tag)
+			if err != nil {
+				return err
+			}
+			if n, _ := res.RowsAffected(); n == 0 {
+				continue
+			}
+			added++
+			if err := audit(ctx, tx, AuditEntry{Actor: actor, Action: "host.tag", OrgID: orgID, Target: name,
+				Detail: map[string]any{"tag": tag}}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return added, err
+}
+
+// SetHostTags replaces a host's tags.
+func (s *Store) SetHostTags(ctx context.Context, actor string, hostID int64, tags []string) error {
+	tags, err := normalizeTags(tags)
+	if err != nil {
+		return err
+	}
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		var orgID int64
+		var name string
+		if err := tx.QueryRowContext(ctx, `SELECT org_id, name FROM hosts WHERE id = ?`, hostID).Scan(&orgID, &name); errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("host %d: %w", hostID, ErrNotFound)
+		} else if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM host_tags WHERE host_id = ?`, hostID); err != nil {
+			return err
+		}
+		for _, t := range tags {
+			if _, err := tx.ExecContext(ctx, `INSERT INTO host_tags (host_id, tag) VALUES (?, ?)`, hostID, t); err != nil {
+				return err
+			}
+		}
+		return audit(ctx, tx, AuditEntry{Actor: actor, Action: "host.tags", OrgID: orgID, Target: name,
+			Detail: map[string]any{"tags": tags}})
+	})
+}
+
+// HostTags returns a host's tags, sorted.
+func (s *Store) HostTags(ctx context.Context, hostID int64) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT tag FROM host_tags WHERE host_id = ? ORDER BY tag`, hostID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var t string
+		if err := rows.Scan(&t); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}

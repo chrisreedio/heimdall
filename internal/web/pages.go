@@ -279,7 +279,8 @@ func (s *server) hostsPage(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 
 type hostBody struct {
 	Org, Name   string
-	AutoName    bool   // takes the hostname it reports first
+	AutoName    bool // takes the hostname it reports first
+	Tags        []string
 	CanAdmin    bool   // may rename the host
 	Notice      string // fixed messages only (see renameNotices)
 	RenameError string
@@ -321,6 +322,10 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		return
 	}
 	body := hostBody{Org: host.OrgSlug, Name: host.Name, AutoName: host.AutoName, CanAdmin: v.Scope.CanAdmin(host.OrgID)}
+	if body.Tags, err = s.st.HostTags(ctx, host.ID); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
 	body.Notice = renameNotices[r.URL.Query().Get("renamed")]
 	body.RenameError = renameErrors[r.URL.Query().Get("rename_error")]
 
@@ -614,10 +619,11 @@ func otpField(r *http.Request) string {
 // Fixed messages a rename redirect can ask the host page to show, so the
 // query string can't inject text.
 var (
-	renameNotices = map[string]string{"1": "Host renamed."}
+	renameNotices = map[string]string{"1": "Host renamed.", "tags": "Tags saved."}
 	renameErrors  = map[string]string{
 		"invalid": "Names are letters, digits, '.', '-' or '_', starting and ending with a letter or digit.",
 		"exists":  "Another host in this organization already has that name.",
+		"tags":    "Tags are up to 64 lowercase letters, digits or ':._-'.",
 	}
 )
 
@@ -644,5 +650,30 @@ func (s *server) hostRename(w http.ResponseWriter, r *http.Request, v *auth.View
 		s.fail(w, r, v, err)
 	default:
 		http.Redirect(w, r, "/hosts/"+url.PathEscape(host.OrgSlug)+"/"+url.PathEscape(newName)+"?renamed=1", http.StatusSeeOther)
+	}
+}
+
+// hostTags replaces a host's tags (org admins only).
+func (s *server) hostTags(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	host, err := s.st.HostByName(r.Context(), r.PathValue("org"), r.PathValue("host"))
+	if err != nil || !v.Scope.CanAdmin(host.OrgID) {
+		s.notFound(w, r, v)
+		return
+	}
+	var tags []string
+	for t := range strings.SplitSeq(r.PostForm.Get("tags"), ",") {
+		if t = strings.TrimSpace(t); t != "" {
+			tags = append(tags, t)
+		}
+	}
+	back := "/hosts/" + url.PathEscape(host.OrgSlug) + "/" + url.PathEscape(host.Name)
+	var verr *store.ValidationError
+	switch err := s.st.SetHostTags(r.Context(), actorOf(v), host.ID, tags); {
+	case errors.As(err, &verr):
+		http.Redirect(w, r, back+"?rename_error=tags", http.StatusSeeOther)
+	case err != nil:
+		s.fail(w, r, v, err)
+	default:
+		http.Redirect(w, r, back+"?renamed=tags", http.StatusSeeOther)
 	}
 }

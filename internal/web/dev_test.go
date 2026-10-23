@@ -13,8 +13,10 @@ import (
 	"testing"
 )
 
+var devLogins []string // DevLogin calls on the fake
+
 func (f *fakeAuth) DevLogin(_ context.Context, email, ip, ua string) (string, error) {
-	f.devLogins = append(f.devLogins, email+"@"+ip)
+	devLogins = append(devLogins, email+"@"+ip)
 	return goodToken, nil
 }
 
@@ -43,8 +45,8 @@ func TestDevLogin(t *testing.T) {
 	if w := post("127.0.0.1:5555", "https://evil.example"); w.Code != http.StatusForbidden {
 		t.Errorf("cross-origin: %d", w.Code)
 	}
-	if len(e.auth.devLogins) != 1 {
-		t.Errorf("dev logins = %v", e.auth.devLogins)
+	if len(devLogins) != 1 {
+		t.Errorf("dev logins = %v", devLogins)
 	}
 	// Not offered when the UI isn't on loopback.
 	e2 := newEnv(t, "https://hub.example.ts.net", nil)

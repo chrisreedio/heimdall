@@ -76,8 +76,8 @@
   </div>
   <div class="field">
     <label for="tags">Tags <span class="optional">optional</span></label>
-    <input id="tags" name="tags" maxlength="300" placeholder="web, role:lb" autocomplete="off" autocapitalize="none" spellcheck="false" value="{{.Form.Tags}}">
-    <p class="hint">Comma-separated. Drift compares servers that share a tag.</p>
+    <input id="tags" name="tags" maxlength="300" placeholder="web, role:lb" autocomplete="off" autocapitalize="none" spellcheck="false" value="{{.Form.Tags}}" data-tags>
+    <p class="hint">Press Enter or comma after each tag. Drift compares servers that share a tag.</p>
   </div>
   <div class="actions">
     <a class="button secondary" href="/hosts">Cancel</a>
