@@ -61,17 +61,19 @@ test-versions:
 # byte for byte (pinned toolchain via go.mod, -trimpath, no build ID).
 reproducible:
 	rm -rf bin/repro && mkdir -p bin/repro
-	GOCACHE=$$(mktemp -d) go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/repro/a ./cmd/heimdall
-	GOCACHE=$$(mktemp -d) go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/repro/b ./cmd/heimdall
+	# Two clean builds at once, each with its own empty cache.
+	GOCACHE=$$(mktemp -d) go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/repro/a ./cmd/heimdall & a=$$!; \
+	GOCACHE=$$(mktemp -d) go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o bin/repro/b ./cmd/heimdall & b=$$!; \
+	wait $$a && wait $$b
 	cmp bin/repro/a bin/repro/b && echo "reproducible: $$(sha256sum bin/repro/a | cut -d' ' -f1)"
 
 # Release artifacts: static hub binaries, the collector, deploy files and
 # SHA256SUMS. Servers verify collect.sh against SHA256SUMS before installing.
 dist:
 	rm -rf dist && mkdir -p dist
-	for arch in amd64 arm64; do \
-		GOOS=linux GOARCH=$$arch go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/heimdall-linux-$$arch ./cmd/heimdall || exit 1; \
-	done
+	GOOS=linux GOARCH=amd64 go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/heimdall-linux-amd64 ./cmd/heimdall & a=$$!; \
+	GOOS=linux GOARCH=arm64 go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/heimdall-linux-arm64 ./cmd/heimdall & b=$$!; \
+	wait $$a && wait $$b
 	cp collector/collect.sh collector/collect.ps1 collector/install-windows.ps1 deploy/heimdall.service deploy/heimdall-collect.service \
 		deploy/heimdall-collect.timer deploy/collect.env.example dist/
 	sed 's/^HEIMDALL_VERSION=dev /HEIMDALL_VERSION=$(VERSION) /' collector/install.sh > dist/install.sh

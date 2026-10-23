@@ -21,7 +21,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: false
+          # Build and module cache, keyed on go.sum. CI only: releases build
+          # without a cache.
+          cache: true
+          cache-dependency-path: go.sum
 
       - name: Verify dependencies
         run: |
@@ -47,6 +50,9 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: false
+          # Build and module cache, keyed on go.sum. CI only: releases build
+          # without a cache.
+          cache: true
+          cache-dependency-path: go.sum
 
       - run: make test-collector

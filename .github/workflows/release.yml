@@ -31,8 +31,16 @@ jobs:
           got=$(sed -n 's/^VERSION=//p' collector/collect.sh)
           [ "$got" = "$want" ] || { echo "collect.sh VERSION=$got but tag is $GITHUB_REF_NAME"; exit 1; }
 
-      - run: make check
-      - run: make reproducible VERSION="$GITHUB_REF_NAME"
+      # The checks and the two reproducibility builds run side by side.
+      - name: Check, and confirm the build is reproducible
+        run: |
+          make check >check.log 2>&1 & c=$!
+          make reproducible VERSION="$GITHUB_REF_NAME" >repro.log 2>&1 & r=$!
+          s=0; wait $c || s=1; wait $r || s=1
+          echo "::group::make check"; cat check.log; echo "::endgroup::"
+          echo "::group::make reproducible"; cat repro.log; echo "::endgroup::"
+          tail -n 1 repro.log
+          exit $s
       - run: make dist VERSION="$GITHUB_REF_NAME"
 
       - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2

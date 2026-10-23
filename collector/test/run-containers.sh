@@ -31,29 +31,40 @@ ubuntu2204-sites|ubuntu:22.04|apt-get update -qq && useradd -r heimdall && sh /o
 alpine320-sites|alpine:3.20|apk update -q && adduser -S -D heimdall && sh /opt/heimdall/test/sites-fixture.sh|/bin/sh
 '
 
-status=0
+# Every container runs at once (they're independent and mostly wait on the
+# network); results are reported in order once all have finished.
+names=''
 while IFS='|' read -r name image setup shell; do
 	[ -n "$name" ] || continue
+	names="$names $name"
+	(
+		docker run --rm -v "$here:/opt/heimdall:ro" "$image" sh -c "
+			($setup) >/dev/null 2>&1
+			su -s $shell heimdall -c 'set -a; [ ! -r /tmp/collect.env ] || . /tmp/collect.env; $shell /opt/heimdall/collect.sh --print'
+		" >"$out/$name.json" 2>"$out/$name.err"
+		echo $? >"$out/$name.status"
+	) &
+done <<EOF
+$targets
+EOF
+# Windows: the document builder runs under pwsh on Linux against fixtures.
+names="$names windows-fixture"
+(
+	docker run --rm -v "$here:/opt/heimdall:ro" -v "$out:/out" mcr.microsoft.com/powershell:lts-ubuntu-22.04 \
+		pwsh -NoProfile -File /opt/heimdall/test/windows-selftest.ps1 /opt/heimdall/collect.ps1 >"$out/windows-fixture.json" 2>"$out/windows-fixture.err"
+	echo $? >"$out/windows-fixture.status"
+) &
+wait
+
+status=0
+for name in $names; do
 	printf '%-18s ' "$name"
-	if docker run --rm -v "$here:/opt/heimdall:ro" "$image" sh -c "
-		($setup) >/dev/null 2>&1
-		su -s $shell heimdall -c 'set -a; [ ! -r /tmp/collect.env ] || . /tmp/collect.env; $shell /opt/heimdall/collect.sh --print'
-	" >"$out/$name.json" 2>"$out/$name.err"; then
+	if [ "$(cat "$out/$name.status" 2>/dev/null)" = 0 ]; then
 		echo "ok ($(wc -c <"$out/$name.json") bytes)"
 	else
 		echo "FAILED (see $out/$name.err)"
 		status=1
 	fi
-done <<EOF
-$targets
-EOF
-# Windows: the document builder runs under pwsh on Linux against fixtures.
-printf '%-18s ' windows-fixture
-if docker run --rm -v "$here:/opt/heimdall:ro" -v "$out:/out" mcr.microsoft.com/powershell:lts-ubuntu-22.04 \
-	pwsh -NoProfile -File /opt/heimdall/test/windows-selftest.ps1 /opt/heimdall/collect.ps1 >"$out/windows-fixture.json" 2>"$out/windows-fixture.err"; then
-	echo "ok ($(wc -c <"$out/windows-fixture.json") bytes)"
-else
-	echo "FAILED (see $out/windows-fixture.err)"
-	status=1
-fi
+	rm -f "$out/$name.status"
+done
 exit $status
