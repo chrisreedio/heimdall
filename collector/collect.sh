@@ -613,6 +613,52 @@ snapshot() {
 EOF
 }
 
+# ── Privilege watch (opt-in, install.sh --watch-privilege) ─────────────────
+# Recent privileged-access events (time and kind, plus a username only with
+# --watch-privilege-users) and whether the PAM hook is intact, as curl
+# config header lines. Headers, not snapshot fields, so collectors and hubs
+# of different versions still accept each other. Nothing is kept here: the
+# last 7 days are resent each time and the hub dedupes.
+privilege_config() {
+	hook=/usr/local/lib/heimdall/privilege-hook
+	events=/var/lib/heimdall-privilege/events
+	files=0 lines=0
+	for f in /etc/pam.d/sudo /etc/pam.d/su /etc/pam.d/sshd; do
+		[ -f "$f" ] || continue
+		files=$((files + 1))
+		if grep -Eq '^[[:space:]]*session[[:space:]].*pam_exec\.so.*/usr/local/lib/heimdall/privilege-hook' "$f" 2>/dev/null; then
+			lines=$((lines + 1))
+		fi
+	done
+	if [ -x "$hook" ] && [ -f "$events" ] && [ "$files" -gt 0 ] && [ "$lines" -eq "$files" ]; then
+		watch=on
+	elif [ ! -e "$hook" ] && [ ! -e "$events" ] && [ "$lines" -eq 0 ]; then
+		watch=off
+	else
+		watch=partial
+	fi
+	echo "header = \"X-Heimdall-Privilege-Watch: $watch\""
+	[ -r "$events" ] || return 0
+	now=$(date +%s)
+	list=$(awk -v since=$((now - 7 * 86400)) -v now="$now" '
+		$1 ~ /^[0-9]+$/ && $1 >= since && $1 <= now + 900 &&
+		($2 == "sudo" || $2 == "su" || $2 == "root-ssh") &&
+		(NF == 2 || (NF == 3 && $3 ~ /^([a-z_][a-z0-9_.-]*|\?)$/ && length($3) <= 32)) {
+			k = $1 ":" $2 (NF == 3 ? ":" $3 : "")
+			if (!(k in seen)) { seen[k] = 1; e[n++] = k } # the hub dedupes these anyway
+		}
+		END {
+			# The newest 200, at most about 8 KB.
+			out = ""
+			for (i = n - 1; i >= 0 && i >= n - 200; i--) {
+				if (length(out) + length(e[i]) > 8000) break
+				out = (out == "" ? e[i] : e[i] "," out)
+			}
+			print out
+		}' "$events" 2>/dev/null) || return 0
+	[ -z "$list" ] || echo "header = \"X-Heimdall-Privilege: v1 $list\""
+}
+
 # ── Push ────────────────────────────────────────────────────────────────────
 
 # triggers_state: what makes this collector run, for the hub to notice one
@@ -700,7 +746,7 @@ push() {
 	status=$(printf '%s\n' \
 		"header = \"Authorization: Bearer $token\"" \
 		'header = "Content-Type: application/json"' \
-		"$encoding" "$cacert" "$hostname_header" "$triggers_header" |
+		"$encoding" "$cacert" "$hostname_header" "$triggers_header" "$(privilege_config)" |
 		curl --config - --silent --show-error \
 			--proto '=https,http' --tlsv1.2 \
 			--connect-timeout 10 --max-time 120 \

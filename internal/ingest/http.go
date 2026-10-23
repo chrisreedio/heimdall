@@ -192,6 +192,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Warn("anomaly", "rule", a.Rule, "severity", a.Severity, "summary", a.Summary)
 		}
 	}
+	if res.Status < 300 { // opt-in privilege watch (privilege.go)
+		h.recordPrivilege(r.Context(), log, host, res.SnapshotID, r)
+	}
 	if res.Status == http.StatusCreated && h.OnStored != nil {
 		h.OnStored(host)
 	}

@@ -14,7 +14,8 @@ import (
 
 // AnomalyRules are the rule names the anomalies table accepts.
 var AnomalyRules = []string{"silence", "replay", "clock_skew", "package_change", "package_downgrade",
-	"kernel_no_reboot", "unexpected_reboot", "collector_changed", "peer_outlier", "trigger_disabled"}
+	"kernel_no_reboot", "unexpected_reboot", "collector_changed", "peer_outlier", "trigger_disabled",
+	"privileged_access", "privilege_watch_disabled"}
 
 // AddAnomaly records an anomaly unless the host has an unexpired
 // suppression for the rule, or an open anomaly with the same rule and

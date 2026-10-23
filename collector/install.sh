@@ -32,6 +32,7 @@ usage() {
 usage: install.sh --hub https://ingest.example.com [--token-stdin | --token-file FILE]
                   [--version vX.Y.Z] [--from-dir DIR] [--no-push]
                   [--sites "/srv/app ..."] [--lockfiles "/srv/app/package-lock.json ..."]
+                  [--watch-privilege [--watch-privilege-users] | --no-watch-privilege]
 
   --hub          the hub's ingest URL (https://)
   (default)      prompt for the ingest token on the terminal, without echo
@@ -40,11 +41,16 @@ usage: install.sh --hub https://ingest.example.com [--token-stdin | --token-file
   --version      release to install (default: the release this script came from)
   --from-dir     install from a local directory holding the release files (air-gapped)
   --no-push      don't push a first snapshot
+  --watch-privilege        record when sudo, su or a root SSH login happens (time
+                           and kind only; never commands); see docs/collector.md
+  --watch-privilege-users  also record who (implies --watch-privilege)
+  --no-watch-privilege     remove the privilege watch
+  (re-running keeps the current privilege watch choice)
 EOF
 	exit 2
 }
 
-token_given=0 hub='' token='' version=$HEIMDALL_VERSION from_dir='' push=1 sites='' lockfiles=''
+token_given=0 hub='' token='' version=$HEIMDALL_VERSION from_dir='' push=1 sites='' lockfiles='' privilege=''
 while [ $# -gt 0 ]; do
 	case $1 in
 	--hub) hub=${2:-}; shift ;;
@@ -55,6 +61,9 @@ while [ $# -gt 0 ]; do
 	--no-push) push=0 ;;
 	--sites) sites=${2:-}; shift ;;
 	--lockfiles) lockfiles=${2:-}; shift ;;
+	--watch-privilege) [ "$privilege" = users ] || privilege=on ;;
+	--watch-privilege-users) privilege=users ;;
+	--no-watch-privilege) privilege=off ;;
 	-h | --help) usage ;;
 	*) usage ;;
 	esac
@@ -100,7 +109,7 @@ fetch() { # fetch NAME into $work
 }
 
 say "Fetching Heimdall collector $version"
-for f in SHA256SUMS collect.sh heimdall-collect.service heimdall-collect.timer; do fetch "$f"; done
+for f in SHA256SUMS collect.sh heimdall-collect.service heimdall-collect.timer privilege-watch.sh privilege-hook; do fetch "$f"; done
 if fetch_sig=$(fetch SHA256SUMS.sigstore.json 2>/dev/null && echo ok) && [ "$fetch_sig" = ok ] && have cosign; then
 	say "Verifying the Sigstore signature on SHA256SUMS"
 	cosign verify-blob "$work/SHA256SUMS" --bundle "$work/SHA256SUMS.sigstore.json" \
@@ -109,13 +118,16 @@ if fetch_sig=$(fetch SHA256SUMS.sigstore.json 2>/dev/null && echo ok) && [ "$fet
 		die "SHA256SUMS signature verification FAILED"
 fi
 say "Verifying checksums"
-(cd "$work" && grep -E ' (collect\.sh|heimdall-collect\.service|heimdall-collect\.timer)$' SHA256SUMS | sha256sum -c - >/dev/null) ||
+(cd "$work" && grep -E ' (collect\.sh|heimdall-collect\.service|heimdall-collect\.timer|privilege-watch\.sh|privilege-hook)$' SHA256SUMS | sha256sum -c - >/dev/null) ||
 	die "checksum verification FAILED; not installing"
 
 say "Installing"
 # On the hub's own box /etc/heimdall belongs to the hub; never touch it.
 conf=/etc/heimdall
 [ ! -e /etc/heimdall/heimdall.toml ] || conf=/etc/heimdall-collect
+# Re-runs (and `heimdall-collect upgrade`) keep the privilege watch choice.
+[ -n "$privilege" ] || privilege=$(sed -n 's/^HEIMDALL_PRIVILEGE_WATCH=//p' "$conf/collect.env" 2>/dev/null | tail -n 1)
+case $privilege in on | users | off) ;; *) privilege='' ;; esac
 install -m 0755 "$work/collect.sh" /usr/local/bin/heimdall-collect
 if ! id heimdall >/dev/null 2>&1; then
 	if have useradd; then
@@ -136,6 +148,7 @@ chmod 0400 "$conf/token"
 	printf 'HEIMDALL_TOKEN_FILE=%s\n' "$conf/token"
 	[ -z "$sites" ] || printf "HEIMDALL_SITES='%s'\n" "$sites"
 	[ -z "$lockfiles" ] || printf "HEIMDALL_LOCKFILES='%s'\n" "$lockfiles"
+	[ -z "$privilege" ] || printf 'HEIMDALL_PRIVILEGE_WATCH=%s\n' "$privilege"
 } >"$conf/collect.env"
 chmod 0644 "$conf/collect.env"
 
@@ -171,6 +184,10 @@ EOF
 		su -s /bin/sh heimdall -c "HEIMDALL_URL=$HEIMDALL_URL HEIMDALL_TOKEN_FILE=$HEIMDALL_TOKEN_FILE HEIMDALL_SITES='${HEIMDALL_SITES:-}' HEIMDALL_LOCKFILES='${HEIMDALL_LOCKFILES:-}' /usr/local/bin/heimdall-collect --push"
 	}
 fi
+case $privilege in
+on | users) sh "$work/privilege-watch.sh" install "$work/privilege-hook" "$privilege" ;;
+off) sh "$work/privilege-watch.sh" remove ;;
+esac
 have curl || say "WARNING: curl is required for pushing; install it (e.g. apk add curl)"
 
 if [ "$push" = 1 ]; then

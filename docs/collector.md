@@ -90,7 +90,7 @@ The collector runs on every server you manage, so it's built to be **boring, rea
 - `.env` files, config file contents, environment variables
 - Users, groups, SSH keys, shell history
 - Process lists or process arguments
-- Any file other than `/etc/os-release`, `/proc/uptime`, the package database, `/var/run/reboot-required`, enabled nginx/Apache vhost files, each discovered app's `composer.json` and `composer.lock`, its own script file and the token file
+- Any file other than `/etc/os-release`, `/proc/uptime`, the package database, `/var/run/reboot-required`, enabled nginx/Apache vhost files, each discovered app's `composer.json` and `composer.lock`, its own script file and the token file (plus, for the opt-in [privilege watch](#privilege-watch), its events file and whether `/etc/pam.d/sudo`, `su` and `sshd` contain its line)
 - Application source code, `vendor/`, logs or storage
 
 ### What it trusts
@@ -167,6 +167,36 @@ sudo heimdall-collect upgrade          # to the release the hub runs
 sudo heimdall-collect upgrade v0.4.12  # or a release you choose
 ```
 It runs as root (it replaces `/usr/local/bin/heimdall-collect`), reads the hub URL, token path and site settings from `collect.env` without executing it, asks the hub for its release with the server's token, downloads that release's `install.sh` from GitHub and checks it against `SHA256SUMS` before running it. Nothing runs automatically: like the hub, the collector never updates itself.
+
+## Privilege watch
+
+An opt-in tripwire for "someone used root". It records **that** privileged access happened, never what was typed.
+
+```sh
+sudo sh install.sh --hub https://ingest.example.com --watch-privilege        # time and kind only
+sudo sh install.sh --hub https://ingest.example.com --watch-privilege-users  # also who
+sudo sh install.sh --hub https://ingest.example.com --no-watch-privilege     # remove it
+```
+Re-running `install.sh`, and `sudo heimdall-collect upgrade` (which runs it), keeps the current choice. It's stored as `HEIMDALL_PRIVILEGE_WATCH=on|users|off` in `collect.env`.
+
+**What it installs** (as root; the logic is in `privilege-watch.sh`, fetched and checksum-verified with the other release files):
+- `/usr/local/lib/heimdall/privilege-hook`, a short root-owned POSIX sh script.
+- One line at the end of each of `/etc/pam.d/sudo`, `/etc/pam.d/su` and `/etc/pam.d/sshd` that exists:
+  `session optional pam_exec.so quiet seteuid /usr/local/lib/heimdall/privilege-hook  # heimdall`
+  (`seteuid` because sudo opens its session with the caller's real uid; without it the hook couldn't write a root-owned file.) Only lines ending in `# heimdall` are ever added or removed. Each file is rewritten through a temp file with the same owner and mode, then renamed, and `--no-watch-privilege` puts it back byte for byte. A PAM file that is a symlink is left alone, with a warning.
+- `/var/lib/heimdall-privilege/events` (directory 0755, file 0644, root-owned): one `<unix-time> <kind>[ <user>]` line per event, the last 500 kept.
+
+**What it records:** `sudo`, `su`, and `root-ssh` (an SSH login as root). SSH logins as other users are ignored. With `--watch-privilege-users`, the invoking user (`PAM_RUSER`, else `PAM_USER`) is added if it matches `[a-z_][a-z0-9_.-]{0,31}`, and `?` otherwise. Never commands, arguments, terminals or source addresses.
+
+**It never blocks or slows a login.** The PAM line is `optional`, the hook always exits 0, makes no network requests, does nothing unless the session is opening, and gives up quietly if the events directory is missing or the disk is full. A broken hook (not executable, deleted, or its directory gone) still lets sudo, su and SSH work. After recording, it starts `heimdall-collect-soon.timer` if installed (a short debounce), otherwise `heimdall-collect.service`, in the background with errors ignored, so the hub hears about it within a minute or so. Without systemd (cron installs), events wait for the next daily push.
+
+**How it's reported:** the collector itself stays unprivileged and read-only. On each push it reads the events file and sends the last 7 days, deduplicated and capped at 200 (about 8 KB), in a request header, `X-Heimdall-Privilege: v1 <ts>:<kind>[:<user>],...`. It also sends `X-Heimdall-Privilege-Watch: on|off|partial`: `on` means the hook is executable, the events file exists and every existing PAM file of the three has its line; `off` means none of it is there; `partial` is anything in between. They're headers, not snapshot fields, so collectors and hubs of different versions still work together. The collector keeps no state, so it resends recent events every time and the hub dedupes them on (host, time, kind, user). Malformed or oversized headers are dropped without failing the push. The hub keeps events for 180 days.
+
+**What you see:** the host page shows a "Privileged access" line ("3 sudo, 1 root SSH in the last 24 hours") once a host has turned it on, and two anomalies, **privileged access** and **privilege watch disabled**, described in [anomaly-signals.md](anomaly-signals.md#privilege-watch).
+
+**Be honest about its limits.** Root can remove the hook, edit the events file or stop the collector, like anything else on the box. What it buys you is that doing so isn't silent: removing the watch while the host still reports raises **privilege watch disabled**, and stopping the collector raises **silence**. Turning it off on purpose with `--no-watch-privilege` raises **privilege watch disabled** too, which you acknowledge. Two events of the same kind by the same user in the same second count once, and a flood of more than 500 events between pushes pushes older ones out of the file (the flood itself still shows).
+
+**SELinux:** tested on Rocky 9 in a container, where SELinux isn't enforcing. On an enforcing host the stock policy may stop the hook from writing `/var/lib/heimdall-privilege` from the sshd or sudo domains. Logins still work (the line is `optional`), but events may not be recorded; check `ausearch -m avc -ts recent` after a test `sudo true`.
 
 ## Sites & Laravel
 

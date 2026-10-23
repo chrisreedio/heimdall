@@ -36,7 +36,7 @@ SHELLCHECK_IMAGE := koalaman/shellcheck:v0.10.0
 COLLECTOR_OUT ?= $(CURDIR)/bin/collector-out
 
 shellcheck:
-	docker run --rm -v "$(CURDIR)/collector:/mnt:ro" $(SHELLCHECK_IMAGE) -s sh /mnt/collect.sh /mnt/test/run-containers.sh /mnt/test/sites-fixture.sh
+	docker run --rm -v "$(CURDIR)/collector:/mnt:ro" $(SHELLCHECK_IMAGE) -s sh /mnt/collect.sh /mnt/privilege-watch.sh /mnt/privilege-hook /mnt/test/run-containers.sh /mnt/test/sites-fixture.sh
 
 # Runs collect.sh as an unprivileged user on Debian, Ubuntu, Rocky and
 # Alpine, then validates every snapshot with the hub's strict decoder.
@@ -74,7 +74,7 @@ dist:
 	GOOS=linux GOARCH=amd64 go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/heimdall-linux-amd64 ./cmd/heimdall & a=$$!; \
 	GOOS=linux GOARCH=arm64 go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/heimdall-linux-arm64 ./cmd/heimdall & b=$$!; \
 	wait $$a && wait $$b
-	cp collector/collect.sh collector/collect.ps1 collector/install-windows.ps1 deploy/heimdall.service deploy/heimdall-collect.service \
+	cp collector/collect.sh collector/collect.ps1 collector/install-windows.ps1 collector/privilege-watch.sh collector/privilege-hook deploy/heimdall.service deploy/heimdall-collect.service \
 		deploy/heimdall-collect.timer deploy/collect.env.example deploy/splash.html dist/
 	sed 's/^HEIMDALL_VERSION=dev /HEIMDALL_VERSION=$(VERSION) /' collector/install.sh > dist/install.sh
 	sed 's/^HEIMDALL_VERSION=dev /HEIMDALL_VERSION=$(VERSION) /' deploy/install-hub.sh > dist/install-hub.sh

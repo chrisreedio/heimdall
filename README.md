@@ -91,6 +91,8 @@ These risks are knowingly accepted to keep things simple:
 
 **Never collected:** environment variables, `.env` files, config file contents, secrets, keys, users and groups, process arguments, shell history or any file not explicitly allowlisted. Site discovery reads web server vhost files but only reports the fields listed under [Sites & Laravel](#sites--laravel).
 
+**Never collected, even with the privilege watch:** users and commands. The opt-in [privilege watch](docs/collector.md#privilege-watch) (`install.sh --watch-privilege`) records only *when* sudo, su or a root SSH login happened and which of the three it was; usernames only with a second opt-in, `--watch-privilege-users`. Root can remove it, like anything else on the box, but removing it while the host still reports raises **privilege watch disabled**, and removing the collector raises **silence**.
+
 ### Sites & Laravel
 Most PHP apps are a site on a shared box, so Heimdall inventories **sites**, not just packages.
 

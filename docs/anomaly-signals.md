@@ -31,6 +31,8 @@ Heimdall is good at catching **sloppy or automated attacks**, and just as often 
 | **Collector changed** | The script was tampered with to hide things | You upgraded the collector but didn't tell Heimdall about the new release | M8 |
 | **Odd one out** | A miner, webshell runtime or backdoor service appeared | A legitimate deployment that only one host received | M8 |
 | **Change reporting disabled** (`trigger_disabled`) | The change watch or the collector's timer was switched off, so changes stop being reported promptly | You disabled it while debugging, or uninstalled the collector | M8 |
+| **Privileged access** (opt-in) | Someone used sudo, su or logged in as root over SSH outside a maintenance window | You or a colleague fixing something by hand; scripts that use sudo | Privilege watch |
+| **Privilege watch disabled** (opt-in) | The PAM hook was removed or broken to hide privileged access | You turned it off with `--no-watch-privilege`, or a PAM file was replaced by a package upgrade | Privilege watch |
 
 "Odd one out" means a new service, runtime or package that a host's **tag peers** don't have. For example, one `web` host in `prod` suddenly has a package the other `web` hosts don't.
 
@@ -64,6 +66,15 @@ An attacker with root can fake this header, just like the snapshot. It catches t
 
 Frequent reports are cheap. When a report's inventory matches the host's latest snapshot, Heimdall doesn't store a new snapshot. It records the report as a small *heartbeat* with its time and uptime. The inventory covers packages, pending updates, sites, containers, lockfiles, kernel, OS, reboot-required, skipped checks and the collector's version and checksum. Only `collected_at` and `uptime_seconds` change on every run, so only those are ignored. Reboots are still detected from each heartbeat's uptime. Changes (`host history`/`diff`) only list snapshots, so they only show real changes.
 
+### Privilege watch
+
+Opt-in per server with `install.sh --watch-privilege` (see [collector.md](collector.md#privilege-watch)). It records *that* sudo, su or a root SSH login happened, and when, never what was typed. Usernames are recorded only with `--watch-privilege-users`.
+
+- **Privileged access** (`privileged_access`, medium): events outside a maintenance window. One anomaly per host per day (UTC) with a count by kind, such as "4 privileged accesses outside a maintenance window on Oct 23, 2026 (UTC): 3 sudo, 1 root SSH". Later events that day add to the open anomaly; after you acknowledge it, new events raise a fresh one. Events inside a window that covers the host (org, env or host scope) never count. Collectors resend recent events on every push, and the hub dedupes them, so a resend never alerts twice.
+- **Privilege watch disabled** (`privilege_watch_disabled`, high): the host reported the watch `on` before and now reports `off` or `partial` (a PAM line, the hook or its events file is missing) while still checking in. It's compared with the host's own previous report, so hosts that never turned it on never alert. A push without the header (an older collector) changes nothing.
+
+Both use the usual [suppression](#keeping-the-noise-down): `heimdall anomaly suppress --rule privileged_access ...`.
+
 ---
 
 ## Keeping the noise down
@@ -90,7 +101,7 @@ Every acknowledgment and suppression is written to the audit log with who did it
 
 ## What Heimdall will never do here
 
-- Collect anything new for detection (no process lists, file hashes, logs or users)
+- Collect anything new for detection (no process lists, file hashes, logs or users). The one exception is opt-in on each server: the [privilege watch](#privilege-watch) records the time and kind of privileged access, and usernames only with a second opt-in.
 - Connect to a server to investigate
 - Take automatic action such as isolating a host or killing processes
 
