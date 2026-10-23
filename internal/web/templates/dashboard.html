@@ -14,6 +14,8 @@
   {{end}}
 </div>
 
+{{if .News}}<a class="news-strip" href="/news?affects=me"><span class="pill bad">news</span> <span><strong>{{.News}}</strong> in the news affect{{if eq .News 1}}s{{end}} your hosts</span> <span aria-hidden="true">→</span></a>{{end}}
+
 <section class="tiles" aria-label="Summary">
   <div class="tile"><span class="n">{{.Tiles.Hosts}}</span><span class="l">hosts reporting</span></div>
   <div class="tile{{if .Tiles.KEV}} bad{{end}}"><span class="n">{{.Tiles.KEV}}</span><span class="l">known-exploited findings</span></div>

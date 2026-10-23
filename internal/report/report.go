@@ -108,8 +108,9 @@ type Finding struct {
 	FixPending    bool      `json:"fix_pending"`
 	Summary       string    `json:"summary"`
 	FirstSeen     time.Time `json:"first_seen"`
-	Site          string    `json:"site,omitempty"` // app root for Composer findings
-	EPSS          float64   `json:"epss,omitempty"` // exploit probability (0-1), when known
+	Site          string    `json:"site,omitempty"`    // app root for Composer findings
+	EPSS          float64   `json:"epss,omitempty"`    // exploit probability (0-1), when known
+	InNews        bool      `json:"in_news,omitempty"` // named by a live threat-news incident
 }
 
 // Filter narrows a report. Scope is required: hosts outside it are never
@@ -207,7 +208,7 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 				Advisory: f.AdvisoryID, CVEs: nonNil(f.CVEs), Severity: f.Severity, CVSS: f.CVSS,
 				KEV: f.KEV, KEVRansomware: f.KEVRansomware, Package: f.Package, Version: f.Version,
 				Binaries: nonNil(f.Binaries), Fixed: f.FixedVersion, FixPending: f.FixPending,
-				Summary: f.Summary, FirstSeen: f.FirstSeen, Site: f.SiteRoot, EPSS: f.EPSS,
+				Summary: f.Summary, FirstSeen: f.FirstSeen, Site: f.SiteRoot, EPSS: f.EPSS, InNews: f.InNews,
 			})
 			host.Counts.add(f)
 		}

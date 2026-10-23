@@ -23,6 +23,7 @@
     <a href="/"{{if eq .Nav "dashboard"}} aria-current="page"{{end}}>Dashboard</a>
     <a href="/hosts"{{if eq .Nav "hosts"}} aria-current="page"{{end}}>Hosts</a>
     <a href="/sites"{{if eq .Nav "sites"}} aria-current="page"{{end}}>Sites</a>
+    {{if .News}}<a href="/news"{{if eq .Nav "news"}} aria-current="page"{{end}}>News</a>{{end}}
     <a href="/search"{{if eq .Nav "search"}} aria-current="page"{{end}}>Search</a>
     <a href="/anomalies"{{if eq .Nav "anomalies"}} aria-current="page"{{end}}>Anomalies</a>
     <a href="/drift"{{if eq .Nav "drift"}} aria-current="page"{{end}}>Drift</a>

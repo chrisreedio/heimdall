@@ -107,6 +107,7 @@ type dashBody struct {
 	Tiles    tiles
 	Rows     []hostRow
 	Waiting  []store.Host
+	News     int // incidents in the news affecting a visible host
 }
 
 type tiles struct {
@@ -230,6 +231,10 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 			body.Waiting = append(body.Waiting, h)
 		}
 	}
+	if body.News, err = s.newsAffecting(r, v, org); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
 	s.render(w, r, http.StatusOK, "dashboard", v, "Dashboard", "dashboard", body)
 }
 
@@ -318,6 +323,7 @@ type hostBody struct {
 	Anomalies       []store.AnomalyRow
 	PackageMgr      string
 	ShowOrgName     bool
+	News            []newsRow // incidents in the news affecting this host
 }
 
 type command struct {
@@ -443,6 +449,14 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	if body.Anomalies, err = s.st.Anomalies(ctx, host.ID); err != nil {
 		s.fail(w, r, v, err)
 		return
+	}
+	if s.cfg.News {
+		entries, err := s.st.HostNews(ctx, host.ID)
+		if err != nil {
+			s.fail(w, r, v, err)
+			return
+		}
+		body.News = newsRows(entries)
 	}
 	s.render(w, r, http.StatusOK, "host", v, host.Name, "hosts", body)
 }

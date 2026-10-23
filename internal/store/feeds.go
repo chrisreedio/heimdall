@@ -676,11 +676,12 @@ type ReportFinding struct {
 	FirstSeen     time.Time
 	SiteRoot      string  // "" for OS packages
 	EPSS          float64 // highest EPSS score among the advisory's CVEs (0 if none)
+	InNews        bool    // one of its CVEs is named by a live news incident
 }
 
 // OpenFindings lists a host's open findings in patch-priority order: known
-// exploited first, then ones with a fix available, then by severity, EPSS
-// and CVSS.
+// exploited first, then ones in a live news incident, then ones with a fix
+// available, then by severity, EPSS and CVSS.
 func (s *Store) OpenFindings(ctx context.Context, hostID int64) ([]ReportFinding, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT f.advisory_id, a.summary, a.severity, coalesce(a.cvss_score, 0),
@@ -719,6 +720,18 @@ func (s *Store) OpenFindings(ctx context.Context, hostID int64) ([]ReportFinding
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	rows.Close()
+	news, err := s.LiveNewsCVEs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range out {
+		f := &out[i]
+		f.InNews = news[f.AdvisoryID]
+		for _, c := range f.CVEs {
+			f.InNews = f.InNews || news[c]
+		}
+	}
 	sortFindings(out)
 	return out, nil
 }
@@ -729,6 +742,12 @@ func sortFindings(fs []ReportFinding) {
 	less := func(a, b ReportFinding) int {
 		if a.KEV != b.KEV {
 			if a.KEV {
+				return -1
+			}
+			return 1
+		}
+		if a.InNews != b.InNews { // being exploited in the news right now
+			if a.InNews {
 				return -1
 			}
 			return 1

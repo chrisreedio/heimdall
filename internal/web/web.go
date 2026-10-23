@@ -61,6 +61,8 @@ type Config struct {
 	SSO          SSO      // nil = single sign-on disabled
 	LocalLogin   bool     // password + TOTP sign-in; false hides the form and refuses POST /login
 	EntraTenants []string // allowed tenant IDs, offered when an admin adds an Entra user
+
+	News bool // threat news is on: show the News page, dashboard strip and host card
 }
 
 // CSP is the Content-Security-Policy sent with every response.
@@ -135,6 +137,7 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("GET /hosts/{org}/{host}/site", s.requireAuth(s.sitePage))
 	mux.HandleFunc("GET /sites", s.requireAuth(s.withScope(s.sitesPage)))
 	mux.HandleFunc("GET /search", s.requireAuth(s.withScope(s.searchPage)))
+	mux.HandleFunc("GET /news", s.requireAuth(s.withScope(s.newsPage)))
 	mux.HandleFunc("GET /hosts/new", s.requireAuth(s.addHostPage))
 	mux.HandleFunc("POST /hosts/new", s.requireAuth(s.addHostSubmit))
 	mux.HandleFunc("POST /hosts/{org}/{host}/rename", s.requireAuth(s.hostRename))
@@ -367,6 +370,7 @@ type page struct {
 	Version string
 	Refresh string           // same-site path for a meta refresh (SSO hand-off), or ""
 	Update  *updates.Release // a newer release, shown to admins
+	News    bool             // threat news is on (shows the nav item)
 	Body    any
 }
 
@@ -397,6 +401,7 @@ func (s *server) renderPage(w http.ResponseWriter, r *http.Request, status int, 
 		return
 	}
 	p.Version = s.cfg.Version
+	p.News = s.cfg.News
 	if p.Viewer != nil {
 		p.CSRF = auth.CSRFToken(p.Viewer.SessionToken)
 	}
@@ -430,7 +435,7 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, v *auth.Viewer, er
 
 func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
-		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "site"}
+		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "site", "news"}
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/"+n+".html")
