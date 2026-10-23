@@ -59,7 +59,7 @@ func (s *server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	email := strings.TrimSpace(r.PostForm.Get("email"))
 	next := safeNext(r.PostForm.Get("next"))
-	token, err := s.auth.Login(r.Context(), email, r.PostForm.Get("password"), strings.TrimSpace(r.PostForm.Get("code")),
+	token, err := s.auth.Login(r.Context(), email, r.PostForm.Get("password"), strings.TrimSpace(otpField(r)),
 		clientIP(r), r.UserAgent())
 	if err != nil {
 		status, msg := http.StatusUnauthorized, auth.ErrInvalidLogin.Error()
@@ -592,4 +592,14 @@ func (s *server) visibleHosts(r *http.Request, v *auth.Viewer, org string) ([]st
 		}
 	}
 	return out, nil
+}
+
+// otpField reads the login form's one-time code. It's named "totp" so
+// password managers (1Password and others) recognise it; "code" is still
+// accepted from a login page that was open across an upgrade.
+func otpField(r *http.Request) string {
+	if v := r.PostForm.Get("totp"); v != "" {
+		return v
+	}
+	return r.PostForm.Get("code")
 }

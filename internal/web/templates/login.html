@@ -30,7 +30,7 @@
     <input type="hidden" name="next" value="{{.Next}}">
     <label>Email <input type="email" name="email" value="{{.Email}}" required autocomplete="username" maxlength="254"{{if not .SSO}} autofocus{{end}}></label>
     <label>Password <input type="password" name="password" required autocomplete="current-password" maxlength="256"></label>
-    <label>Authenticator code <input type="text" name="code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"></label>
+    <label>One-time code (authenticator app) <input type="text" id="totp" name="totp" required inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="123456"></label>
     <button type="submit">Sign in</button>
   </form>
 {{end}}
