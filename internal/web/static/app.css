@@ -636,3 +636,8 @@ ul.pkg-findings .summary { color: var(--muted); font-size: 12px; margin-top: 2px
 .site-meta a { font-weight: 600; }
 details.head-pick { position: relative; }
 details.head-pick[open] form { position: absolute; top: 26px; left: 0; z-index: 5; padding: 10px; box-shadow: var(--shadow); margin: 0; white-space: nowrap; }
+
+/* Facts: a status pill sits beside its value, wrapping only when narrow. */
+.fact > div:not(.k) { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; column-gap: 8px; min-width: 0; }
+.fact > div > .k { flex-basis: 100%; }
+.fact > div > .pills { margin-top: 0; }
