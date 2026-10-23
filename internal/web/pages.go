@@ -16,6 +16,7 @@ import (
 	"github.com/chrisreedio/heimdall/internal/report"
 	"github.com/chrisreedio/heimdall/internal/search"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/updates"
 	"github.com/chrisreedio/heimdall/internal/version"
 )
 
@@ -308,6 +309,9 @@ type hostBody struct {
 	Stale           bool
 	Pending         []store.InventoryPackage
 	PendingSecurity int
+	OSView          findingsView
+	CollectorBehind bool // the host's collector is older than this hub's release
+	CollectorKnown  bool // this hub is a release build, so the comparison means something
 	ShowAll         bool // show every finding instead of the first findingsCap
 	Packages        []store.InventoryPackage
 	Commands        []command
@@ -430,6 +434,11 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	body.ShowAll = r.URL.Query().Get("findings") == "all"
 	body.PackageMgr = packageManager(inv)
 	body.Commands = upgradeCommands(body.PackageMgr, body.Pending)
+	body.OSView = buildFindingsView("/hosts/"+url.PathEscape(host.OrgSlug)+"/"+url.PathEscape(host.Name), packageManager(inv), r.URL.Query(), body.OSFindings)
+	if v := strings.TrimSpace(sum.CollectorVersion); v != "" && releaseTag.MatchString(s.cfg.Version) {
+		body.CollectorKnown = true
+		body.CollectorBehind = updates.Newer(s.cfg.Version, "v"+strings.TrimPrefix(v, "v"))
+	}
 
 	if body.Anomalies, err = s.st.Anomalies(ctx, host.ID); err != nil {
 		s.fail(w, r, v, err)

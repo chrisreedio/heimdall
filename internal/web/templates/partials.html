@@ -38,3 +38,55 @@
   {{if and (not $all) (gt (len $nofix) findingsCap)}}<p class="more">Showing {{findingsCap}} of {{len $nofix}}. <a href="{{.AllURL}}">Show all</a></p>{{end}}
 </details>{{end}}
 {{end}}
+
+{{/* osfindings: a host's OS findings by package (default) or one by one,
+     filtered and a page at a time (a findingsView). */}}
+{{define "osfindings"}}
+<div class="view-bar">
+  <nav class="seg" aria-label="Group findings">
+    <a href="{{index .ViewLink "packages"}}"{{if eq .View "packages"}} aria-current="true"{{end}}>By package</a>
+    <a href="{{index .ViewLink "all"}}"{{if eq .View "all"}} aria-current="true"{{end}}>All findings</a>
+  </nav>
+  <span class="muted small">{{.Total}} finding{{if ne .Total 1}}s{{end}}{{if or .Sev .Fixable}} match{{if eq .Total 1}}es{{end}} the filter{{end}}{{if eq .View "packages"}}{{if .Groups}} · page {{.Page}} of {{.Pages}}{{end}}{{else if .Rows}} · page {{.Page}} of {{.Pages}}{{end}}</span>
+</div>
+{{with .FixCmd}}<div class="cmd fix-cmd">
+  <div class="cmd-label">Patch {{$.FixPkgs}} package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}}{{if $.FixPending}} <span class="muted small">· {{$.FixPending}} already have the update downloaded and pending</span>{{end}}</div>
+  <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
+  <p class="muted small">Upgrades only these packages. Filter by severity above to patch, say, just the critical ones first. Heimdall never runs it for you.</p>
+</div>{{end}}
+{{if eq .View "packages"}}
+  {{if .Groups}}
+  <div class="pkg-list" role="table" aria-label="Findings by package">
+    <div class="pkg-grid pkg-head" role="row"><span>Package</span><span>Installed</span><span>Worst</span><span class="num">KEV</span><span class="num">Crit</span><span class="num">High</span><span class="num">Med</span><span class="num">Low</span><span class="num">Fixable</span></div>
+    {{range .Groups}}<details class="pkg-row">
+      <summary class="pkg-grid" role="row">
+        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span></span>
+        <span class="ver">{{.Version}}</span>
+        <span><span class="sev sev-{{sev .Worst}}">{{.Worst}}</span></span>
+        <span class="num">{{if .KEV}}<span class="badge kev">{{.KEV}}</span>{{else}}<span class="muted">0</span>{{end}}</span>
+        <span class="num">{{index .BySev "critical"}}</span><span class="num">{{index .BySev "high"}}</span><span class="num">{{index .BySev "medium"}}</span><span class="num">{{index .BySev "low"}}</span>
+        <span class="num">{{if .Fixable}}{{.Fixable}}{{if .FixPending}} <span class="badge ok" title="an update that fixes some is already pending">pending</span>{{end}}{{else}}<span class="muted">0</span>{{end}}</span>
+      </summary>
+      <div class="pkg-panel">
+        {{if gt (len .Binaries) 1}}<p class="muted small">Binary packages: {{join .Binaries ", "}}</p>{{end}}
+        <ul class="pkg-findings">{{range head .Findings 100 false}}<li><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .KEV}} <span class="badge kev">KEV</span>{{end}} <span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Fixed}} <span class="muted small">fixed in {{.Fixed}}</span>{{else}} <span class="muted small">no fix yet</span>{{end}}{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</li>{{end}}</ul>
+        {{if gt (len .Findings) 100}}<p class="more">The 100 most important of {{len .Findings}}; switch to All findings to see every one.</p>{{end}}
+      </div>
+    </details>{{end}}
+  </div>
+  {{else}}<p class="empty">No findings match the filter.</p>{{end}}
+{{else}}
+  {{if .Rows}}{{template "findings" .Rows}}{{else}}<p class="empty">No findings match the filter.</p>{{end}}
+{{end}}
+{{if gt .Pages 1}}<nav class="pager" aria-label="Pages">
+  {{with .PrevLink}}<a class="button secondary" href="{{.}}">← Previous</a>{{else}}<span></span>{{end}}
+  <span class="muted small">Page {{.Page}} of {{.Pages}}</span>
+  {{with .NextLink}}<a class="button secondary" href="{{.}}">Next →</a>{{else}}<span></span>{{end}}
+</nav>{{end}}
+{{end}}
+
+{{/* icon: a small inline stroke icon by name. */}}
+{{define "icon"}}<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{if eq . "server"}}<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>{{else if eq . "clock"}}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>{{else if eq . "chip"}}<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>{{else if eq . "package"}}<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>{{else if eq . "power"}}<path d="M12 3v8"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/>{{else if eq . "layers"}}<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>{{else if eq . "calendar"}}<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>{{end}}</svg>{{end}}
+
+{{/* lifepill: a lifecycle as a colored pill (*report.Lifecycle, nil-safe). */}}
+{{define "lifepill"}}{{$s := lifeState .}}{{if eq $s "eol"}}<span class="pill bad">end of life{{with .EOLDate}} since {{date .}}{{end}}</span>{{else if eq $s "soon"}}<span class="pill warn">ends {{date .EOLDate}} · {{.DaysLeft}} days</span>{{else if eq $s "ok"}}<span class="pill ok">supported{{with .EOLDate}} until {{date .}}{{end}}</span>{{else}}<span class="pill muted">lifecycle unknown yet</span>{{end}}{{end}}

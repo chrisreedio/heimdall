@@ -42,15 +42,12 @@
 <p class="empty">This host hasn't reported yet. It appears here after the installer from <a href="/hosts/new">Add a host</a> finishes on the server.{{if .AutoName}} It's then renamed to the server's own hostname.{{end}}</p>
 {{else}}
 <section class="facts card">
-  <dl>
-    <div><dt>OS</dt><dd>{{.Summary.OS}}</dd></div>
-    <div><dt>Last seen</dt><dd{{if .Stale}} class="stale"{{end}}>{{time .Summary.ReceivedAt}} ({{ago .Summary.ReceivedAt}}, via {{.Summary.Source}})</dd></div>
-    <div><dt>Collector</dt><dd>{{.Summary.CollectorVersion}}</dd></div>
-    <div><dt>Packages</dt><dd>{{.Summary.Packages}} installed, {{.Summary.PendingUpdates}} with updates ({{.Summary.PendingSecurity}} security)</dd></div>
-    <div><dt>Reboot</dt><dd>{{.Reboot}}</dd></div>
-    {{with .Report.OSLife}}<div><dt>OS lifecycle</dt><dd>{{template "life" .}}</dd></div>{{end}}
-    {{range .Report.Runtimes}}<div><dt>{{.Name}} {{.Version}}</dt><dd>{{with .Life}}{{template "life" .}}{{else}}lifecycle unknown{{end}}</dd></div>{{end}}
-  </dl>
+  <div class="fact">{{template "icon" "server"}}<div><div class="k">Operating system</div><div class="v">{{.Summary.OS}}</div>{{with .Report.OSLife}}<div class="pills">{{template "lifepill" .}}</div>{{end}}</div></div>
+  <div class="fact">{{template "icon" "clock"}}<div><div class="k">Last report</div><div class="v" title="{{time .Summary.ReceivedAt}}">{{ago .Summary.ReceivedAt}}</div><div class="pills">{{if .Stale}}<span class="pill warn">stale</span>{{else}}<span class="pill ok"><span class="dot"></span>reporting</span>{{end}}<span class="pill muted">via {{.Summary.Source}}</span></div></div></div>
+  <div class="fact">{{template "icon" "power"}}<div><div class="k">Reboot</div><div class="v">{{if eq .Reboot "required"}}Required{{else if eq .Reboot "not required"}}Not needed{{else}}Unknown{{end}}</div><div class="pills">{{if eq .Reboot "required"}}<span class="pill warn">restart to finish updates</span>{{else if eq .Reboot "not required"}}<span class="pill ok">up to date</span>{{end}}</div></div></div>
+  <div class="fact">{{template "icon" "package"}}<div><div class="k">Packages</div><div class="v">{{.Summary.Packages}} installed</div><div class="pills">{{if .Summary.PendingUpdates}}<span class="pill warn">{{.Summary.PendingUpdates}} update{{if ne .Summary.PendingUpdates 1}}s{{end}}</span>{{else}}<span class="pill ok">all current</span>{{end}}{{if .Summary.PendingSecurity}}<span class="pill bad">{{.Summary.PendingSecurity}} security</span>{{end}}</div></div></div>
+  <div class="fact">{{template "icon" "chip"}}<div><div class="k">Collector</div><div class="v">{{.Summary.CollectorVersion}}</div>{{if .CollectorKnown}}<div class="pills">{{if .CollectorBehind}}<span class="pill warn" title="Re-run install.sh from this hub's release on the server">update available</span>{{else}}<span class="pill ok">current</span>{{end}}</div>{{end}}</div></div>
+  {{if .Report.Runtimes}}<div class="fact wide">{{template "icon" "layers"}}<div><div class="k">Runtimes</div><div class="runtimes">{{range .Report.Runtimes}}<span class="runtime"><strong>{{.Name}}</strong> {{.Version}} {{template "lifepill" .Life}}</span>{{end}}</div></div></div>{{end}}
 </section>
 
 {{if .Anomalies}}
@@ -66,20 +63,22 @@
 <section id="findings">
   <h2>Findings</h2>
   {{with .Report.Counts}}
-  <div class="chips" aria-label="Open findings by severity">
-    <span class="chip"><strong>{{.Total}}</strong> open</span>
-    <span class="chip{{if .KEV}} chip-kev{{end}}" title="CISA Known Exploited Vulnerabilities"><strong>{{.KEV}}</strong> known-exploited</span>
-    <span class="chip{{if .Critical}} chip-critical{{end}}"><strong>{{.Critical}}</strong> critical</span>
-    <span class="chip{{if .High}} chip-high{{end}}"><strong>{{.High}}</strong> high</span>
-    <span class="chip"><strong>{{.Medium}}</strong> medium</span>
-    <span class="chip"><strong>{{.Low}}</strong> low</span>
-    <span class="chip"><strong>{{.Unknown}}</strong> unrated</span>
-    <span class="chip chip-ok" title="{{.FixPending}} via updates already pending on the host"><strong>{{.Fixable}}</strong> fixable now</span>
+  {{$fv := $.Body.OSView}}
+  <div class="chips" aria-label="Filter findings by severity">
+    <a class="chip{{if not $fv.Sev}} active{{end}}" href="{{$fv.AllSevLink}}"><strong>{{.Total}}</strong> open</a>
+    <a class="chip{{if .KEV}} chip-kev{{end}}{{if eq $fv.Sev "kev"}} active{{end}}" href="{{index $fv.SevLinks "kev"}}" title="CISA Known Exploited Vulnerabilities"><strong>{{.KEV}}</strong> known-exploited</a>
+    <a class="chip{{if .Critical}} chip-critical{{end}}{{if eq $fv.Sev "critical"}} active{{end}}" href="{{index $fv.SevLinks "critical"}}"><strong>{{.Critical}}</strong> critical</a>
+    <a class="chip{{if .High}} chip-high{{end}}{{if eq $fv.Sev "high"}} active{{end}}" href="{{index $fv.SevLinks "high"}}"><strong>{{.High}}</strong> high</a>
+    <a class="chip{{if eq $fv.Sev "medium"}} active{{end}}" href="{{index $fv.SevLinks "medium"}}"><strong>{{.Medium}}</strong> medium</a>
+    <a class="chip{{if eq $fv.Sev "low"}} active{{end}}" href="{{index $fv.SevLinks "low"}}"><strong>{{.Low}}</strong> low</a>
+    <a class="chip{{if eq $fv.Sev "unknown"}} active{{end}}" href="{{index $fv.SevLinks "unknown"}}"><strong>{{.Unknown}}</strong> unrated</a>
+    {{if $fv.Fixable}}<a class="chip chip-ok active" href="{{index $fv.FixLink "off"}}" title="{{.FixPending}} via updates already pending on the host"><strong>{{.Fixable}}</strong> fixable now</a>
+    {{else}}<a class="chip chip-ok" href="{{index $fv.FixLink "on"}}" title="Show only findings an update fixes ({{.FixPending}} already pending on the host)"><strong>{{.Fixable}}</strong> fixable now</a>{{end}}
   </div>
   {{end}}
   <h3>OS packages</h3>
   {{if not .Report.Ecosystem}}<p class="empty">Vulnerability matching isn't supported for this OS yet.</p>
-  {{else if .OSFindings}}{{template "findingsSplit" (findings .OSFindings .ShowAll (print (hostURL .Org .Name) "?findings=all#findings"))}}
+  {{else if .OSFindings}}{{template "osfindings" .OSView}}
   {{else}}<p class="empty">No open findings in OS packages.</p>{{end}}
 </section>
 

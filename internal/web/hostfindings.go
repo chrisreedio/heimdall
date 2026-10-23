@@ -1,0 +1,227 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package web
+
+import (
+	"net/url"
+	"slices"
+	"strconv"
+	"strings"
+
+	"github.com/chrisreedio/heimdall/internal/report"
+)
+
+// A host's OS findings can number in the thousands, so the host page shows
+// them one row per package by default, with severity and fixable filters
+// and paging. "All findings" lists them individually, a page at a time.
+
+const findingsPerPage = 50
+
+var severityRank = map[string]int{"critical": 4, "high": 3, "medium": 2, "low": 1}
+
+// pkgGroup is one package's findings.
+type pkgGroup struct {
+	Package, Version string
+	Binaries         []string
+	Worst            string // highest severity
+	KEV              int
+	BySev            map[string]int
+	Total, Fixable   int
+	FixPending       bool // an update that fixes some of them is already pending
+	Findings         []report.Finding
+}
+
+type findingsView struct {
+	View    string // "packages" or "all"
+	Sev     string // "" or kev, critical, high, medium, low, unknown
+	Fixable bool
+	Total   int // findings after filters
+	Groups  []pkgGroup
+	Rows    []report.Finding
+	Page    int
+	Pages   int
+	// Links, built here so templates don't assemble query strings.
+	SevLinks          map[string]string
+	AllSevLink        string
+	FixLink, ViewLink map[string]string
+	PrevLink          string
+	NextLink          string
+	// FixCmd upgrades just the packages that fix the findings shown.
+	FixCmd     *command
+	FixPkgs    int
+	FixPending int // of those, how many already have the update pending
+}
+
+// fixCommand builds an upgrade command for the packages that fix the
+// given findings, using the binary package names the package manager
+// installs. nil when nothing shown can be fixed, or the package manager
+// isn't one we write commands for.
+func fixCommand(pm string, list []report.Finding) (*command, int, int) {
+	prefix := map[string]string{
+		"dpkg": "sudo apt-get update && sudo apt-get install --only-upgrade",
+		"rpm":  "sudo dnf upgrade --refresh",
+		"apk":  "sudo apk update && sudo apk upgrade",
+	}[pm]
+	if prefix == "" {
+		return nil, 0, 0
+	}
+	var names []string
+	pendingPkgs := 0
+	for _, f := range list {
+		if f.Fixed == "" {
+			continue
+		}
+		bins := f.Binaries
+		if len(bins) == 0 {
+			bins = []string{f.Package}
+		}
+		for _, b := range bins {
+			if safePackage.MatchString(b) && !slices.Contains(names, b) {
+				names = append(names, b)
+				if f.FixPending {
+					pendingPkgs++
+				}
+			}
+		}
+	}
+	if len(names) == 0 {
+		return nil, 0, 0
+	}
+	slices.Sort(names)
+	return &command{ID: "cmd-fix", Text: prefix + " " + strings.Join(names, " ")}, len(names), pendingPkgs
+}
+
+func buildFindingsView(base, pm string, q url.Values, list []report.Finding) findingsView {
+	fv := findingsView{View: "packages", Sev: q.Get("sev"), Fixable: q.Get("fix") == "1"}
+	if q.Get("view") == "all" {
+		fv.View = "all"
+	}
+	if _, ok := severityRank[fv.Sev]; !ok && fv.Sev != "kev" && fv.Sev != "unknown" {
+		fv.Sev = ""
+	}
+	fv.Page, _ = strconv.Atoi(q.Get("page"))
+
+	var kept []report.Finding
+	for _, f := range list {
+		if fv.Fixable && f.Fixed == "" {
+			continue
+		}
+		switch fv.Sev {
+		case "":
+		case "kev":
+			if !f.KEV {
+				continue
+			}
+		case "unknown":
+			if _, known := severityRank[f.Severity]; known {
+				continue
+			}
+		default:
+			if f.Severity != fv.Sev {
+				continue
+			}
+		}
+		kept = append(kept, f)
+	}
+	fv.Total = len(kept)
+	fv.FixCmd, fv.FixPkgs, fv.FixPending = fixCommand(pm, kept)
+
+	n := len(kept)
+	if fv.View == "packages" {
+		fv.Groups = groupByPackage(kept)
+		n = len(fv.Groups)
+	}
+	fv.Pages = max(1, (n+findingsPerPage-1)/findingsPerPage)
+	fv.Page = min(max(fv.Page, 1), fv.Pages)
+	lo, hi := (fv.Page-1)*findingsPerPage, min(fv.Page*findingsPerPage, n)
+	if fv.View == "packages" {
+		fv.Groups = fv.Groups[lo:hi]
+	} else {
+		fv.Rows = kept[lo:hi]
+	}
+
+	link := func(change map[string]string) string {
+		v := url.Values{}
+		set := func(k, val, dflt string) {
+			if val != "" && val != dflt {
+				v.Set(k, val)
+			}
+		}
+		cur := map[string]string{"view": fv.View, "sev": fv.Sev, "fix": map[bool]string{true: "1"}[fv.Fixable]}
+		for k, val := range change {
+			cur[k] = val
+		}
+		set("view", cur["view"], "packages")
+		set("sev", cur["sev"], "")
+		set("fix", cur["fix"], "")
+		set("page", change["page"], "1") // any other change goes back to page 1
+		if len(v) == 0 {
+			return base + "#findings"
+		}
+		return base + "?" + v.Encode() + "#findings"
+	}
+	fv.SevLinks = map[string]string{}
+	for _, s := range []string{"kev", "critical", "high", "medium", "low", "unknown"} {
+		target := s
+		if fv.Sev == s {
+			target = "" // clicking the active filter clears it
+		}
+		fv.SevLinks[s] = link(map[string]string{"sev": target})
+	}
+	fv.AllSevLink = link(map[string]string{"sev": ""})
+	fv.FixLink = map[string]string{"on": link(map[string]string{"fix": "1"}), "off": link(map[string]string{"fix": ""})}
+	fv.ViewLink = map[string]string{"packages": link(map[string]string{"view": "packages"}), "all": link(map[string]string{"view": "all"})}
+	if fv.Page > 1 {
+		fv.PrevLink = link(map[string]string{"page": strconv.Itoa(fv.Page - 1)})
+	}
+	if fv.Page < fv.Pages {
+		fv.NextLink = link(map[string]string{"page": strconv.Itoa(fv.Page + 1)})
+	}
+	return fv
+}
+
+// groupByPackage folds findings into one row per package, most urgent
+// first: known-exploited, then worst severity, then how many.
+func groupByPackage(list []report.Finding) []pkgGroup {
+	idx := map[string]int{}
+	var groups []pkgGroup
+	for _, f := range list {
+		key := f.Package + "\x00" + f.Version
+		i, ok := idx[key]
+		if !ok {
+			i = len(groups)
+			idx[key] = i
+			groups = append(groups, pkgGroup{Package: f.Package, Version: f.Version, Binaries: f.Binaries, BySev: map[string]int{}})
+		}
+		g := &groups[i]
+		g.Total++
+		g.Findings = append(g.Findings, f)
+		if f.KEV {
+			g.KEV++
+		}
+		sev := f.Severity
+		if _, known := severityRank[sev]; !known {
+			sev = "unknown"
+		}
+		g.BySev[sev]++
+		if severityRank[f.Severity] > severityRank[g.Worst] || g.Worst == "" {
+			g.Worst = sev
+		}
+		if f.Fixed != "" {
+			g.Fixable++
+			g.FixPending = g.FixPending || f.FixPending
+		}
+	}
+	slices.SortStableFunc(groups, func(a, b pkgGroup) int {
+		for _, d := range [][2]int{
+			{a.KEV, b.KEV}, {severityRank[a.Worst], severityRank[b.Worst]},
+			{a.BySev["critical"], b.BySev["critical"]}, {a.BySev["high"], b.BySev["high"]}, {a.Total, b.Total},
+		} {
+			if d[0] != d[1] {
+				return d[1] - d[0]
+			}
+		}
+		return strings.Compare(a.Package, b.Package)
+	})
+	return groups
+}
