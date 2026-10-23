@@ -1,7 +1,7 @@
 {{define "content"}}{{with .Body}}
 <div class="head">
   <h1>Hosts</h1>
-<p><a href="/hosts/new">+ Add a host</a></p>
+  <a class="button head-action" href="/hosts/new">Add a host</a>
   {{if .ShowOrgs}}
   <form method="get" action="/hosts" class="filter">
     <label>Org

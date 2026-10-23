@@ -1,7 +1,7 @@
 {{define "content"}}{{with .Body}}
 <h1>Drift</h1>
 <p class="muted">Hosts that share a tag should usually match. This shows packages that are missing on some of them or installed at different versions.</p>
-<form method="get" class="row">
+<form method="get" class="row card">
   <label>Tag <select name="tag">{{range .Tags}}<option value="{{.}}"{{if eq . $.Body.Tag}} selected{{end}}>{{.}}</option>{{end}}</select></label>
   <button type="submit">Compare</button>
 </form>

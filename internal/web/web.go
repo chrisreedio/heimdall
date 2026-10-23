@@ -25,6 +25,7 @@ import (
 
 	"github.com/chrisreedio/heimdall/internal/auth"
 	"github.com/chrisreedio/heimdall/internal/auth/entra"
+	"github.com/chrisreedio/heimdall/internal/report"
 	"github.com/chrisreedio/heimdall/internal/search"
 	"github.com/chrisreedio/heimdall/internal/store"
 	"github.com/chrisreedio/heimdall/internal/updates"
@@ -418,6 +419,22 @@ var funcs = template.FuncMap{
 			return "never"
 		}
 		return t.Local().Format("2006-01-02 15:04")
+	},
+	"day": func(t time.Time) string {
+		if t.IsZero() {
+			return ""
+		}
+		return t.Local().Format("2006-01-02")
+	},
+	// fixable keeps the findings that have (want=true) or lack a fix.
+	"fixable": func(fs []report.Finding, want bool) []report.Finding {
+		var out []report.Finding
+		for _, f := range fs {
+			if (f.Fixed != "") == want {
+				out = append(out, f)
+			}
+		}
+		return out
 	},
 	"date": func(t *time.Time) string {
 		if t == nil {
