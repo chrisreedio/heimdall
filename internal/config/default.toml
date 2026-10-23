@@ -62,6 +62,11 @@ enabled  = false
 listen   = "127.0.0.1:8090"
 base_url = "http://127.0.0.1:8090"
 
+[updates]
+# Once a day, ask GitHub for the latest release's version number and show
+# admins a banner when a newer one exists. Nothing is downloaded.
+check = true
+
 [notify]
 # Counts-only digest (no hostnames, packages or CVEs), e.g. every = "24h".
 every          = "0"

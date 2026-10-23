@@ -22,8 +22,10 @@ import (
 	"github.com/chrisreedio/heimdall/internal/findings"
 	"github.com/chrisreedio/heimdall/internal/ingest"
 	"github.com/chrisreedio/heimdall/internal/mcp"
+	"github.com/chrisreedio/heimdall/internal/netx"
 	"github.com/chrisreedio/heimdall/internal/search"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/updates"
 	"github.com/chrisreedio/heimdall/internal/web"
 )
 
@@ -187,6 +189,7 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger) (*http.Ser
 		LocalLogin:   cfg.Auth.LocalLogin,
 		EntraTenants: cfg.Auth.Entra.AllowedTenants,
 		IngestURL:    cfg.Ingest.PublicURL,
+		Updates:      updateChecker(cfg, log),
 	}, s, authn, searchFn, log.With("component", "ui"), time.Now)
 	if err != nil {
 		return nil, err
@@ -461,4 +464,15 @@ func cmdCollectorList(a *app, args []string) error {
 		rows = append(rows, []string{"UNTRUSTED", k.Version + " (claimed)", k.SHA256, strconv.Itoa(k.Hosts), ""})
 	}
 	return table(a, "STATUS\tVERSION\tSHA256\tHOSTS\tNOTE", rows)
+}
+
+// updateChecker starts the daily release check (if enabled) and returns
+// what the UI asks for its admin banner.
+func updateChecker(cfg config.Config, log *slog.Logger) func() (updates.Release, bool) {
+	if !cfg.Updates.Check {
+		return nil
+	}
+	c := &updates.Checker{HTTP: netx.New(netx.ReleaseHosts, "heimdall/"+version), Current: version}
+	go c.Run(context.Background(), func(msg string, args ...any) { log.Info(msg, args...) })
+	return c.Available
 }

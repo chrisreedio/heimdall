@@ -75,10 +75,22 @@ The plaintext copy exists only briefly, owner-only, and is removed on exit. Sche
 
 ## Upgrades
 
-1. Download the release and verify it (see the release notes: `cosign verify-blob` + `sha256sum -c`).
-2. `sudo systemctl stop heimdall && sudo install -m 0755 heimdall-linux-amd64 /usr/local/bin/heimdall`
-3. `hd migrate && sudo systemctl start heimdall`
-4. When a new collector ships: `hd collector trust --version … <sha256>` **before** rolling it out, so hosts don't raise "collector changed".
+Admins see a banner in the UI when a newer release exists. The hub checks GitHub once a day for the latest version number; turn this off with `[updates] check = false`. The hub never downloads or installs anything itself.
+
+**Upgrade the hub** with the new release's installer. No flags are needed on an existing hub:
+```sh
+curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/vX.Y.Z/install-hub.sh
+sudo sh install-hub.sh
+```
+It verifies the release, then:
+1. Stops the hub and keeps the previous binary (`/usr/local/bin/heimdall.previous`) and a pre-upgrade copy of the database (`heimdall.db.pre-upgrade`, owner-only).
+2. Installs the new binary and unit, runs migrations, starts the hub, and checks that it answers.
+3. **Rolls back automatically** (old binary and old database) if any step fails.
+4. Trusts the release's collector checksum, so servers that update don't raise "collector changed" anomalies.
+
+Your config, data, Tailscale and Caddy settings are left as they are.
+
+**Upgrade servers** by re-running `install.sh` from the new release on each one. The **Hosts → Add a host** page shows the current command, and you can skip the token prompt with `--token-file /etc/heimdall/token`.
 
 ## Hardening checklist
 
@@ -87,4 +99,4 @@ The plaintext copy exists only briefly, owner-only, and is removed on exit. Sche
 - [ ] Disk or volume encryption on the hub
 - [ ] Encrypted backups shipped off-box
 - [ ] `auth.local_login = false` once SSO works (break-glass via the CLI)
-- [ ] Egress limited to the feed hosts (firewall or proxy): `api.osv.dev`, `www.cisa.gov`, `endoflife.date`, `api.first.org`, and `login.microsoftonline.com` with SSO
+- [ ] Egress limited to the feed hosts (firewall or proxy): `api.osv.dev`, `www.cisa.gov`, `endoflife.date`, `api.first.org`, `api.github.com` (update check), and `login.microsoftonline.com` with SSO

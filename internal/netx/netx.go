@@ -27,6 +27,9 @@ var FeedHosts = []string{
 	"api.first.org", // EPSS (M6)
 }
 
+// ReleaseHosts are where the hub checks for newer releases (version only).
+var ReleaseHosts = []string{"api.github.com"}
+
 // EntraHosts are the hosts single sign-on may contact. They're kept apart
 // from FeedHosts so feed sync can never reach the identity provider.
 var EntraHosts = []string{"login.microsoftonline.com"}

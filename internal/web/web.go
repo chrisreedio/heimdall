@@ -27,6 +27,7 @@ import (
 	"github.com/chrisreedio/heimdall/internal/auth/entra"
 	"github.com/chrisreedio/heimdall/internal/search"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/updates"
 )
 
 // Authenticator signs users in and resolves session cookies.
@@ -49,9 +50,10 @@ type SSO interface {
 type SearchFunc func(ctx context.Context, query string, scope store.Scope) (*search.Result, error)
 
 type Config struct {
-	IngestURL  string        // ingest.public_url, for install commands
-	BaseURL    string        // e.g. https://heimdall.internal or http://127.0.0.1:8080
-	StaleAfter time.Duration // hosts.stale_after
+	Updates    func() (updates.Release, bool) // newer release for the admin banner; nil = off
+	IngestURL  string                         // ingest.public_url, for install commands
+	BaseURL    string                         // e.g. https://heimdall.internal or http://127.0.0.1:8080
+	StaleAfter time.Duration                  // hosts.stale_after
 	Version    string
 	SessionMax time.Duration // cookie Max-Age
 
@@ -335,12 +337,19 @@ type page struct {
 	Viewer  *auth.Viewer
 	CSRF    string
 	Version string
-	Refresh string // same-site path for a meta refresh (SSO hand-off), or ""
+	Refresh string           // same-site path for a meta refresh (SSO hand-off), or ""
+	Update  *updates.Release // a newer release, shown to admins
 	Body    any
 }
 
 func (s *server) render(w http.ResponseWriter, r *http.Request, status int, name string, v *auth.Viewer, title, nav string, body any) {
-	s.renderPage(w, r, status, name, page{Title: title, Nav: nav, Viewer: v, Body: body})
+	p := page{Title: title, Nav: nav, Viewer: v, Body: body}
+	if v != nil && v.IsAdmin && s.cfg.Updates != nil {
+		if rel, ok := s.cfg.Updates(); ok {
+			p.Update = &rel
+		}
+	}
+	s.renderPage(w, r, status, name, p)
 }
 
 // renderPage renders a fully specified page (e.g. one with a Refresh).

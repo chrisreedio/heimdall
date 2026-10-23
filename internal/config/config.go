@@ -24,14 +24,21 @@ import (
 )
 
 type Config struct {
-	Database string `toml:"database"`
-	UI       UI     `toml:"ui"`
-	Auth     Auth   `toml:"auth"`
-	Ingest   Ingest `toml:"ingest"`
-	Feeds    Feeds  `toml:"feeds"`
-	Hosts    Hosts  `toml:"hosts"`
-	Notify   Notify `toml:"notify"`
-	MCP      MCP    `toml:"mcp"`
+	Database string  `toml:"database"`
+	UI       UI      `toml:"ui"`
+	Auth     Auth    `toml:"auth"`
+	Ingest   Ingest  `toml:"ingest"`
+	Feeds    Feeds   `toml:"feeds"`
+	Hosts    Hosts   `toml:"hosts"`
+	Notify   Notify  `toml:"notify"`
+	MCP      MCP     `toml:"mcp"`
+	Updates  Updates `toml:"updates"`
+}
+
+// Updates controls the daily check for a newer release (admins see a
+// banner). It reads only the latest version number from GitHub.
+type Updates struct {
+	Check bool `toml:"check"`
 }
 
 // MCP configures the read-only Model Context Protocol endpoint for AI
@@ -133,9 +140,10 @@ func Default() Config {
 			EPSS:         true,
 			EndOfLife:    true,
 		},
-		Hosts:  Hosts{StaleAfter: Duration{72 * time.Hour}, KeepFor: Duration{180 * 24 * time.Hour}, KeepMin: 30},
-		Notify: Notify{SMTPPort: 587, WebhookFormat: "slack"},
-		MCP:    MCP{Listen: "127.0.0.1:8090", BaseURL: "http://127.0.0.1:8090"},
+		Hosts:   Hosts{StaleAfter: Duration{72 * time.Hour}, KeepFor: Duration{180 * 24 * time.Hour}, KeepMin: 30},
+		Notify:  Notify{SMTPPort: 587, WebhookFormat: "slack"},
+		MCP:     MCP{Listen: "127.0.0.1:8090", BaseURL: "http://127.0.0.1:8090"},
+		Updates: Updates{Check: true},
 	}
 }
 

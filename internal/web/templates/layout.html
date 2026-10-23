@@ -34,6 +34,7 @@
   {{end}}
 </header>
 <main>
+{{with .Update}}<p class="notice" role="status">Heimdall <strong>{{.Version}}</strong> is available (this hub runs {{$.Version}}). <a href="{{.URL}}" rel="noopener">Release notes</a> · upgrade on the hub with <code>sudo sh install-hub.sh</code> from that release.</p>{{end}}
 {{template "content" .}}
 </main>
 <footer>Heimdall {{.Version}}</footer>
