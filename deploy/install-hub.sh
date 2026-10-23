@@ -67,7 +67,8 @@ upgrade=0
 if [ "$upgrade" = 1 ]; then
 	# Existing hub: networking (tailscale serve, Caddy) and the org stay as
 	# they are; only the software is upgraded.
-	org=${org:-existing} ingest_host='' tailnet_only=1 use_ts=0
+	# --ingest-host and --admin still finish those steps if given.
+	org=${org:-existing} tailnet_only=1 use_ts=0
 fi
 [ -n "$org" ] || usage
 case $org in *[!a-z0-9-]* | -* | *-) die "--org must be lowercase letters, digits and '-'" ;; esac
@@ -186,7 +187,41 @@ collector_version=$(sed -n 's/^VERSION=//p' "$work/collect.sh" | head -n 1)
 collector_sha=$(sha256sum "$work/collect.sh" | cut -d ' ' -f 1)
 hd collector trust --version "$collector_version" --note "release $version" "$collector_sha" >/dev/null 2>&1 || true
 
+# setup_caddy publishes only the ingest path (with --ingest-host).
+setup_caddy() {
+	if [ -n "$ingest_host" ]; then
+		say "Installing Caddy for public ingest on $ingest_host"
+		have caddy || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq caddy >/dev/null; }
+		cat >/etc/caddy/Caddyfile <<EOF
+# Written by Heimdall's install-hub.sh: only the ingest path is public.
+$ingest_host {
+	@ingest path /api/v1/ingest
+	request_body @ingest {
+		max_size 6MB
+	}
+	reverse_proxy @ingest 127.0.0.1:8443
+	respond 404
+}
+EOF
+		systemctl reload caddy 2>/dev/null || systemctl restart caddy
+	fi
+}
+
+# setup_admin creates the first admin (with --admin) if missing.
+setup_admin() {
+	if [ -n "$admin" ] && ! hd user list 2>/dev/null | grep -q "^$admin "; then
+		if [ -t 0 ]; then
+			say "Creating admin $admin (choose a password, then add the TOTP secret to your authenticator)"
+			hd user create --admin "$admin"
+		else
+			say "No terminal: create the admin later with: cd /var/lib/heimdall && sudo runuser -u heimdall-hub -- heimdall -c /etc/heimdall/heimdall.toml user create --admin $admin"
+		fi
+	fi
+}
+
 if [ "$upgrade" = 1 ]; then
+	setup_caddy
+	setup_admin
 	say "Done. Previous binary: /usr/local/bin/heimdall.previous; pre-upgrade database: $db.pre-upgrade"
 	say "Servers: re-run install.sh from $version to update their collectors."
 	exit 0
@@ -198,31 +233,9 @@ if [ -n "$ts_name" ]; then
 	[ "$mcp" = 0 ] || tailscale serve --bg --https 8444 http://127.0.0.1:8090 >/dev/null
 	[ -n "$ingest_host" ] || tailscale serve --bg --https 8443 http://127.0.0.1:8443 >/dev/null
 fi
-if [ -n "$ingest_host" ]; then
-	say "Installing Caddy for public ingest on $ingest_host"
-	have caddy || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq caddy >/dev/null; }
-	cat >/etc/caddy/Caddyfile <<EOF
-# Written by Heimdall's install-hub.sh: only the ingest path is public.
-$ingest_host {
-	@ingest path /api/v1/ingest
-	request_body @ingest {
-		max_size 6MB
-	}
-	reverse_proxy @ingest 127.0.0.1:8443
-	respond 404
-}
-EOF
-	systemctl reload caddy 2>/dev/null || systemctl restart caddy
-fi
 
-if [ -n "$admin" ] && ! hd user list 2>/dev/null | grep -q "^$admin "; then
-	if [ -t 0 ]; then
-		say "Creating admin $admin (choose a password, then add the TOTP secret to your authenticator)"
-		hd user create --admin "$admin"
-	else
-		say "No terminal: create the admin later with the command below"
-	fi
-fi
+setup_caddy
+setup_admin
 
 cat >&2 <<EOF
 
