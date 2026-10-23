@@ -559,11 +559,13 @@ var funcs = template.FuncMap{
 	},
 }
 
-func ago(t time.Time) string {
+func ago(t time.Time) string { return agoAt(t, time.Now()) }
+
+func agoAt(t, now time.Time) string {
 	if t.IsZero() {
 		return "never"
 	}
-	d := time.Since(t)
+	d := now.Sub(t)
 	switch {
 	case d < time.Minute:
 		return "just now"
@@ -575,8 +577,9 @@ func ago(t time.Time) string {
 	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 }
 
-// dayAgo describes a date relative to today: "today", "yesterday",
-// "3 days ago", then "Oct 23, 2026" once it's a month or more back.
+// dayAgo describes a date relative to today: "Today 2:01 PM (3h ago)" and
+// "Yesterday 4:10 PM" for timestamps ("today" and "yesterday" for plain
+// dates), "3 days ago", then "Oct 23, 2026" once it's a month or more back.
 func dayAgo(t *time.Time, now time.Time) string {
 	if t == nil {
 		return ""
@@ -587,10 +590,14 @@ func dayAgo(t *time.Time, now time.Time) string {
 	switch {
 	case days < 0:
 		return t.Format("Jan 2, 2006")
-	case days == 0:
+	case days == 0 && isPlainDate(*t):
 		return "today"
-	case days == 1:
+	case days == 0:
+		return "Today " + t.Local().Format("3:04 PM") + " (" + agoAt(*t, now) + ")"
+	case days == 1 && isPlainDate(*t):
 		return "yesterday"
+	case days == 1:
+		return "Yesterday " + t.Local().Format("3:04 PM")
 	case days < 30:
 		return fmt.Sprintf("%d days ago", days)
 	}
@@ -601,8 +608,14 @@ func dayAgo(t *time.Time, now time.Time) string {
 // dates, stored as midnight UTC), which would otherwise shift to the day
 // before for anyone west of UTC.
 func asDay(t time.Time) time.Time {
-	if u := t.UTC(); u.Hour() == 0 && u.Minute() == 0 && u.Second() == 0 && u.Nanosecond() == 0 {
-		return u
+	if isPlainDate(t) {
+		return t.UTC()
 	}
 	return t.Local()
+}
+
+// isPlainDate reports whether t is a date without a time (midnight UTC).
+func isPlainDate(t time.Time) bool {
+	u := t.UTC()
+	return u.Hour() == 0 && u.Minute() == 0 && u.Second() == 0 && u.Nanosecond() == 0
 }

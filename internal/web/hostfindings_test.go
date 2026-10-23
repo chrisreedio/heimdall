@@ -88,10 +88,15 @@ func TestDayAgo(t *testing.T) {
 		v := time.Date(y, m, d, 9, 0, 0, 0, time.Local)
 		return &v
 	}
+	plain := func(y int, m time.Month, d int) *time.Time { // a date without a time
+		v := time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+		return &v
+	}
 	for _, c := range []struct {
 		t    *time.Time
 		want string
-	}{{at(2026, 10, 25), "today"}, {at(2026, 10, 24), "yesterday"}, {at(2026, 10, 22), "3 days ago"},
+	}{{at(2026, 10, 25), "Today 9:00 AM (6h ago)"}, {at(2026, 10, 24), "Yesterday 9:00 AM"}, {at(2026, 10, 22), "3 days ago"},
+		{plain(2026, 10, 25), "today"}, {plain(2026, 10, 24), "yesterday"},
 		{at(2026, 9, 1), "Sep 1, 2026"}, {at(2026, 11, 2), "Nov 2, 2026"}, {nil, ""}} {
 		if got := dayAgo(c.t, now); got != c.want {
 			t.Errorf("dayAgo(%v) = %q, want %q", c.t, got, c.want)
