@@ -8,7 +8,7 @@ import "testing"
 
 // Release builds must never serve from disk or expose the dev routes.
 func TestDevModeAbsentInReleaseBuilds(t *testing.T) {
-	if devMode || devRoutes != nil {
+	if devMode || devSetup != nil || devLoginEmail != "" {
 		t.Fatal("dev mode is compiled into a non-dev build")
 	}
 	if templatesFS != templateFS || staticFiles != staticFS {

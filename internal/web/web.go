@@ -82,10 +82,11 @@ var staticFS embed.FS
 // embedded copies; a dev build (go build -tags dev, see dev.go) can point
 // these at the source tree for live editing.
 var (
-	templatesFS fs.FS = templateFS
-	staticFiles fs.FS = staticFS
-	devMode           = false
-	devRoutes   func(*http.ServeMux)
+	templatesFS   fs.FS = templateFS
+	staticFiles   fs.FS = staticFS
+	devMode             = false
+	devLoginEmail       = "" // dev builds: the one-click test sign-in, if enabled
+	devSetup      func(*server, *http.ServeMux)
 )
 
 type server struct {
@@ -116,13 +117,12 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	if s.secure {
 		s.cookieName = "__Host-heimdall"
 	}
+	mux := http.NewServeMux()
+	if devSetup != nil {
+		devSetup(s, mux)
+	}
 	if s.pages, err = parsePages(); err != nil {
 		return nil, err
-	}
-
-	mux := http.NewServeMux()
-	if devRoutes != nil {
-		devRoutes(mux)
 	}
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.loginSubmit)
@@ -439,8 +439,9 @@ func parsePages() (map[string]*template.Template, error) {
 var severities = map[string]bool{"critical": true, "high": true, "medium": true, "low": true}
 
 var funcs = template.FuncMap{
-	"devMode": func() bool { return devMode },
-	"userRef": store.UserRef,
+	"devMode":  func() bool { return devMode },
+	"devLogin": func() string { return devLoginEmail },
+	"userRef":  store.UserRef,
 	"hostURL": func(org, host string) string {
 		return "/hosts/" + url.PathEscape(org) + "/" + url.PathEscape(host)
 	},

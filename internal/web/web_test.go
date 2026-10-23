@@ -27,6 +27,7 @@ const goodToken = "tok-valid"
 
 type fakeAuth struct {
 	loggedOut  []string
+	devLogins  []string     // dev builds only
 	viewer     *auth.Viewer // overrides the default admin viewer when set
 	identities []store.EntraIdentity
 }

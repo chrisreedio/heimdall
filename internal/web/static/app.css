@@ -384,3 +384,11 @@ details.nofix > summary { font-weight: 600; color: var(--muted); margin: 12px 0;
   .tabs > label { padding: 6px 9px; margin-right: 2px; font-size: 13px; }
   .wizard .card { padding: 16px; }
 }
+
+/* Dev builds: the one-click test sign-in. */
+.dev-login { margin: 0 0 18px; padding-bottom: 18px; border-bottom: 1px dashed var(--border); }
+.dev-login button {
+  width: 100%; padding: 10px; font-weight: 600;
+  background: var(--med-bg); color: var(--med-fg); border: 1px dashed var(--med-fg);
+}
+.dev-login .fine { margin: 8px 0 0; }
