@@ -493,3 +493,45 @@ summary.button {
   background: none; color: var(--text); border: 1px solid var(--border);
 }
 summary.button:hover { background: var(--code-bg); }
+
+/* Filter chips (Hosts by environment, Sites by label). */
+.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.filter-chips a {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text); font-size: 13px; text-decoration: none;
+}
+.filter-chips.labels a { text-transform: capitalize; }
+.filter-chips a span:not(.label-dot) { color: var(--muted); font-size: 12px; }
+.filter-chips a:hover { background: var(--code-bg); }
+.filter-chips a[aria-current] { background: var(--code-bg); border-color: var(--link); font-weight: 600; }
+
+/* Site labels. */
+.site-label {
+  display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  text-transform: capitalize; border: 1px solid transparent; vertical-align: 1px;
+}
+.site-label.label-production { background: var(--ok-bg); color: var(--ok-fg); }
+.site-label.label-staging { background: var(--med-bg); color: var(--med-fg); }
+.site-label.label-development { background: var(--low-bg); color: var(--low-fg); }
+.site-label.suggested { background: none; border-style: dashed; border-color: currentColor; }
+.label-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; }
+.label-dot.label-production { background: var(--ok-fg); }
+.label-dot.label-staging { background: var(--med-fg); }
+.label-dot.label-development { background: var(--low-fg); }
+details.label-pick { display: inline-block; margin-left: 4px; }
+details.label-pick > summary { list-style: none; cursor: pointer; color: var(--link); font-weight: 400; margin: 0; display: inline; }
+details.label-pick > summary::-webkit-details-marker { display: none; }
+details.label-pick form { margin-top: 6px; display: flex; gap: 6px; }
+details.label-pick select { padding: 4px 6px; font-size: 13px; }
+details.label-pick button { padding: 4px 10px; font-size: 13px; }
+
+/* Environment on the host page, and the "new environment" field. */
+.env-badge {
+  display: inline-block; padding: 2px 10px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  background: var(--code-bg); border: 1px solid var(--border);
+}
+.host-tags .sep { color: var(--muted); margin: 0 2px; }
+.new-env { margin-top: 10px; }
+.new-env label { font-weight: 600; font-size: 13px; }
+.new-env input { margin-top: 6px; }
+.js-new-env .new-env[hidden] { display: none; }

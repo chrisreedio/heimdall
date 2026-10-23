@@ -108,3 +108,32 @@ document.addEventListener("DOMContentLoaded", function () {
     add(orig.value);
   });
 });
+
+// "New environment..." in environment pickers: the separate field is only
+// shown once that option is chosen (without JavaScript it's always there).
+document.addEventListener("DOMContentLoaded", function () {
+  document.querySelectorAll(".new-env[data-new-env-for]").forEach(function (box) {
+    var select = document.getElementById(box.getAttribute("data-new-env-for"));
+    var input = box.querySelector("input");
+    if (!select || !input) return;
+    var opt = document.createElement("option");
+    // Keep the "org/" prefix the add-host picker's values carry.
+    var first = select.options.length ? select.options[0].value : "";
+    opt.value = (first.indexOf("/") > 0 ? first.slice(0, first.indexOf("/") + 1) : "") + "__new__";
+    opt.textContent = "New environment…";
+    select.appendChild(opt);
+    var label = box.querySelector("label");
+    if (label && label.firstChild && label.firstChild.nodeType === 3) label.firstChild.textContent = "New environment ";
+    var opt2 = label && label.querySelector(".optional");
+    if (opt2) opt2.remove();
+    function sync() {
+      var on = select.value === opt.value;
+      box.hidden = !on;
+      if (!on) input.value = "";
+    }
+    if (input.value) select.value = opt.value;
+    select.addEventListener("change", function () { sync(); if (select.value === opt.value) input.focus(); });
+    document.documentElement.classList.add("js-new-env");
+    sync();
+  });
+});

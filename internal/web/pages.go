@@ -239,6 +239,10 @@ type hostsBody struct {
 	Orgs     []store.Org
 	ShowOrgs bool
 	Hosts    []hostsRow
+	Env      string         // filter
+	Envs     []string       // environments that have hosts
+	EnvCount map[string]int // hosts per environment, before filtering
+	Total    int
 }
 
 type hostsRow struct {
@@ -267,11 +271,20 @@ func (s *server) hostsPage(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		s.fail(w, r, v, err)
 		return
 	}
-	body := hostsBody{Org: org, Orgs: orgs, ShowOrgs: len(orgs) > 1}
+	body := hostsBody{Org: org, Orgs: orgs, ShowOrgs: len(orgs) > 1, EnvCount: map[string]int{}, Total: len(all)}
+	body.Env = r.URL.Query().Get("env")
 	for _, h := range all {
+		if body.EnvCount[h.EnvSlug] == 0 {
+			body.Envs = append(body.Envs, h.EnvSlug)
+		}
+		body.EnvCount[h.EnvSlug]++
+		if body.Env != "" && h.EnvSlug != body.Env {
+			continue
+		}
 		row, ok := byName[h.OrgSlug+"/"+h.Name]
 		body.Hosts = append(body.Hosts, hostsRow{Host: h, Reported: ok, Row: row})
 	}
+	slices.Sort(body.Envs)
 	s.render(w, r, http.StatusOK, "hosts", v, "Hosts", "hosts", body)
 }
 
@@ -281,8 +294,10 @@ type hostBody struct {
 	Org, Name   string
 	AutoName    bool // takes the hostname it reports first
 	Tags        []string
-	CanAdmin    bool   // may rename the host
-	Notice      string // fixed messages only (see renameNotices)
+	Env         string
+	Envs        []store.Env // the org's environments, for moving the host
+	CanAdmin    bool        // may rename the host
+	Notice      string      // fixed messages only (see renameNotices)
 	RenameError string
 	Reported    bool
 	Summary     store.SnapshotSummary
@@ -326,6 +341,13 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		s.fail(w, r, v, err)
 		return
 	}
+	body.Env = host.EnvSlug
+	if body.CanAdmin {
+		if body.Envs, err = s.st.ListEnvs(ctx, host.OrgSlug); err != nil {
+			s.fail(w, r, v, err)
+			return
+		}
+	}
 	body.Notice = renameNotices[r.URL.Query().Get("renamed")]
 	body.RenameError = renameErrors[r.URL.Query().Get("rename_error")]
 
@@ -363,6 +385,19 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		}
 	}
 	body.OSFindings, body.Sites = splitFindings(body.Report)
+	labels, err := s.st.SiteLabelsByName(ctx)
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	for i := range body.Sites {
+		site := &body.Sites[i]
+		if l, ok := labels[store.SiteLabelKey(host.OrgSlug, host.Name, site.Root)]; ok {
+			site.Label, site.LabelSet = l, true
+		} else {
+			site.Label = suggestSiteLabel(site.ServerNames)
+		}
+	}
 
 	inv, err := s.st.Inventory(ctx, host)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
@@ -465,6 +500,55 @@ func (s *server) searchPage(w http.ResponseWriter, r *http.Request, v *auth.View
 type siteRow struct {
 	report.Site
 	Org, Host string
+	Label     string // production, staging, development, or "" if unknown
+	LabelSet  bool   // set by an admin (otherwise suggested from the names)
+	CanAdmin  bool
+}
+
+// suggestSiteLabel guesses a site's label from its first server name:
+// staging.example.com is staging, dev.example.com is development, and a
+// plain name is production. "" when the site has no name to go by.
+func suggestSiteLabel(names []string) string {
+	if len(names) == 0 || names[0] == "_" || names[0] == "" {
+		return ""
+	}
+	first, _, _ := strings.Cut(strings.ToLower(names[0]), ".")
+	for _, part := range strings.FieldsFunc(first, func(r rune) bool { return r == '-' || r == '_' }) {
+		switch part {
+		case "staging", "stage", "stg", "uat", "qa", "preview", "preprod":
+			return "staging"
+		case "dev", "develop", "development", "test", "testing", "sandbox", "local":
+			return "development"
+		}
+	}
+	return "production"
+}
+
+// labelSites fills in each site's label: the one an admin set, or the
+// suggestion.
+func (s *server) labelSites(r *http.Request, v *auth.Viewer, rows []siteRow) error {
+	set, err := s.st.SiteLabelsByName(r.Context())
+	if err != nil {
+		return err
+	}
+	orgs, err := s.st.ListOrgs(r.Context())
+	if err != nil {
+		return err
+	}
+	admin := map[string]bool{}
+	for _, o := range orgs {
+		admin[o.Slug] = v.Scope.CanAdmin(o.ID)
+	}
+	for i := range rows {
+		row := &rows[i]
+		if l, ok := set[store.SiteLabelKey(row.Org, row.Host, row.Root)]; ok {
+			row.Label, row.LabelSet = l, true
+		} else {
+			row.Label = suggestSiteLabel(row.ServerNames)
+		}
+		row.CanAdmin = admin[row.Org]
+	}
+	return nil
 }
 
 // lifeState classifies a lifecycle for badges: "eol", "soon" (≤90 days
@@ -497,6 +581,10 @@ type sitesBody struct {
 	Orgs     []store.Org
 	ShowOrgs bool
 	Sites    []siteRow
+	Label    string         // filter: production, staging, development, or ""
+	Counts   map[string]int // sites per label, before filtering
+	Labels   []string
+	Notice   string
 }
 
 func (s *server) sitesPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
@@ -510,11 +598,28 @@ func (s *server) sitesPage(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		s.fail(w, r, v, err)
 		return
 	}
-	body := sitesBody{Org: org, Orgs: orgs, ShowOrgs: len(orgs) > 1}
+	body := sitesBody{Org: org, Orgs: orgs, ShowOrgs: len(orgs) > 1, Labels: store.SiteLabels, Counts: map[string]int{}}
+	var all []siteRow
 	for _, h := range rep.Hosts {
 		for _, site := range h.Sites {
-			body.Sites = append(body.Sites, siteRow{Site: site, Org: h.Org, Host: h.Name})
+			all = append(all, siteRow{Site: site, Org: h.Org, Host: h.Name})
 		}
+	}
+	if err := s.labelSites(r, v, all); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if l := r.URL.Query().Get("label"); slices.Contains(store.SiteLabels, l) {
+		body.Label = l
+	}
+	for _, row := range all {
+		body.Counts[row.Label]++
+		if body.Label == "" || row.Label == body.Label {
+			body.Sites = append(body.Sites, row)
+		}
+	}
+	if r.URL.Query().Get("labeled") == "1" {
+		body.Notice = "Label saved."
 	}
 	sortSites(body.Sites)
 	s.render(w, r, http.StatusOK, "sites", v, "Sites", "sites", body)
@@ -549,6 +654,8 @@ type siteSection struct {
 	report.Site
 	Findings []report.Finding
 	Command  *command
+	Label    string
+	LabelSet bool
 }
 
 var composerName = regexp.MustCompile(`^[a-z0-9]([_.-]?[a-z0-9]+)*/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$`)
@@ -619,11 +726,12 @@ func otpField(r *http.Request) string {
 // Fixed messages a rename redirect can ask the host page to show, so the
 // query string can't inject text.
 var (
-	renameNotices = map[string]string{"1": "Host renamed.", "tags": "Tags saved."}
+	renameNotices = map[string]string{"1": "Host renamed.", "tags": "Tags saved.", "env": "Environment changed."}
 	renameErrors  = map[string]string{
 		"invalid": "Names are letters, digits, '.', '-' or '_', starting and ending with a letter or digit.",
 		"exists":  "Another host in this organization already has that name.",
 		"tags":    "Tags are up to 64 lowercase letters, digits or ':._-'.",
+		"env":     "Environment names are 1-63 lowercase letters, digits or '-'.",
 	}
 )
 
@@ -675,5 +783,68 @@ func (s *server) hostTags(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		s.fail(w, r, v, err)
 	default:
 		http.Redirect(w, r, back+"?renamed=tags", http.StatusSeeOther)
+	}
+}
+
+// hostEnv moves a host to another environment, creating it if it's new
+// (org admins only).
+func (s *server) hostEnv(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	host, err := s.st.HostByName(r.Context(), r.PathValue("org"), r.PathValue("host"))
+	if err != nil || !v.Scope.CanAdmin(host.OrgID) {
+		s.notFound(w, r, v)
+		return
+	}
+	back := "/hosts/" + url.PathEscape(host.OrgSlug) + "/" + url.PathEscape(host.Name)
+	env := strings.ToLower(strings.TrimSpace(r.PostForm.Get("env")))
+	if n := strings.ToLower(strings.TrimSpace(r.PostForm.Get("new_env"))); n != "" {
+		env = n
+	}
+	if err := s.ensureEnv(r, v, host.OrgSlug, env); err != nil {
+		var verr *store.ValidationError
+		if errors.As(err, &verr) {
+			http.Redirect(w, r, back+"?rename_error=env", http.StatusSeeOther)
+			return
+		}
+		s.fail(w, r, v, err)
+		return
+	}
+	if err := s.st.MoveHost(r.Context(), actorOf(v), host.ID, env); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	http.Redirect(w, r, back+"?renamed=env", http.StatusSeeOther)
+}
+
+// ensureEnv creates an environment in an org unless it already exists.
+func (s *server) ensureEnv(r *http.Request, v *auth.Viewer, org, env string) error {
+	if _, err := s.st.CreateEnv(r.Context(), actorOf(v), org, env, ""); err != nil && !errors.Is(err, store.ErrExists) {
+		return err
+	}
+	return nil
+}
+
+// siteLabel sets or clears a site's label (org admins only).
+func (s *server) siteLabel(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	host, err := s.st.HostByName(r.Context(), r.PostForm.Get("org"), r.PostForm.Get("host"))
+	if err != nil || !v.Scope.CanAdmin(host.OrgID) {
+		s.notFound(w, r, v)
+		return
+	}
+	label := r.PostForm.Get("label")
+	if label == "auto" {
+		label = ""
+	}
+	var verr *store.ValidationError
+	switch err := s.st.SetSiteLabel(r.Context(), actorOf(v), host.ID, r.PostForm.Get("root"), label); {
+	case errors.As(err, &verr):
+		http.Redirect(w, r, "/sites", http.StatusSeeOther)
+	case err != nil:
+		s.fail(w, r, v, err)
+	default:
+		back := "/sites?labeled=1"
+		if f := r.PostForm.Get("filter"); slices.Contains(store.SiteLabels, f) {
+			back += "&label=" + f
+		}
+		http.Redirect(w, r, back, http.StatusSeeOther)
 	}
 }

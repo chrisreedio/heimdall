@@ -14,6 +14,10 @@
   </form>
   {{end}}
 </div>
+{{if gt (len .Envs) 1}}<nav class="filter-chips" aria-label="Environment">
+  <a href="/hosts{{with .Org}}?org={{.}}{{end}}"{{if not .Env}} aria-current="true"{{end}}>All <span>{{.Total}}</span></a>
+  {{range .Envs}}<a href="/hosts?env={{.}}{{with $.Body.Org}}&org={{.}}{{end}}"{{if eq . $.Body.Env}} aria-current="true"{{end}}>{{.}} <span>{{index $.Body.EnvCount .}}</span></a>{{end}}
+</nav>{{end}}
 {{if .Hosts}}
 <div class="scroll"><table>
   <thead><tr><th>Host</th>{{if .ShowOrgs}}<th>Org</th>{{end}}<th>Env</th><th>OS</th><th class="num">Open</th><th class="num">KEV</th><th class="num">Fixable</th><th>Tags</th><th>Last seen</th></tr></thead>

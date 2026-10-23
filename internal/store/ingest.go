@@ -24,6 +24,7 @@ type IngestHost struct {
 	Name     string
 	TokenID  int64 // 0 for imports
 	AutoName bool  // takes the hostname its collector reports
+	EnvSlug  string
 }
 
 // HostByToken resolves a live (unrevoked) token hash to its host.
@@ -50,10 +51,10 @@ func (s *Store) HostByName(ctx context.Context, orgSlug, name string) (IngestHos
 	}
 	var h IngestHost
 	err = s.db.QueryRowContext(ctx, `
-		SELECT h.id, h.org_id, o.slug, h.name, h.auto_name
-		FROM hosts h JOIN organizations o ON o.id = h.org_id
+		SELECT h.id, h.org_id, o.slug, h.name, h.auto_name, e.slug
+		FROM hosts h JOIN organizations o ON o.id = h.org_id JOIN environments e ON e.id = h.env_id
 		WHERE o.slug = ? AND h.name = ?`, orgSlug, name).
-		Scan(&h.ID, &h.OrgID, &h.OrgSlug, &h.Name, &h.AutoName)
+		Scan(&h.ID, &h.OrgID, &h.OrgSlug, &h.Name, &h.AutoName, &h.EnvSlug)
 	if errors.Is(err, sql.ErrNoRows) {
 		return IngestHost{}, fmt.Errorf("host %q in org %q: %w", name, orgSlug, ErrNotFound)
 	}
