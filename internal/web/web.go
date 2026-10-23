@@ -18,6 +18,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -218,11 +219,37 @@ func (s *server) requireAdmin(h authedHandler) authedHandler {
 // sameOrigin requires the Origin header (or, if absent, the Referer) to
 // match the configured base URL.
 func (s *server) sameOrigin(r *http.Request) bool {
+	origins := loopbackAliases(s.origin)
 	if o := r.Header.Get("Origin"); o != "" {
-		return o == s.origin
+		return slices.Contains(origins, o)
 	}
 	ref := r.Header.Get("Referer")
-	return ref == s.origin || strings.HasPrefix(ref, s.origin+"/")
+	for _, o := range origins {
+		if ref == o || strings.HasPrefix(ref, o+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// loopbackAliases returns the origins equivalent to origin. For a loopback
+// base URL, the same server is reachable as localhost, 127.0.0.1 or [::1],
+// and browsers send whichever was typed. No other site can claim those
+// origins, so accepting all of them keeps the CSRF protection intact.
+func loopbackAliases(origin string) []string {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return []string{origin}
+	}
+	host := u.Hostname()
+	if ip := net.ParseIP(host); host != "localhost" && (ip == nil || !ip.IsLoopback()) {
+		return []string{origin}
+	}
+	port := ""
+	if p := u.Port(); p != "" {
+		port = ":" + p
+	}
+	return []string{origin, u.Scheme + "://localhost" + port, u.Scheme + "://127.0.0.1" + port, u.Scheme + "://[::1]" + port}
 }
 
 func (s *server) parseForm(w http.ResponseWriter, r *http.Request) bool {
