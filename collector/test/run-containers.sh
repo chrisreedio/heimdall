@@ -32,39 +32,54 @@ alpine320-sites|alpine:3.20|apk update -q && adduser -S -D heimdall && sh /opt/h
 '
 
 # Every container runs at once (they're independent and mostly wait on the
-# network); results are reported in order once all have finished.
+# network). Each reports as soon as it finishes, and gets a time limit so
+# one hung package mirror can't stall the whole run.
+limit=${COLLECTOR_TEST_TIMEOUT:-240}
+to=''
+! command -v timeout >/dev/null 2>&1 || to="timeout $limit"
+
+# run_target NAME DOCKER-RUN-ARGS...
+run_target() {
+	name=$1
+	shift
+	cname="heimdall-ctest-$name-$$"
+	start=$(date +%s)
+	rc=0
+	$to docker run --rm --name "$cname" "$@" >"$out/$name.json" 2>"$out/$name.err" || rc=$?
+	if [ "$rc" = 124 ]; then
+		docker kill "$cname" >/dev/null 2>&1 || true
+		echo "timed out after ${limit}s" >>"$out/$name.err"
+	fi
+	secs=$(($(date +%s) - start))
+	if [ "$rc" = 0 ]; then
+		printf '%-18s ok (%s bytes, %ss)\n' "$name" "$(wc -c <"$out/$name.json")" "$secs"
+	else
+		printf '%-18s FAILED after %ss (%s):\n%s\n' "$name" "$secs" "$out/$name.err" "$(tail -n 5 "$out/$name.err" | sed 's/^/    /')"
+	fi
+	echo "$rc" >"$out/$name.status"
+}
+
 names=''
 while IFS='|' read -r name image setup shell; do
 	[ -n "$name" ] || continue
 	names="$names $name"
-	(
-		docker run --rm -v "$here:/opt/heimdall:ro" "$image" sh -c "
-			($setup) >/dev/null 2>&1
-			su -s $shell heimdall -c 'set -a; [ ! -r /tmp/collect.env ] || . /tmp/collect.env; $shell /opt/heimdall/collect.sh --print'
-		" >"$out/$name.json" 2>"$out/$name.err"
-		echo $? >"$out/$name.status"
-	) &
+	run_target "$name" -v "$here:/opt/heimdall:ro" "$image" sh -c "
+		($setup) >/dev/null 2>&1
+		su -s $shell heimdall -c 'set -a; [ ! -r /tmp/collect.env ] || . /tmp/collect.env; $shell /opt/heimdall/collect.sh --print'
+	" &
 done <<EOF
 $targets
 EOF
 # Windows: the document builder runs under pwsh on Linux against fixtures.
 names="$names windows-fixture"
-(
-	docker run --rm -v "$here:/opt/heimdall:ro" -v "$out:/out" mcr.microsoft.com/powershell:lts-ubuntu-22.04 \
-		pwsh -NoProfile -File /opt/heimdall/test/windows-selftest.ps1 /opt/heimdall/collect.ps1 >"$out/windows-fixture.json" 2>"$out/windows-fixture.err"
-	echo $? >"$out/windows-fixture.status"
-) &
+run_target windows-fixture -v "$here:/opt/heimdall:ro" -v "$out:/out" mcr.microsoft.com/powershell:lts-ubuntu-22.04 \
+	pwsh -NoProfile -File /opt/heimdall/test/windows-selftest.ps1 /opt/heimdall/collect.ps1 &
+echo "Running $(echo "$names" | wc -w | tr -d ' ') containers in parallel (limit ${limit}s each)..."
 wait
 
 status=0
 for name in $names; do
-	printf '%-18s ' "$name"
-	if [ "$(cat "$out/$name.status" 2>/dev/null)" = 0 ]; then
-		echo "ok ($(wc -c <"$out/$name.json") bytes)"
-	else
-		echo "FAILED (see $out/$name.err)"
-		status=1
-	fi
+	[ "$(cat "$out/$name.status" 2>/dev/null)" = 0 ] || status=1
 	rm -f "$out/$name.status"
 done
 exit $status
