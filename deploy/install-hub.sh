@@ -203,9 +203,15 @@ setup_caddy() {
 	if [ -n "$ingest_host" ]; then
 		say "Installing Caddy for public ingest on $ingest_host"
 		have caddy || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq caddy >/dev/null; }
+		# Keep a certificate installed with `heimdall ingest cert` (e.g. a
+		# Cloudflare Origin certificate).
+		tls_line=''
+		[ ! -e /etc/caddy/heimdall-origin.pem ] || [ ! -e /etc/caddy/heimdall-origin.key ] ||
+			tls_line="	tls /etc/caddy/heimdall-origin.pem /etc/caddy/heimdall-origin.key"
 		cat >/etc/caddy/Caddyfile <<EOF
 # Written by Heimdall's install-hub.sh: only the ingest path is public.
 $ingest_host {
+$tls_line
 	@ingest path /api/v1/ingest
 	request_body @ingest {
 		max_size 6MB

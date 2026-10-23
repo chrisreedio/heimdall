@@ -17,3 +17,7 @@ func isTerminal(*os.File) bool { return false }
 func readHidden(*os.File, *bufio.Reader) (string, error) {
 	return "", errors.New("hidden input is not supported on this OS; use --password-stdin")
 }
+
+func readHiddenBlock(*os.File, *bufio.Reader, func(string) bool) (string, error) {
+	return "", errors.New("hidden input is not supported on this OS; use --key-file")
+}
