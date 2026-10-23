@@ -601,7 +601,8 @@ ul.pkg-findings .summary { color: var(--muted); font-size: 12px; margin-top: 2px
 .runtime { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
 
 /* Facts: one row of five on wide screens, runtimes in a strip below. */
-.facts.card { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px 20px; padding: 16px 18px; }
+/* OS, last report, reboot, packages, collector: the short ones narrower. */
+.facts.card { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1.2fr) minmax(0, .75fr) minmax(0, 1fr) minmax(0, .75fr); gap: 14px 20px; padding: 16px 18px; }
 .fact { gap: 10px; }
 .fact > .icon { width: 30px; height: 30px; padding: 6px; border-radius: 8px; }
 .fact .v { font-size: 14px; }
