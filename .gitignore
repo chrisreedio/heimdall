@@ -6,3 +6,4 @@
 *.db-shm
 /heimdall.toml
 /dist/
+/demo/

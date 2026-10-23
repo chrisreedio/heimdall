@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/heimdall-dark.svg">
+    <img src="docs/assets/heimdall-light.svg" alt="Heimdall" width="420">
+  </picture>
+</p>
+
 # Heimdall
 
 > *The watchman of the gods sees everything across all nine realms, and touches nothing.*
