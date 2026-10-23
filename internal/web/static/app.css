@@ -629,3 +629,10 @@ ul.pkg-findings .summary { color: var(--muted); font-size: 12px; margin-top: 2px
 @media (max-width: 760px) { .facts.card.site-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 440px) { .facts.card.site-facts { grid-template-columns: minmax(0, 1fr); } }
 .k.cap { text-transform: capitalize; }
+
+/* Site page: a quiet "on host · environment" line under the title. */
+.site-meta { display: flex; align-items: center; gap: 6px; margin: -6px 0 14px; font-size: 14px; color: var(--muted); }
+.site-meta .icon { width: 15px; height: 15px; }
+.site-meta a { font-weight: 600; }
+details.head-pick { position: relative; }
+details.head-pick[open] form { position: absolute; top: 26px; left: 0; z-index: 5; padding: 10px; box-shadow: var(--shadow); margin: 0; white-space: nowrap; }

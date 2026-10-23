@@ -3,21 +3,19 @@
 <div class="head">
   <h1>{{with first .Site.ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Site.Root}}{{end}}</h1>
   {{with .Label}}<span class="site-label label-{{.}}{{if not $.Body.LabelSet}} suggested{{end}}" title="{{if $.Body.LabelSet}}set by an admin{{else}}suggested from the site's name{{end}}">{{.}}</span>{{end}}
-  {{template "sitebadges" .Site}}
-  <a class="button secondary head-action" href="{{hostURL .Org .Host}}">Open host</a>
-</div>
-<div class="host-tags">
-  <span class="muted small">on</span> <a href="{{hostURL .Org .Host}}">{{.Host}}</a> <span class="env-badge" title="Environment">{{.Env}}</span>
-  {{if .CanAdmin}}<details class="edit-tags">
-    <summary class="link">Change label</summary>
-    <form method="post" action="/sites/label" class="row card">
+  {{if .CanAdmin}}<details class="label-pick head-pick">
+    <summary class="link small">change</summary>
+    <form method="post" action="/sites/label" class="inline card">
       <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.Org}}"><input type="hidden" name="host" value="{{.Host}}"><input type="hidden" name="root" value="{{.Site.Root}}">
       <input type="hidden" name="back" value="{{siteURL .Org .Host .Site.Root}}&labeled=1">
-      <label>Label <select name="label"><option value="auto">suggest from name ({{with first .Site.ServerNames}}{{.}}{{else}}none{{end}})</option>{{range .Labels}}<option value="{{.}}"{{if and $.Body.LabelSet (eq . $.Body.Label)}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <select name="label" aria-label="Site label"><option value="auto">suggest from name</option>{{range .Labels}}<option value="{{.}}"{{if and $.Body.LabelSet (eq . $.Body.Label)}} selected{{end}}>{{.}}</option>{{end}}</select>
       <button type="submit">Save</button>
     </form>
   </details>{{end}}
+  {{template "sitebadges" .Site}}
+  <a class="button secondary head-action" href="{{hostURL .Org .Host}}">Open host</a>
 </div>
+<p class="site-meta">{{template "icon" "server"}} on <a href="{{hostURL .Org .Host}}">{{.Host}}</a> <span aria-hidden="true">·</span> <span class="muted">{{.Env}} environment</span></p>
 {{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 
 <section class="facts card site-facts">
