@@ -27,7 +27,7 @@ export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
-VERSION=0.4.11
+VERSION=0.4.12
 FORMAT=heimdall.snapshot/v3
 
 die() { printf 'heimdall-collect: %s\n' "$*" >&2; exit 1; }
@@ -666,11 +666,17 @@ push() {
 			--connect-timeout 10 --max-time 120 \
 			--retry 2 --retry-delay 10 \
 			--data-binary "@$body" \
+			--dump-header "$tmp/headers" \
 			--output /dev/null --write-out '%{http_code}' \
 			"${url%/}/api/v1/ingest") || die "could not reach $url"
 
 	case $status in
-	2??) ;;
+	2??)
+		hub=$(tr -d '\r' <"$tmp/headers" | sed -n 's/^[Xx]-[Hh]eimdall-[Vv]ersion: *\(v[0-9][0-9.]*\)$/\1/p' | tail -n 1)
+		if [ -n "$hub" ] && newer "${hub#v}" "$VERSION"; then
+			echo "heimdall-collect: the hub runs $hub and this collector is $VERSION; update with: sudo heimdall-collect upgrade" >&2
+		fi
+		;;
 	401 | 403) die "hub rejected the token (HTTP $status); check $token_file" ;;
 	409) die "hub rejected a duplicate snapshot (HTTP 409)" ;;
 	413) die "snapshot too large for the hub (HTTP 413)" ;;
@@ -680,19 +686,91 @@ push() {
 	esac
 }
 
+# ── Upgrade ─────────────────────────────────────────────────────────────────
+
+RELEASES=${HEIMDALL_RELEASES:-https://github.com/chrisreedio/heimdall/releases/download}
+
+# newer A B: is version A (x.y.z) newer than B?
+newer() {
+	[ "$1" != "$2" ] || return 1
+	printf '%s\n%s\n' "$1" "$2" | awk -F. '
+		NR == 1 { for (i = 1; i <= 3; i++) a[i] = $i + 0 }
+		NR == 2 { for (i = 1; i <= 3; i++) b[i] = $i + 0 }
+		END { for (i = 1; i <= 3; i++) { if (a[i] > b[i]) exit 0; if (a[i] < b[i]) exit 1 } exit 1 }'
+}
+
+# upgrade [vX.Y.Z]: reinstall this collector from the release the hub runs
+# (or the one given), keeping its hub, token and settings. Root only: it
+# replaces /usr/local/bin/heimdall-collect.
+upgrade() {
+	[ "$(id -u)" -eq 0 ] || die "run it as root: sudo heimdall-collect upgrade"
+	have curl || die "curl is required"
+	env_file=
+	for f in /etc/heimdall/collect.env /etc/heimdall-collect/collect.env; do
+		[ ! -r "$f" ] || { env_file=$f; break; }
+	done
+	[ -n "$env_file" ] || die "no collect.env found; install the collector with install.sh first"
+	# Read the settings without running the file.
+	setting() { sed -n "s/^$1=//p" "$env_file" | tail -n 1 | sed "s/^'\(.*\)'\$/\1/"; }
+	url=$(setting HEIMDALL_URL)
+	token_file=$(setting HEIMDALL_TOKEN_FILE)
+	sites=$(setting HEIMDALL_SITES)
+	lockfiles=$(setting HEIMDALL_LOCKFILES)
+	if [ -z "$url" ] || [ ! -r "$token_file" ]; then die "$env_file doesn't name a hub and a readable token"; fi
+
+	want=${1:-}
+	if [ -z "$want" ]; then
+		token=$(tr -d ' \t\r\n' <"$token_file")
+		answer=$(printf 'header = "Authorization: Bearer %s"\n' "$token" |
+			curl --config - --silent --show-error --fail \
+				--proto '=https,http' --tlsv1.2 --connect-timeout 10 --max-time 30 \
+				"${url%/}/api/v1/ingest") || die "couldn't ask the hub at $url which release it runs (it needs v0.4.12 or later); give one instead: heimdall-collect upgrade vX.Y.Z"
+		want=$(printf '%s' "$answer" | sed -n 's/.*"version":"\(v[0-9][0-9.]*\)".*/\1/p')
+	fi
+	case $want in
+	v[0-9]*.[0-9]*.[0-9]*) ;;
+	*) die "the hub didn't report a release version; give one: heimdall-collect upgrade vX.Y.Z" ;;
+	esac
+	if [ -z "${1:-}" ] && ! newer "${want#v}" "$VERSION"; then
+		echo "heimdall-collect: already up to date ($VERSION; the hub runs $want)" >&2
+		return 0
+	fi
+
+	echo "heimdall-collect: upgrading $VERSION -> $want" >&2
+	work=$(mktemp -d)
+	trap 'rm -rf "$work"' EXIT
+	for f in install.sh SHA256SUMS; do
+		curl -fsSL --proto '=https' --tlsv1.2 -o "$work/$f" "$RELEASES/$want/$f" || die "download failed: $RELEASES/$want/$f"
+	done
+	(cd "$work" && grep -E ' install\.sh$' SHA256SUMS | sha256sum -c - >/dev/null) ||
+		die "install.sh from $want doesn't match its SHA256SUMS; not running it"
+	set -- --hub "$url" --token-file "$token_file" --version "$want"
+	[ -z "$sites" ] || set -- "$@" --sites "$sites"
+	[ -z "$lockfiles" ] || set -- "$@" --lockfiles "$lockfiles"
+	sh "$work/install.sh" "$@"
+}
+
 # ── Main ────────────────────────────────────────────────────────────────────
 
 usage() {
 	cat >&2 <<'EOF'
 usage: heimdall-collect --print | --push | --version
+       sudo heimdall-collect upgrade [vX.Y.Z]
 
   --print    write a snapshot to stdout (for review or 'heimdall import')
   --push     send a snapshot to $HEIMDALL_URL using $HEIMDALL_TOKEN_FILE
   --version  print the collector version
+  upgrade    reinstall from the release the hub runs (or the one given),
+             keeping the hub, token and settings; checked against the
+             release's SHA256SUMS
 EOF
 	exit 2
 }
 
+if [ "${1:-}" = upgrade ] && [ $# -le 2 ]; then
+	upgrade "${2:-}"
+	exit 0
+fi
 [ $# -eq 1 ] || usage
 case $1 in
 --version) echo "$VERSION"; exit 0 ;;

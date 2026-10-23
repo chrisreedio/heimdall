@@ -94,7 +94,16 @@ The installer verifies the release, then:
 
 Your config, data, Tailscale and Caddy settings and the unit's `LoadCredential` lines are kept. If the new version doesn't come up, its log is printed before the rollback.
 
-**Upgrade servers** by re-running `install.sh` from the new release on each one. The **Hosts → Add a host** page shows the current command, and you can skip the token prompt with `--token-file /etc/heimdall/token`.
+**Upgrade servers** after the hub, with one command on each:
+```sh
+sudo heimdall-collect upgrade
+```
+It asks the hub which release it runs (an authenticated request on the ingest URL), downloads that release's `install.sh` from GitHub, checks it against the release's `SHA256SUMS`, and reinstalls with the same hub, token and settings. Collectors never upgrade past the hub. `sudo heimdall-collect upgrade vX.Y.Z` picks a release yourself. A collector that's behind says so on each push (in its log), and the host page shows "update available". Collectors from before v0.4.12 don't have the command yet: re-run `install.sh` once with `--token-file /etc/heimdall/token`.
+
+For many servers, a loop is enough:
+```sh
+for h in web-01 web-02 db-01; do ssh "$h" sudo heimdall-collect upgrade; done
+```
 
 ## Hardening checklist
 

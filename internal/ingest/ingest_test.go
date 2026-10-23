@@ -272,8 +272,8 @@ func TestRouting(t *testing.T) {
 	e.expect(req{path: "/"}, http.StatusNotFound)
 	e.expect(req{path: "/api/v1/ingest/"}, http.StatusNotFound)
 	e.expect(req{path: "/metrics"}, http.StatusNotFound)
-	w := e.expect(req{method: http.MethodGet}, http.StatusMethodNotAllowed)
-	if w.Header().Get("Allow") != http.MethodPost {
+	w := e.expect(req{method: http.MethodPut}, http.StatusMethodNotAllowed)
+	if w.Header().Get("Allow") != "GET, POST" {
 		t.Error("missing Allow header")
 	}
 	e.expect(req{contentType: "text/plain"}, http.StatusUnsupportedMediaType)
@@ -331,4 +331,23 @@ func TestReportedHostnameNamesAutoHosts(t *testing.T) {
 	if err != nil || h.ID != auto.ID || h.AutoName {
 		t.Fatalf("auto host after first report: %+v %v", h, err)
 	}
+}
+
+func TestHubVersionForCollectors(t *testing.T) {
+	e := newEnv(t, nil)
+	e.h.Version = "v9.8.7"
+	w := e.expect(req{}, http.StatusCreated)
+	if got := w.Header().Get(VersionHeader); got != "v9.8.7" {
+		t.Errorf("push response version header = %q", got)
+	}
+	w = e.expect(req{method: http.MethodGet, body: []byte{}}, http.StatusOK)
+	if body := w.Body.String(); body != "{\"version\":\"v9.8.7\"}\n" {
+		t.Errorf("GET body = %q", body)
+	}
+	// Without a valid token: nothing, not even the version.
+	w = e.expect(req{method: http.MethodGet, token: "hmd_ingest_" + strings.Repeat("x", 43), body: []byte{}}, http.StatusUnauthorized)
+	if w.Header().Get(VersionHeader) != "" || strings.Contains(w.Body.String(), "9.8.7") {
+		t.Error("the version leaked to an unauthenticated request")
+	}
+	e.expect(req{method: http.MethodPut}, http.StatusMethodNotAllowed)
 }

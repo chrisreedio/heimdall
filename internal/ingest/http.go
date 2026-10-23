@@ -34,7 +34,14 @@ const (
 // accept each other's requests.
 const HostnameHeader = "X-Heimdall-Hostname"
 
+// VersionHeader tells an authenticated collector which release the hub
+// runs, so it can say when it's behind and upgrade to match.
+const VersionHeader = "X-Heimdall-Version"
+
 type Handler struct {
+	// Version is the hub's release (e.g. v0.4.11), told to authenticated
+	// collectors only.
+	Version     string
 	acc         *Accepter
 	store       *store.Store
 	log         *slog.Logger
@@ -85,8 +92,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		respond(w, http.StatusNotFound, "not found")
 		return
 	}
-	if r.Method != http.MethodPost {
-		w.Header().Set("Allow", http.MethodPost)
+	// GET (with a valid token) asks which release the hub runs, for
+	// `heimdall-collect upgrade`. Everything else is POST.
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET, POST")
 		respond(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
@@ -111,6 +120,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log = log.With("org", host.OrgSlug, "host", host.Name)
+	if h.Version != "" {
+		w.Header().Set(VersionHeader, h.Version)
+	}
+	if r.Method == http.MethodGet {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, "{\"version\":%q}\n", h.Version)
+		return
+	}
 
 	if !h.perHost.allow(strconv.FormatInt(host.ID, 10)) {
 		log.Warn("ingest rejected: rate limited")

@@ -160,6 +160,14 @@ ssh web-01 sh -s -- --print < collector/collect.sh > web-01.json
 
 When piped like this the script can't hash itself, so the snapshot declares `collector_sha256` unavailable. That's expected.
 
+## Upgrading
+
+```sh
+sudo heimdall-collect upgrade          # to the release the hub runs
+sudo heimdall-collect upgrade v0.4.12  # or a release you choose
+```
+It runs as root (it replaces `/usr/local/bin/heimdall-collect`), reads the hub URL, token path and site settings from `collect.env` without executing it, asks the hub for its release with the server's token, downloads that release's `install.sh` from GitHub and checks it against `SHA256SUMS` before running it. Nothing runs automatically: like the hub, the collector never updates itself.
+
 ## Sites & Laravel
 
 Snapshot format v2 includes the web apps on each server, so Heimdall can show which sites run which Laravel and PHP-FPM versions, and match their Composer packages against advisories.
