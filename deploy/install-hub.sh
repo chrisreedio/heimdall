@@ -122,7 +122,7 @@ hd() { (cd /var/lib/heimdall && runuser -u heimdall-hub -- /usr/local/bin/heimda
 
 # healthy waits for the service to stay up and the UI to answer.
 healthy() {
-	for _ in 1 2 3 4 5 6 7 8 9 10; do
+	for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do
 		sleep 1
 		systemctl is-active --quiet heimdall || continue
 		if have curl; then
@@ -144,16 +144,27 @@ if [ "$upgrade" = 1 ]; then
 	case $db in /*) ;; *) db=/etc/heimdall/${db:-heimdall.db} ;; esac
 	systemctl stop heimdall
 	cp -p /usr/local/bin/heimdall /usr/local/bin/heimdall.previous
+	cp -p /etc/systemd/system/heimdall.service "$work/heimdall.service.previous"
 	# A consistent pre-upgrade copy, owner-only, next to the database.
 	rm -f "$db.pre-upgrade"
 	runuser -u heimdall-hub -- sh -c "umask 077 && cp -p '$db' '$db.pre-upgrade'"
 	install -m 0755 "$work/heimdall-linux-$arch" /usr/local/bin/heimdall
+	# Keep local additions to the unit (e.g. SSO's LoadCredential line).
+	grep -E '^LoadCredential=' "$work/heimdall.service.previous" >"$work/creds" || true
+	if [ -s "$work/creds" ]; then
+		awk -v f="$work/creds" '{ if ($0 ~ /^#?LoadCredential=/) next; print } /^\[Service\]$/ { while ((getline l < f) > 0) print l }' \
+			"$work/heimdall.service" >"$work/heimdall.service.new" && mv "$work/heimdall.service.new" "$work/heimdall.service"
+	fi
 	install -m 0644 "$work/heimdall.service" /etc/systemd/system/heimdall.service
 	systemctl daemon-reload
 	if ! hd migrate || ! systemctl start heimdall || ! healthy; then
-		say "Upgrade failed; rolling back to $old"
+		say "Upgrade failed; the new version's log:"
+		journalctl -u heimdall -n 15 --no-pager -o cat >&2 2>/dev/null || true
+		say "Rolling back to $old"
 		systemctl stop heimdall 2>/dev/null || true
 		install -m 0755 /usr/local/bin/heimdall.previous /usr/local/bin/heimdall
+		install -m 0644 "$work/heimdall.service.previous" /etc/systemd/system/heimdall.service
+		systemctl daemon-reload
 		runuser -u heimdall-hub -- cp -p "$db.pre-upgrade" "$db"
 		rm -f "$db-wal" "$db-shm"
 		systemctl start heimdall

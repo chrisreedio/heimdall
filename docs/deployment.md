@@ -58,7 +58,7 @@ Follow the [quick start](../README.md#quick-start), then:
 | Task | Command |
 |---|---|
 | First admin | `hd user create --admin you@example.com` |
-| Entra SSO | Register an app (redirect `https://<ui>/auth/callback`), set `[auth.entra]`, store the secret with `sudo heimdall sso set-secret` (prompted, never echoed), and uncomment `LoadCredential=heimdall-entra:/etc/heimdall/entra-secret` in the unit |
+| Entra SSO | Register an app (redirect `https://<ui>/auth/callback`), then run `sudo heimdall sso setup`: it asks for the tenant ID, client ID and secret (never echoed), writes `[auth.entra]`, the secret and the unit's `LoadCredential` line, and restarts the hub |
 | Trust the collector release | `hd collector trust --version 0.3.0 <sha256 of collect.sh>` |
 | Digest | Set `[notify]` and add `LoadCredential=heimdall-smtp:…` or `heimdall-webhook:…` |
 
@@ -77,18 +77,22 @@ The plaintext copy exists only briefly, owner-only, and is removed on exit. Sche
 
 Admins see a banner in the UI when a newer release exists. The hub checks GitHub once a day for the latest version number; turn this off with `[updates] check = false`. The hub never downloads or installs anything itself.
 
-**Upgrade the hub** with the new release's installer. No flags are needed on an existing hub:
+**Upgrade the hub** with one command:
+```sh
+sudo heimdall upgrade            # or: heimdall upgrade --check
+```
+It finds the latest release (or `--version vX.Y.Z`), checks that release's `install-hub.sh` against its `SHA256SUMS`, and runs it. Flags after `--` go to the installer. Without Heimdall's command, the same thing by hand:
 ```sh
 curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/vX.Y.Z/install-hub.sh
 sudo sh install-hub.sh
 ```
-It verifies the release, then:
+The installer verifies the release, then:
 1. Stops the hub and keeps the previous binary (`/usr/local/bin/heimdall.previous`) and a pre-upgrade copy of the database (`heimdall.db.pre-upgrade`, owner-only).
 2. Installs the new binary and unit, runs migrations, starts the hub, and checks that it answers.
 3. **Rolls back automatically** (old binary and old database) if any step fails.
 4. Trusts the release's collector checksum, so servers that update don't raise "collector changed" anomalies.
 
-Your config, data, Tailscale and Caddy settings are left as they are.
+Your config, data, Tailscale and Caddy settings and the unit's `LoadCredential` lines are kept. If the new version doesn't come up, its log is printed before the rollback.
 
 **Upgrade servers** by re-running `install.sh` from the new release on each one. The **Hosts → Add a host** page shows the current command, and you can skip the token prompt with `--token-file /etc/heimdall/token`.
 

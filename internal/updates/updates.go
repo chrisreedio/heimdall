@@ -8,6 +8,7 @@ package updates
 
 import (
 	"context"
+	"errors"
 	"regexp"
 	"strconv"
 	"strings"
@@ -46,6 +47,26 @@ func (c *Checker) Check(ctx context.Context) error {
 		return nil
 	}
 	url := c.URL
+	r, err := Latest(ctx, c.HTTP, url)
+	if err != nil {
+		return err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if r.Version != "" && Newer(r.Version, c.Current) {
+		c.latest = r
+	} else {
+		c.latest = Release{}
+	}
+	return nil
+}
+
+// ErrNoRelease means the latest release isn't a plain release of this repo.
+var ErrNoRelease = errors.New("no usable latest release")
+
+// Latest fetches the latest release from url (LatestURL if empty). Only
+// plain vX.Y.Z tags whose release page is on this repo are accepted.
+func Latest(ctx context.Context, hc *netx.Client, url string) (Release, error) {
 	if url == "" {
 		url = LatestURL
 	}
@@ -55,23 +76,18 @@ func (c *Checker) Check(ctx context.Context) error {
 		Draft   bool   `json:"draft"`
 		Pre     bool   `json:"prerelease"`
 	}
-	if err := c.HTTP.GetJSON(ctx, url, 1<<20, &r); err != nil {
-		return err
+	if err := hc.GetJSON(ctx, url, 1<<20, &r); err != nil {
+		return Release{}, err
 	}
-	// Only plain release tags and release pages on github.com are trusted.
 	if r.Draft || r.Pre || !tagRe.MatchString(r.TagName) ||
 		!strings.HasPrefix(r.HTMLURL, "https://github.com/chrisreedio/heimdall/releases/") {
-		return nil
+		return Release{}, ErrNoRelease
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if Newer(r.TagName, c.Current) {
-		c.latest = Release{Version: r.TagName, URL: r.HTMLURL}
-	} else {
-		c.latest = Release{}
-	}
-	return nil
+	return Release{Version: r.TagName, URL: r.HTMLURL}, nil
 }
+
+// IsTag reports whether v is a plain release tag (vX.Y.Z).
+func IsTag(v string) bool { return tagRe.MatchString(v) }
 
 // Available returns a newer release, if one was found.
 func (c *Checker) Available() (Release, bool) {
