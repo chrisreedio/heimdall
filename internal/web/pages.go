@@ -872,6 +872,85 @@ func (s *server) siteLabel(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		if f := r.PostForm.Get("filter"); slices.Contains(store.SiteLabels, f) {
 			back += "&label=" + f
 		}
+		if b := r.PostForm.Get("back"); strings.HasPrefix(b, "/hosts/") {
+			back = safeNext(b)
+		}
 		http.Redirect(w, r, back, http.StatusSeeOther)
 	}
+}
+
+// ── Site page ──────────────────────────────────────────────────────────────
+
+type siteBody struct {
+	Org, Host, Env string
+	Site           report.Site
+	Label          string
+	LabelSet       bool
+	CanAdmin       bool
+	Labels         []string
+	View           findingsView
+	Others         []report.Site // the host's other sites
+	Notice         string
+}
+
+// sitePage shows one site (a web root on a host): its stack, lifecycle and
+// Composer findings.
+func (s *server) sitePage(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	ctx := r.Context()
+	host, err := s.st.HostByName(ctx, r.PathValue("org"), r.PathValue("host"))
+	if err != nil || !v.Scope.CanView(host.OrgID) {
+		s.notFound(w, r, v)
+		return
+	}
+	root := r.URL.Query().Get("root")
+	rep, err := report.Build(ctx, s.st, report.Filter{Org: host.OrgSlug, Scope: v.Scope}, s.now())
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	var h report.Host
+	for _, rh := range rep.Hosts {
+		if rh.Name == host.Name {
+			h = rh
+		}
+	}
+	body := siteBody{Org: host.OrgSlug, Host: host.Name, Env: host.EnvSlug, CanAdmin: v.Scope.CanAdmin(host.OrgID), Labels: store.SiteLabels}
+	found := false
+	for _, site := range h.Sites {
+		if site.Root == root {
+			body.Site, found = site, true
+		} else {
+			body.Others = append(body.Others, site)
+		}
+	}
+	if !found {
+		s.notFound(w, r, v)
+		return
+	}
+	labels, err := s.st.SiteLabelsByName(ctx)
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if l, ok := labels[store.SiteLabelKey(host.OrgSlug, host.Name, root)]; ok {
+		body.Label, body.LabelSet = l, true
+	} else {
+		body.Label = suggestSiteLabel(body.Site.ServerNames)
+	}
+	var fs []report.Finding
+	for _, f := range h.Findings {
+		if f.Site == root {
+			fs = append(fs, f)
+		}
+	}
+	base := "/hosts/" + url.PathEscape(host.OrgSlug) + "/" + url.PathEscape(host.Name) + "/site?root=" + url.QueryEscape(root)
+	body.View = buildFindingsView(base, "composer", r.URL.Query(), fs)
+	if r.URL.Query().Get("labeled") == "1" {
+		body.Notice = "Label saved."
+	}
+	name := root
+	if len(body.Site.ServerNames) > 0 && body.Site.ServerNames[0] != "_" {
+		name = body.Site.ServerNames[0]
+	}
+	s.render(w, r, http.StatusOK, "site", v, name, "sites", body)
 }

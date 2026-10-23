@@ -25,7 +25,7 @@
   <tbody>
   {{range .Sites}}{{$row := .}}
   <tr>
-    <td><span class="id">{{with first .ServerNames}}{{if eq . "_"}}<span class="muted">default server</span>{{else}}{{.}}{{end}}{{else}}{{$.Body.Org}}{{end}}</span><div class="muted small">{{.Root}}</div>{{if gt (len .ServerNames) 1}}<div class="muted small">{{join .ServerNames ", "}}</div>{{end}}</td>
+    <td><a class="id" href="{{siteURL .Org .Host .Root}}">{{with first .ServerNames}}{{if eq . "_"}}default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}}</a><div class="muted small">{{.Root}}</div>{{if gt (len .ServerNames) 1}}<div class="muted small">{{join .ServerNames ", "}}</div>{{end}}</td>
     <td>{{if .Label}}<span class="site-label label-{{.Label}}{{if not .LabelSet}} suggested{{end}}" title="{{if .LabelSet}}set by an admin{{else}}suggested from the site's name{{end}}">{{.Label}}</span>{{else}}<span class="muted small">unlabeled</span>{{end}}
       {{if .CanAdmin}}<details class="label-pick"><summary class="link small">change</summary>
         <form method="post" action="/sites/label" class="inline">

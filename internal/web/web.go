@@ -132,6 +132,7 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("GET /{$}", s.requireAuth(s.withScope(s.dashboard)))
 	mux.HandleFunc("GET /hosts", s.requireAuth(s.withScope(s.hostsPage)))
 	mux.HandleFunc("GET /hosts/{org}/{host}", s.requireAuth(s.hostPage))
+	mux.HandleFunc("GET /hosts/{org}/{host}/site", s.requireAuth(s.sitePage))
 	mux.HandleFunc("GET /sites", s.requireAuth(s.withScope(s.sitesPage)))
 	mux.HandleFunc("GET /search", s.requireAuth(s.withScope(s.searchPage)))
 	mux.HandleFunc("GET /hosts/new", s.requireAuth(s.addHostPage))
@@ -429,7 +430,7 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, v *auth.Viewer, er
 
 func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
-		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost"}
+		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "site"}
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/"+n+".html")
@@ -503,6 +504,13 @@ var funcs = template.FuncMap{
 		return list[:n]
 	},
 	"findingsCap": func() int { return findingsCap },
+	"chipsFor": func(c report.Counts, v findingsView) map[string]any {
+		return map[string]any{"C": c, "V": v}
+	},
+	// siteURL is a site's page: sites are a host plus a web root.
+	"siteURL": func(org, host, root string) string {
+		return "/hosts/" + url.PathEscape(org) + "/" + url.PathEscape(host) + "/site?root=" + url.QueryEscape(root)
+	},
 	// pathBreak renders a path that may wrap only after a "/".
 	"pathBreak": func(p string) template.HTML {
 		parts := strings.Split(p, "/")

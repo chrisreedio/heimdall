@@ -62,20 +62,7 @@
 
 <section id="findings">
   <h2>Findings</h2>
-  {{with .Report.Counts}}
-  {{$fv := $.Body.OSView}}
-  <div class="chips" aria-label="Filter findings by severity">
-    <a class="chip{{if not $fv.Sev}} active{{end}}" href="{{$fv.AllSevLink}}"><strong>{{.Total}}</strong> open</a>
-    <a class="chip{{if .KEV}} chip-kev{{end}}{{if eq $fv.Sev "kev"}} active{{end}}" href="{{index $fv.SevLinks "kev"}}" title="CISA Known Exploited Vulnerabilities"><strong>{{.KEV}}</strong> known-exploited</a>
-    <a class="chip{{if .Critical}} chip-critical{{end}}{{if eq $fv.Sev "critical"}} active{{end}}" href="{{index $fv.SevLinks "critical"}}"><strong>{{.Critical}}</strong> critical</a>
-    <a class="chip{{if .High}} chip-high{{end}}{{if eq $fv.Sev "high"}} active{{end}}" href="{{index $fv.SevLinks "high"}}"><strong>{{.High}}</strong> high</a>
-    <a class="chip{{if eq $fv.Sev "medium"}} active{{end}}" href="{{index $fv.SevLinks "medium"}}"><strong>{{.Medium}}</strong> medium</a>
-    <a class="chip{{if eq $fv.Sev "low"}} active{{end}}" href="{{index $fv.SevLinks "low"}}"><strong>{{.Low}}</strong> low</a>
-    <a class="chip{{if eq $fv.Sev "unknown"}} active{{end}}" href="{{index $fv.SevLinks "unknown"}}"><strong>{{.Unknown}}</strong> unrated</a>
-    {{if $fv.Fixable}}<a class="chip chip-ok active" href="{{index $fv.FixLink "off"}}" title="{{.FixPending}} via updates already pending on the host"><strong>{{.Fixable}}</strong> fixable now</a>
-    {{else}}<a class="chip chip-ok" href="{{index $fv.FixLink "on"}}" title="Show only findings an update fixes ({{.FixPending}} already pending on the host)"><strong>{{.Fixable}}</strong> fixable now</a>{{end}}
-  </div>
-  {{end}}
+  {{template "chips" (chipsFor .Report.Counts .OSView)}}
   <h3>OS packages</h3>
   {{if not .Report.Ecosystem}}<p class="empty">Vulnerability matching isn't supported for this OS yet.</p>
   {{else if .OSFindings}}{{template "osfindings" .OSView}}
@@ -87,7 +74,7 @@
   <h2>Sites</h2>
   {{range .Sites}}
   <div class="card site">
-    <h3>{{with first .ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}} {{with .Label}}<span class="site-label label-{{.}}">{{.}}</span>{{end}} {{template "sitebadges" .Site}}</h3>
+    <h3><a href="{{siteURL $.Body.Org $.Body.Name .Root}}">{{with first .ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}}</a> {{with .Label}}<span class="site-label label-{{.}}">{{.}}</span>{{end}} {{template "sitebadges" .Site}}</h3>
     <dl>
       <div class="wide"><dt>Root</dt><dd><code class="path">{{pathBreak .Root}}</code>{{if and .DocumentRoot (ne .DocumentRoot .Root)}} <span class="muted">serving</span> <code class="path">{{pathBreak (relPath .Root .DocumentRoot)}}</code>{{end}}</dd></div>
       {{if gt (len .ServerNames) 1}}<div><dt>Server names</dt><dd>{{join .ServerNames ", "}}</dd></div>{{end}}

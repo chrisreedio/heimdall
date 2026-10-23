@@ -50,7 +50,7 @@
   <span class="muted small">{{.Total}} finding{{if ne .Total 1}}s{{end}}{{if or .Sev .Fixable}} match{{if eq .Total 1}}es{{end}} the filter{{end}}{{if eq .View "packages"}}{{if .Groups}} · page {{.Page}} of {{.Pages}}{{end}}{{else if .Rows}} · page {{.Page}} of {{.Pages}}{{end}}</span>
 </div>
 {{with .FixCmd}}<div class="cmd fix-cmd">
-  <div class="cmd-label">Patch {{$.FixPkgs}} package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}}{{if $.FixPending}} <span class="muted small">· {{$.FixPending}} already have the update downloaded and pending</span>{{end}}</div>
+  <div class="cmd-label">{{if eq $.PM "composer"}}Update {{$.FixPkgs}} Composer package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}} <span class="muted small">· run in the site root</span>{{else}}Patch {{$.FixPkgs}} package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}}{{end}}{{if $.FixPending}} <span class="muted small">· {{$.FixPending}} already have the update downloaded and pending</span>{{end}}</div>
   <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
   <p class="muted small">Upgrades only these packages. Filter by severity above to patch, say, just the critical ones first. Heimdall never runs it for you.</p>
 </div>{{end}}
@@ -86,7 +86,22 @@
 {{end}}
 
 {{/* icon: a small inline stroke icon by name. */}}
-{{define "icon"}}<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{if eq . "server"}}<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>{{else if eq . "clock"}}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>{{else if eq . "chip"}}<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>{{else if eq . "package"}}<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>{{else if eq . "power"}}<path d="M12 3v8"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/>{{else if eq . "layers"}}<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>{{else if eq . "calendar"}}<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>{{end}}</svg>{{end}}
+{{define "icon"}}<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{if eq . "server"}}<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>{{else if eq . "clock"}}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>{{else if eq . "chip"}}<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>{{else if eq . "package"}}<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>{{else if eq . "power"}}<path d="M12 3v8"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/>{{else if eq . "layers"}}<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>{{else if eq . "calendar"}}<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>{{else if eq . "globe"}}<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>{{else if eq . "code"}}<path d="M8 6l-6 6 6 6M16 6l6 6-6 6"/>{{else if eq . "check"}}<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>{{end}}</svg>{{end}}
 
 {{/* lifepill: a lifecycle as a colored pill (*report.Lifecycle, nil-safe). */}}
 {{define "lifepill"}}{{$s := lifeState .}}{{if eq $s "eol"}}<span class="pill bad">end of life{{with .EOLDate}} since {{date .}}{{end}}</span>{{else if eq $s "soon"}}<span class="pill warn">ends {{date .EOLDate}} · {{.DaysLeft}} days</span>{{else if eq $s "ok"}}<span class="pill ok">supported{{with .EOLDate}} until {{date .}}{{end}}</span>{{else}}<span class="pill muted">lifecycle unknown yet</span>{{end}}{{end}}
+
+{{/* chips: severity counts that filter a findingsView (chipsFor). */}}
+{{define "chips"}}
+  <div class="chips" aria-label="Filter findings by severity">
+    <a class="chip{{if not $.V.Sev}} active{{end}}" href="{{$.V.AllSevLink}}"><strong>{{.C.Total}}</strong> open</a>
+    <a class="chip{{if .C.KEV}} chip-kev{{end}}{{if eq $.V.Sev "kev"}} active{{end}}" href="{{index $.V.SevLinks "kev"}}" title="CISA Known Exploited Vulnerabilities"><strong>{{.C.KEV}}</strong> known-exploited</a>
+    <a class="chip{{if .C.Critical}} chip-critical{{end}}{{if eq $.V.Sev "critical"}} active{{end}}" href="{{index $.V.SevLinks "critical"}}"><strong>{{.C.Critical}}</strong> critical</a>
+    <a class="chip{{if .C.High}} chip-high{{end}}{{if eq $.V.Sev "high"}} active{{end}}" href="{{index $.V.SevLinks "high"}}"><strong>{{.C.High}}</strong> high</a>
+    <a class="chip{{if eq $.V.Sev "medium"}} active{{end}}" href="{{index $.V.SevLinks "medium"}}"><strong>{{.C.Medium}}</strong> medium</a>
+    <a class="chip{{if eq $.V.Sev "low"}} active{{end}}" href="{{index $.V.SevLinks "low"}}"><strong>{{.C.Low}}</strong> low</a>
+    <a class="chip{{if eq $.V.Sev "unknown"}} active{{end}}" href="{{index $.V.SevLinks "unknown"}}"><strong>{{.C.Unknown}}</strong> unrated</a>
+    {{if $.V.Fixable}}<a class="chip chip-ok active" href="{{index $.V.FixLink "off"}}" title="{{.C.FixPending}} via updates already pending on the host"><strong>{{.C.Fixable}}</strong> fixable now</a>
+    {{else}}<a class="chip chip-ok" href="{{index $.V.FixLink "on"}}" title="Show only findings an update fixes ({{.C.FixPending}} already pending on the host)"><strong>{{.C.Fixable}}</strong> fixable now</a>{{end}}
+  </div>
+{{end}}

@@ -1,0 +1,47 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/sites">Sites</a> <span aria-hidden="true">/</span> <a href="{{hostURL .Org .Host}}">{{.Host}}</a> <span aria-hidden="true">/</span> {{with first .Site.ServerNames}}{{if eq . "_"}}default server{{else}}{{.}}{{end}}{{else}}{{.Site.Root}}{{end}}</nav>
+<div class="head">
+  <h1>{{with first .Site.ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Site.Root}}{{end}}</h1>
+  {{with .Label}}<span class="site-label label-{{.}}{{if not $.Body.LabelSet}} suggested{{end}}" title="{{if $.Body.LabelSet}}set by an admin{{else}}suggested from the site's name{{end}}">{{.}}</span>{{end}}
+  {{template "sitebadges" .Site}}
+  <a class="button secondary head-action" href="{{hostURL .Org .Host}}">Open host</a>
+</div>
+<div class="host-tags">
+  <span class="muted small">on</span> <a href="{{hostURL .Org .Host}}">{{.Host}}</a> <span class="env-badge" title="Environment">{{.Env}}</span>
+  {{if .CanAdmin}}<details class="edit-tags">
+    <summary class="link">Change label</summary>
+    <form method="post" action="/sites/label" class="row card">
+      <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.Org}}"><input type="hidden" name="host" value="{{.Host}}"><input type="hidden" name="root" value="{{.Site.Root}}">
+      <input type="hidden" name="back" value="{{siteURL .Org .Host .Site.Root}}&labeled=1">
+      <label>Label <select name="label"><option value="auto">suggest from name ({{with first .Site.ServerNames}}{{.}}{{else}}none{{end}})</option>{{range .Labels}}<option value="{{.}}"{{if and $.Body.LabelSet (eq . $.Body.Label)}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+      <button type="submit">Save</button>
+    </form>
+  </details>{{end}}
+</div>
+{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+
+<section class="facts card site-facts">
+  <div class="fact">{{template "icon" "server"}}<div><div class="k">Web server</div><div class="v">{{with .Site.WebServer}}{{.}}{{else}}Listed in HEIMDALL_SITES{{end}}</div></div></div>
+  <div class="fact">{{template "icon" "layers"}}<div><div class="k">PHP-FPM</div><div class="v">{{with .Site.PHPFPM}}{{.}}{{else}}Unknown{{end}}</div>{{if .Site.PHPFPM}}<div class="pills">{{template "lifepill" .Site.PHPLife}}</div>{{end}}</div></div>
+  <div class="fact">{{template "icon" "code"}}<div><div class="k cap">{{with .Site.Framework}}{{.}}{{else}}Framework{{end}}</div><div class="v">{{with .Site.FrameworkVersion}}{{.}}{{else}}None found{{end}}</div>{{if .Site.FrameworkVersion}}<div class="pills">{{template "lifepill" .Site.FrameworkLife}}</div>{{end}}</div></div>
+  <div class="fact">{{template "icon" "check"}}<div><div class="k">Requires PHP</div><div class="v">{{with .Site.PHPRequirement}}{{.}}{{else}}Not stated{{end}}</div>{{with .Site.PHPSatisfied}}<div class="pills">{{if .}}<span class="pill ok">met by PHP-FPM</span>{{else}}<span class="pill bad">not met by PHP-FPM</span>{{end}}</div>{{end}}</div></div>
+  <div class="fact">{{template "icon" "calendar"}}<div><div class="k">Last deploy</div><div class="v">{{with .Site.DeployedAt}}{{date .}}{{else}}Unknown{{end}}</div></div></div>
+  <div class="fact">{{template "icon" "package"}}<div><div class="k">Composer packages</div><div class="v">{{if .Site.Readable}}{{.Site.Packages}}{{else}}Unreadable{{end}}</div>{{if not .Site.Readable}}<div class="pills"><span class="pill warn" title="the collector couldn't read composer.json or composer.lock">can't check packages</span></div>{{end}}</div></div>
+  <div class="runtimes-row">{{template "icon" "globe"}}<span class="k">Root</span><code class="path">{{pathBreak .Site.Root}}</code>{{if and .Site.DocumentRoot (ne .Site.DocumentRoot .Site.Root)}}<span class="muted small">serving</span> <code class="path">{{pathBreak (relPath .Site.Root .Site.DocumentRoot)}}</code>{{end}}{{if gt (len .Site.ServerNames) 1}}<span class="k">Names</span>{{range .Site.ServerNames}}<span class="tag">{{.}}</span>{{end}}{{end}}</div>
+</section>
+
+<section id="findings">
+  <h2>Composer findings</h2>
+  {{if not .Site.Readable}}<p class="empty">The collector couldn't read this site's composer.json or composer.lock, so its packages can't be checked. Make them readable by the collector's user.</p>
+  {{else if .View.Total}}{{template "chips" (chipsFor .Site.Counts .View)}}{{template "osfindings" .View}}
+  {{else if or .View.Sev .View.Fixable}}{{template "chips" (chipsFor .Site.Counts .View)}}<p class="empty">No findings match the filter.</p>
+  {{else}}<p class="empty">No open findings in this site's {{.Site.Packages}} Composer packages.</p>{{end}}
+</section>
+
+{{if .Others}}
+<section>
+  <h2>Other sites on {{.Host}}</h2>
+  <ul class="plain other-sites">{{range .Others}}<li><a href="{{siteURL $.Body.Org $.Body.Host .Root}}">{{with first .ServerNames}}{{if eq . "_"}}default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}}</a> <span class="muted small">{{.Root}}</span>{{if .Counts.Total}} <span class="muted small">· {{.Counts.Total}} findings</span>{{end}}</li>{{end}}</ul>
+</section>
+{{end}}
+{{end}}{{end}}

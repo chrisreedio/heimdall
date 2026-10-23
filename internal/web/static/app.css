@@ -616,3 +616,16 @@ ul.pkg-findings .summary { color: var(--muted); font-size: 12px; margin-top: 2px
 @media (max-width: 1100px) { .facts.card { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .facts.card { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 440px) { .facts.card { grid-template-columns: minmax(0, 1fr); } }
+
+/* Site page. */
+.other-sites li { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.facts .runtimes-row code.path { font-size: 13px; }
+
+/* Package rows are <summary> elements: drop the generic summary margin. */
+.pkg-row > summary { margin: 0; font-weight: 400; }
+.pkg-name .id { font-weight: 600; }
+/* The site page has six facts: an even 3 x 2. */
+.facts.card.site-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 760px) { .facts.card.site-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 440px) { .facts.card.site-facts { grid-template-columns: minmax(0, 1fr); } }
+.k.cap { text-transform: capitalize; }

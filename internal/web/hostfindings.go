@@ -33,6 +33,7 @@ type pkgGroup struct {
 
 type findingsView struct {
 	View    string // "packages" or "all"
+	PM      string // dpkg, rpm, apk or composer: what the patch command uses
 	Sev     string // "" or kev, critical, high, medium, low, unknown
 	Fixable bool
 	Total   int // findings after filters
@@ -57,6 +58,20 @@ type findingsView struct {
 // installs. nil when nothing shown can be fixed, or the package manager
 // isn't one we write commands for.
 func fixCommand(pm string, list []report.Finding) (*command, int, int) {
+	if pm == "composer" {
+		var names []string
+		pending := 0
+		for _, f := range list {
+			if f.Fixed != "" && composerName.MatchString(f.Package) && !slices.Contains(names, f.Package) {
+				names = append(names, f.Package)
+			}
+		}
+		if len(names) == 0 {
+			return nil, 0, 0
+		}
+		slices.Sort(names)
+		return &command{ID: "cmd-fix", Text: "composer update " + strings.Join(names, " ") + " --with-dependencies"}, len(names), pending
+	}
 	prefix := map[string]string{
 		"dpkg": "sudo apt-get update && sudo apt-get install --only-upgrade",
 		"rpm":  "sudo dnf upgrade --refresh",
@@ -92,7 +107,7 @@ func fixCommand(pm string, list []report.Finding) (*command, int, int) {
 }
 
 func buildFindingsView(base, pm string, q url.Values, list []report.Finding) findingsView {
-	fv := findingsView{View: "packages", Sev: q.Get("sev"), Fixable: q.Get("fix") == "1"}
+	fv := findingsView{View: "packages", PM: pm, Sev: q.Get("sev"), Fixable: q.Get("fix") == "1"}
 	if q.Get("view") == "all" {
 		fv.View = "all"
 	}
