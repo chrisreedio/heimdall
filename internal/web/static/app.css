@@ -207,3 +207,7 @@ a.button { display: inline-block; padding: .5rem 1rem; border-radius: 6px; backg
 form.inline { display: inline-flex; gap: .25rem; align-items: center; margin: 0 .25rem .25rem 0; }
 form.row { display: flex; flex-wrap: wrap; gap: .75rem; align-items: flex-end; }
 label.check { display: inline-flex; gap: .35rem; align-items: center; }
+
+/* Logo mark beside the product name */
+.brand { display: inline-flex; align-items: center; gap: .45rem; }
+.brand img { display: block; }

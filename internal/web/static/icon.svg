@@ -1,1 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1f4e8c"/><path d="M8 22V10h3v4.5h10V10h3v12h-3v-4.5H11V22z" fill="#fff"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 15 224 230" role="img" aria-labelledby="title desc">
+  <title id="title">Heimdall</title>
+  <desc id="desc">Heimdall: an H-shaped watchful eye.</desc>
+  <defs>
+    <linearGradient id="mark-tone" x1="0" y1="1" x2="1" y2="0" objectBoundingBox="true">
+      <stop offset="0" stop-color="#657FE2"/>
+      <stop offset="1" stop-color="#A6C5FF"/>
+    </linearGradient>
+    <mask id="eye-cutout" maskUnits="userSpaceOnUse" x="0" y="0" width="260" height="260">
+      <rect width="260" height="260" fill="white"/>
+      <path d="M48 130 Q130 49 212 130 Q130 211 48 130Z" fill="black"/>
+    </mask>
+  </defs>
+  <g fill="url(#mark-tone)" mask="url(#eye-cutout)">
+    <path d="M30 27H92V233H30Z"/>
+    <path d="M168 27H230V233H168Z"/>
+    <path d="M77 130Q130 72 183 130Q130 188 77 130Z"/>
+  </g>
+  <circle cx="130" cy="130" r="22" fill="#E89D76"/>
+</svg>
