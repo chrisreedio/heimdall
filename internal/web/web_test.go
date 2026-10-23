@@ -231,7 +231,11 @@ func TestLogin(t *testing.T) {
 				t.Fatalf("login page: %d\n%s", w.Code, w.Body)
 			}
 
-			form := url.Values{"email": {"admin@example.com"}, "password": {"correct horse"}, "code": {"123456"}, "next": {"/hosts"}}
+			if body := e.get("/login").Body.String(); !strings.Contains(body, `name="totp"`) || !strings.Contains(body, `autocomplete="one-time-code"`) {
+				t.Error("the one-time code field should be recognisable to password managers")
+			}
+			// "totp" is the field's name; other tests post the old "code".
+			form := url.Values{"email": {"admin@example.com"}, "password": {"correct horse"}, "totp": {"123456"}, "next": {"/hosts"}}
 			w := e.post("/login", form, origin(base))
 			if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/hosts" {
 				t.Fatalf("login: %d %s", w.Code, w.Header().Get("Location"))
