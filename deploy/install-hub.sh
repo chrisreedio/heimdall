@@ -12,6 +12,12 @@
 #                        with `tailscale serve`, nothing is public
 # The UI (and MCP with --mcp) is always tailnet-only via `tailscale serve`.
 #
+# Upgrading an existing hub: run the new release's script with just
+#   sudo sh install-hub.sh
+# (or --version vX.Y.Z). It stops the hub, keeps the previous binary and a
+# pre-upgrade copy of the database, migrates, starts it again and rolls
+# back automatically if the hub doesn't come up.
+#
 # Requires Tailscale to be installed and logged in first:
 #   curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up --ssh
 set -eu
@@ -56,6 +62,13 @@ while [ $# -gt 0 ]; do
 done
 
 [ "$(id -u)" -eq 0 ] || die "run as root (sudo)"
+upgrade=0
+[ ! -e /etc/heimdall/heimdall.toml ] || upgrade=1
+if [ "$upgrade" = 1 ]; then
+	# Existing hub: networking (tailscale serve, Caddy) and the org stay as
+	# they are; only the software is upgraded.
+	org=${org:-existing} ingest_host='' tailnet_only=1 use_ts=0
+fi
 [ -n "$org" ] || usage
 case $org in *[!a-z0-9-]* | -* | *-) die "--org must be lowercase letters, digits and '-'" ;; esac
 if [ -n "$ingest_host" ]; then
@@ -92,7 +105,7 @@ fetch() {
 	fi
 }
 say "Fetching Heimdall $version ($arch)"
-for f in SHA256SUMS "heimdall-linux-$arch" heimdall.service; do fetch "$f"; done
+for f in SHA256SUMS "heimdall-linux-$arch" heimdall.service collect.sh; do fetch "$f"; done
 if have cosign && (fetch SHA256SUMS.sigstore.json) 2>/dev/null; then
 	cosign verify-blob "$work/SHA256SUMS" --bundle "$work/SHA256SUMS.sigstore.json" \
 		--certificate-identity-regexp '^https://github.com/chrisreedio/heimdall/\.github/workflows/release\.yml@refs/tags/v' \
@@ -100,20 +113,55 @@ if have cosign && (fetch SHA256SUMS.sigstore.json) 2>/dev/null; then
 		die "SHA256SUMS signature verification FAILED"
 	say "Sigstore signature verified"
 fi
-(cd "$work" && grep -E " (heimdall-linux-$arch|heimdall\.service)\$" SHA256SUMS | sha256sum -c - >/dev/null) ||
+(cd "$work" && grep -E " (heimdall-linux-$arch|heimdall\.service|collect\.sh)\$" SHA256SUMS | sha256sum -c - >/dev/null) ||
 	die "checksum verification FAILED; not installing"
 say "Checksums verified"
 
-say "Installing the hub"
-id heimdall-hub >/dev/null 2>&1 || useradd --system --home-dir /var/lib/heimdall --shell /usr/sbin/nologin heimdall-hub
-install -m 0755 "$work/heimdall-linux-$arch" /usr/local/bin/heimdall
-install -d -m 0700 -o heimdall-hub -g heimdall-hub /etc/heimdall /var/lib/heimdall
 hd() { (cd /var/lib/heimdall && runuser -u heimdall-hub -- /usr/local/bin/heimdall -c /etc/heimdall/heimdall.toml "$@"); }
 
-if [ -e /etc/heimdall/heimdall.toml ]; then
-	say "Existing config found; keeping it (running migrations only)"
-	hd migrate
+# healthy waits for the service to stay up and the UI to answer.
+healthy() {
+	for _ in 1 2 3 4 5 6 7 8 9 10; do
+		sleep 1
+		systemctl is-active --quiet heimdall || continue
+		if have curl; then
+			curl -fs -o /dev/null --max-time 2 http://127.0.0.1:8080/login && return 0
+		else
+			return 0
+		fi
+	done
+	return 1
+}
+
+id heimdall-hub >/dev/null 2>&1 || useradd --system --home-dir /var/lib/heimdall --shell /usr/sbin/nologin heimdall-hub
+install -d -m 0700 -o heimdall-hub -g heimdall-hub /etc/heimdall /var/lib/heimdall
+
+if [ "$upgrade" = 1 ]; then
+	old=$(/usr/local/bin/heimdall version 2>/dev/null || echo unknown)
+	say "Upgrading the hub: $old -> $version"
+	db=$(sed -n 's/^database *= *"\(.*\)"/\1/p' /etc/heimdall/heimdall.toml | head -n 1)
+	case $db in /*) ;; *) db=/etc/heimdall/${db:-heimdall.db} ;; esac
+	systemctl stop heimdall
+	cp -p /usr/local/bin/heimdall /usr/local/bin/heimdall.previous
+	# A consistent pre-upgrade copy, owner-only, next to the database.
+	rm -f "$db.pre-upgrade"
+	runuser -u heimdall-hub -- sh -c "umask 077 && cp -p '$db' '$db.pre-upgrade'"
+	install -m 0755 "$work/heimdall-linux-$arch" /usr/local/bin/heimdall
+	install -m 0644 "$work/heimdall.service" /etc/systemd/system/heimdall.service
+	systemctl daemon-reload
+	if ! hd migrate || ! systemctl start heimdall || ! healthy; then
+		say "Upgrade failed; rolling back to $old"
+		systemctl stop heimdall 2>/dev/null || true
+		install -m 0755 /usr/local/bin/heimdall.previous /usr/local/bin/heimdall
+		runuser -u heimdall-hub -- cp -p "$db.pre-upgrade" "$db"
+		rm -f "$db-wal" "$db-shm"
+		systemctl start heimdall
+		die "upgrade to $version failed and was rolled back; see journalctl -u heimdall"
+	fi
+	say "Upgraded to $(/usr/local/bin/heimdall version)"
 else
+	say "Installing the hub"
+	install -m 0755 "$work/heimdall-linux-$arch" /usr/local/bin/heimdall
 	ui_url=http://127.0.0.1:8080
 	[ -z "$ts_name" ] || ui_url=https://$ts_name
 	set -- --database /var/lib/heimdall/heimdall.db --ui-base-url "$ui_url" --behind-proxy
@@ -126,12 +174,23 @@ else
 	hd init "$@" 2>/dev/null
 	hd org create "$org" --name "${org_name:-$org}" 2>/dev/null
 	hd env create prod 2>/dev/null
+	install -m 0644 "$work/heimdall.service" /etc/systemd/system/heimdall.service
+	systemctl daemon-reload
+	systemctl enable --now heimdall >/dev/null 2>&1
+	healthy || die "heimdall didn't start; see journalctl -u heimdall"
 fi
 
-install -m 0644 "$work/heimdall.service" /etc/systemd/system/heimdall.service
-systemctl daemon-reload
-systemctl enable --now heimdall >/dev/null 2>&1
-systemctl is-active --quiet heimdall || die "heimdall didn't start; see journalctl -u heimdall"
+# Trust this release's collector, so servers upgrading to it don't raise
+# "collector changed" anomalies.
+collector_version=$(sed -n 's/^VERSION=//p' "$work/collect.sh" | head -n 1)
+collector_sha=$(sha256sum "$work/collect.sh" | cut -d ' ' -f 1)
+hd collector trust --version "$collector_version" --note "release $version" "$collector_sha" >/dev/null 2>&1 || true
+
+if [ "$upgrade" = 1 ]; then
+	say "Done. Previous binary: /usr/local/bin/heimdall.previous; pre-upgrade database: $db.pre-upgrade"
+	say "Servers: re-run install.sh from $version to update their collectors."
+	exit 0
+fi
 
 if [ -n "$ts_name" ]; then
 	say "Publishing the UI on your tailnet"
