@@ -136,6 +136,7 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("GET /search", s.requireAuth(s.withScope(s.searchPage)))
 	mux.HandleFunc("GET /hosts/new", s.requireAuth(s.addHostPage))
 	mux.HandleFunc("POST /hosts/new", s.requireAuth(s.addHostSubmit))
+	mux.HandleFunc("POST /hosts/{org}/{host}/rename", s.requireAuth(s.hostRename))
 	mux.HandleFunc("GET /hosts/{org}/{host}/changes", s.requireAuth(s.changesPage))
 	mux.HandleFunc("GET /anomalies", s.requireAuth(s.anomaliesPage))
 	mux.HandleFunc("POST /anomalies/{id}/{action}", s.requireAuth(s.anomalyAction))

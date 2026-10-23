@@ -168,8 +168,12 @@ function Send-HeimdallSnapshot([string]$json) {
     # Windows PowerShell defaults to old TLS versions; require 1.2+.
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.ServicePointManager]::SecurityProtocol
     try {
+        # The machine's hostname names a host added without one (on the hub).
+        $headers = @{ Authorization = "Bearer $token" }
+        $hn = ([System.Net.Dns]::GetHostName() -replace '[^A-Za-z0-9._-]', '')
+        if ($hn) { $headers['X-Heimdall-Hostname'] = $hn.Substring(0, [Math]::Min($hn.Length, 253)) }
         $resp = Invoke-WebRequest -UseBasicParsing -Method Post -Uri ($url.TrimEnd('/') + '/api/v1/ingest') `
-            -ContentType 'application/json' -Headers @{ Authorization = "Bearer $token" } `
+            -ContentType 'application/json' -Headers $headers `
             -Body ([System.Text.Encoding]::UTF8.GetBytes($json)) -TimeoutSec 120 -MaximumRedirection 0
         $code = [int]$resp.StatusCode
     } catch {

@@ -204,14 +204,22 @@ func cmdEnvList(a *app, args []string) error {
 }
 
 func cmdHostAdd(a *app, args []string) error {
-	fs := a.flags("host add", "--org <org> --env <env> [--tag t]... <hostname>")
+	fs := a.flags("host add", "--org <org> --env <env> [--tag t]... [hostname]")
 	org := fs.String("org", "", "organization slug (optional if there is only one)")
 	env := fs.String("env", "", "environment slug (optional if the org has only one)")
 	var tags multiFlag
 	fs.Var(&tags, "tag", "tag, repeatable or comma-separated (e.g. web,role:lb)")
-	pos, err := parse(fs, args, 1)
+	pos, err := parseAtLeast(fs, args, 0)
 	if err != nil {
 		return err
+	}
+	if len(pos) > 1 {
+		fs.Usage()
+		return errUsage
+	}
+	name := "" // no name: the host takes the hostname it reports first
+	if len(pos) == 1 {
+		name = pos[0]
 	}
 	s, err := a.openStore()
 	if err != nil {
@@ -224,14 +232,16 @@ func cmdHostAdd(a *app, args []string) error {
 	if err := a.defaultEnv(s, *org, env); err != nil {
 		return err
 	}
-	h, token, err := s.AddHost(a.ctx, actor(), *org, *env, pos[0], tags)
+	h, token, err := s.AddHost(a.ctx, actor(), *org, *env, name, tags)
 	if err != nil {
 		return err
 	}
 	// Only the token goes to stdout, so `heimdall host add ... > token` works.
-	fmt.Fprintf(a.stderr, "Added host %s (org %s, env %s).\n"+
-		"Ingest token, shown once (install it on the host as /etc/heimdall/token, mode 0400):\n\n",
-		h.Name, h.OrgSlug, h.EnvSlug)
+	fmt.Fprintf(a.stderr, "Added host %s (org %s, env %s).\n", h.Name, h.OrgSlug, h.EnvSlug)
+	if h.AutoName {
+		fmt.Fprintln(a.stderr, "It takes the server's own hostname on its first report.")
+	}
+	fmt.Fprint(a.stderr, "Ingest token, shown once (install it on the host as /etc/heimdall/token, mode 0400):\n\n")
 	fmt.Fprintln(a.stdout, token)
 	return nil
 }
@@ -281,5 +291,27 @@ func cmdHostRm(a *app, args []string) error {
 		return err
 	}
 	fmt.Fprintf(a.stderr, "Removed host %s from org %s.\n", pos[0], *org)
+	return nil
+}
+
+func cmdHostRename(a *app, args []string) error {
+	fs := a.flags("host rename", "[--org <org>] <hostname> <new-name>")
+	org := fs.String("org", "", "organization slug (optional if there is only one)")
+	pos, err := parse(fs, args, 2)
+	if err != nil {
+		return err
+	}
+	s, err := a.openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	if err := a.defaultOrg(s, org); err != nil {
+		return err
+	}
+	if err := s.RenameHost(a.ctx, actor(), *org, pos[0], pos[1]); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stderr, "Renamed %s to %s.\n", pos[0], pos[1])
 	return nil
 }

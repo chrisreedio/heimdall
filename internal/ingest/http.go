@@ -29,6 +29,11 @@ const (
 	maxLimiterKeys        = 10000
 )
 
+// HostnameHeader carries the machine's hostname on a push. It's a header,
+// not a snapshot field, so collectors and hubs of different versions still
+// accept each other's requests.
+const HostnameHeader = "X-Heimdall-Hostname"
+
 type Handler struct {
 	acc         *Accepter
 	store       *store.Store
@@ -137,6 +142,18 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Warn("ingest rejected: "+res.Message, attrs...)
 	} else {
 		log.Info("ingest "+res.Message, attrs...)
+	}
+	// A host added without a name takes the hostname its collector sends
+	// (once; it's only a display name, and only for its own registration).
+	if res.Status == http.StatusCreated && host.AutoName {
+		if reported := r.Header.Get(HostnameHeader); reported != "" {
+			if name, ok, err := h.store.ClaimHostName(r.Context(), host.ID, reported); err != nil {
+				log.Error("could not name host from its report", "err", err)
+			} else if ok {
+				log.Info("host named from its report", "name", name)
+				host.Name = name
+			}
+		}
 	}
 	if res.Status == http.StatusCreated && h.OnStored != nil {
 		h.OnStored(host)

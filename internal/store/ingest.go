@@ -18,23 +18,24 @@ import (
 
 // IngestHost is the host an ingest token or import resolves to.
 type IngestHost struct {
-	ID      int64
-	OrgID   int64
-	OrgSlug string
-	Name    string
-	TokenID int64 // 0 for imports
+	ID       int64
+	OrgID    int64
+	OrgSlug  string
+	Name     string
+	TokenID  int64 // 0 for imports
+	AutoName bool  // takes the hostname its collector reports
 }
 
 // HostByToken resolves a live (unrevoked) token hash to its host.
 func (s *Store) HostByToken(ctx context.Context, hash [32]byte) (IngestHost, error) {
 	var h IngestHost
 	err := s.db.QueryRowContext(ctx, `
-		SELECT h.id, h.org_id, o.slug, h.name, t.id
+		SELECT h.id, h.org_id, o.slug, h.name, t.id, h.auto_name
 		FROM ingest_tokens t
 		JOIN hosts h ON h.id = t.host_id
 		JOIN organizations o ON o.id = h.org_id
 		WHERE t.token_hash = ? AND t.revoked_at IS NULL`, hash[:]).
-		Scan(&h.ID, &h.OrgID, &h.OrgSlug, &h.Name, &h.TokenID)
+		Scan(&h.ID, &h.OrgID, &h.OrgSlug, &h.Name, &h.TokenID, &h.AutoName)
 	if errors.Is(err, sql.ErrNoRows) {
 		return IngestHost{}, ErrNotFound
 	}
@@ -49,10 +50,10 @@ func (s *Store) HostByName(ctx context.Context, orgSlug, name string) (IngestHos
 	}
 	var h IngestHost
 	err = s.db.QueryRowContext(ctx, `
-		SELECT h.id, h.org_id, o.slug, h.name
+		SELECT h.id, h.org_id, o.slug, h.name, h.auto_name
 		FROM hosts h JOIN organizations o ON o.id = h.org_id
 		WHERE o.slug = ? AND h.name = ?`, orgSlug, name).
-		Scan(&h.ID, &h.OrgID, &h.OrgSlug, &h.Name)
+		Scan(&h.ID, &h.OrgID, &h.OrgSlug, &h.Name, &h.AutoName)
 	if errors.Is(err, sql.ErrNoRows) {
 		return IngestHost{}, fmt.Errorf("host %q in org %q: %w", name, orgSlug, ErrNotFound)
 	}
