@@ -37,3 +37,21 @@ func readHidden(f *os.File, r *bufio.Reader) (string, error) {
 	}
 	return strings.TrimRight(s, "\r\n"), nil
 }
+
+// readHiddenBlock reads lines with echo off until done reports true for
+// one (e.g. a PEM END line), keeping echo off for the whole paste.
+func readHiddenBlock(f *os.File, r *bufio.Reader, done func(string) bool) (string, error) {
+	fd := int(f.Fd())
+	old, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	if err != nil {
+		return "", err
+	}
+	noEcho := *old
+	noEcho.Lflag &^= unix.ECHO
+	noEcho.Lflag |= unix.ICANON | unix.ISIG
+	if err := unix.IoctlSetTermios(fd, unix.TCSETS, &noEcho); err != nil {
+		return "", err
+	}
+	defer unix.IoctlSetTermios(fd, unix.TCSETS, old)
+	return readBlock(r, done)
+}

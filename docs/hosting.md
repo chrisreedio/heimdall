@@ -33,6 +33,15 @@ Don't use serverless, containers-as-a-service or managed databases. Heimdall is 
 5. **Backups:** schedule `heimdall backup --age-recipient …` and copy the `.age` files off the box (object storage or another machine).
 6. **Watch the watcher:** install the collector on the hub too (see "Collecting on the hub's own box" in [collector.md](collector.md)).
 
+### Behind Cloudflare's proxy
+
+To keep Cloudflare (WAF, DDoS protection) in front of public ingest, Caddy can't get a Let's Encrypt certificate itself: the challenge reaches Cloudflare, not the box. Use a **Cloudflare Origin certificate** instead:
+1. In Cloudflare: **SSL/TLS → Origin Server → Create certificate** for your ingest host (the 15-year default is fine). Keep the page open.
+2. On the hub: `sudo heimdall ingest cert`. Paste the certificate, then the private key (hidden). It checks that they match and cover the ingest host, installs them for Caddy and reloads it. `install-hub.sh` keeps the certificate on later runs.
+3. In Cloudflare: set **SSL/TLS** to **Full (strict)**.
+4. Collectors are plain `curl`. If **Bot Fight Mode** or a challenge rule is on, add a WAF skip rule for `/api/v1/ingest`, or servers will be challenged instead of reporting.
+5. Optional: allow inbound 443 only from [Cloudflare's IP ranges](https://www.cloudflare.com/ips/) in the cloud firewall, so the origin can't be reached around the WAF.
+
 ### Tailnet-only, with no public ports at all
 
 If every server runs Tailscale, nothing needs to be public:
