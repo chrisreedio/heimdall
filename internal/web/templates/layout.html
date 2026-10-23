@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="/static/app.css?v={{.Version}}">
 <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
 <script src="/static/app.js?v={{.Version}}" defer></script>
+{{if devMode}}<script src="/_dev/reload.js" defer></script>{{end}}
 </head>
 <body>
 <header class="top">

@@ -78,6 +78,16 @@ var templateFS embed.FS
 //go:embed static
 var staticFS embed.FS
 
+// Where pages and static files come from. Release builds always use the
+// embedded copies; a dev build (go build -tags dev, see dev.go) can point
+// these at the source tree for live editing.
+var (
+	templatesFS fs.FS = templateFS
+	staticFiles fs.FS = staticFS
+	devMode           = false
+	devRoutes   func(*http.ServeMux)
+)
+
 type server struct {
 	cfg        Config
 	st         *store.Store
@@ -111,6 +121,9 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	}
 
 	mux := http.NewServeMux()
+	if devRoutes != nil {
+		devRoutes(mux)
+	}
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.loginSubmit)
 	mux.HandleFunc("POST /logout", s.requireAuth(s.logout))
@@ -143,7 +156,11 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 func (s *server) headers(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Content-Security-Policy", CSP)
+		if devMode {
+			h.Set("Content-Security-Policy", CSP+"; connect-src 'self'") // live reload
+		} else {
+			h.Set("Content-Security-Policy", CSP)
+		}
 		h.Set("X-Content-Type-Options", "nosniff")
 		// same-origin, not no-referrer: under no-referrer browsers send
 		// "Origin: null" on form POSTs, which the Origin check must refuse.
@@ -320,13 +337,17 @@ func (s *server) static(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	b, err := fs.ReadFile(staticFS, "static/"+name)
+	b, err := fs.ReadFile(staticFiles, "static/"+name)
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", ctype)
-	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	if devMode {
+		w.Header().Set("Cache-Control", "no-store")
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
 	w.Write(b)
 }
 
@@ -355,7 +376,15 @@ func (s *server) render(w http.ResponseWriter, r *http.Request, status int, name
 
 // renderPage renders a fully specified page (e.g. one with a Refresh).
 func (s *server) renderPage(w http.ResponseWriter, r *http.Request, status int, name string, p page) {
-	t, ok := s.pages[name]
+	pages := s.pages
+	if devMode { // re-read templates on every request
+		var err error
+		if pages, err = parsePages(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	t, ok := pages[name]
 	if !ok {
 		s.log.Error("unknown template", "name", name)
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -398,7 +427,7 @@ func parsePages() (map[string]*template.Template, error) {
 		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost"}
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
-		t, err := template.New(n).Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/partials.html", "templates/"+n+".html")
+		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/"+n+".html")
 		if err != nil {
 			return nil, fmt.Errorf("web: template %s: %w", n, err)
 		}
@@ -410,6 +439,7 @@ func parsePages() (map[string]*template.Template, error) {
 var severities = map[string]bool{"critical": true, "high": true, "medium": true, "low": true}
 
 var funcs = template.FuncMap{
+	"devMode": func() bool { return devMode },
 	"userRef": store.UserRef,
 	"hostURL": func(org, host string) string {
 		return "/hosts/" + url.PathEscape(org) + "/" + url.PathEscape(host)
