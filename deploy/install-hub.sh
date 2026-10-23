@@ -106,7 +106,7 @@ fetch() {
 	fi
 }
 say "Fetching Heimdall $version ($arch)"
-for f in SHA256SUMS "heimdall-linux-$arch" heimdall.service collect.sh; do fetch "$f"; done
+for f in SHA256SUMS "heimdall-linux-$arch" heimdall.service collect.sh splash.html; do fetch "$f"; done
 if have cosign && (fetch SHA256SUMS.sigstore.json) 2>/dev/null; then
 	cosign verify-blob "$work/SHA256SUMS" --bundle "$work/SHA256SUMS.sigstore.json" \
 		--certificate-identity-regexp '^https://github.com/chrisreedio/heimdall/\.github/workflows/release\.yml@refs/tags/v' \
@@ -114,7 +114,7 @@ if have cosign && (fetch SHA256SUMS.sigstore.json) 2>/dev/null; then
 		die "SHA256SUMS signature verification FAILED"
 	say "Sigstore signature verified"
 fi
-(cd "$work" && grep -E " (heimdall-linux-$arch|heimdall\.service|collect\.sh)\$" SHA256SUMS | sha256sum -c - >/dev/null) ||
+(cd "$work" && grep -E " (heimdall-linux-$arch|heimdall\.service|collect\.sh|splash\.html)\$" SHA256SUMS | sha256sum -c - >/dev/null) ||
 	die "checksum verification FAILED; not installing"
 say "Checksums verified"
 
@@ -198,25 +198,75 @@ collector_version=$(sed -n 's/^VERSION=//p' "$work/collect.sh" | head -n 1)
 collector_sha=$(sha256sum "$work/collect.sh" | cut -d ' ' -f 1)
 hd collector trust --version "$collector_version" --note "release $version" "$collector_sha" >/dev/null 2>&1 || true
 
-# setup_caddy publishes only the ingest path (with --ingest-host).
+# setup_caddy publishes only the ingest path, plus a blank splash page at
+# GET / (with --ingest-host). Everything else is an empty 404.
+#
+# splash_csp pins splash.html's <style> block by hash. After editing it,
+# recompute with:
+#   sed -n 's/.*<style>\(.*\)<\/style>.*/\1/p' deploy/splash.html | tr -d '\n' | openssl dgst -sha256 -binary | base64
+# (go test ./deploy fails until this matches.)
+splash_csp="default-src 'none'; style-src 'sha256-lyQ49lXrXIDrdL6U7TEpK1gTs3k1ZzyWzGf2QjuBM34='; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 setup_caddy() {
 	if [ -n "$ingest_host" ]; then
 		say "Installing Caddy for public ingest on $ingest_host"
 		have caddy || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq caddy >/dev/null; }
+		install -d -m 0755 /etc/caddy/heimdall-splash
+		install -m 0644 "$work/splash.html" /etc/caddy/heimdall-splash/index.html
 		# Keep a certificate installed with `heimdall ingest cert` (e.g. a
 		# Cloudflare Origin certificate).
 		tls_line=''
 		[ ! -e /etc/caddy/heimdall-origin.pem ] || [ ! -e /etc/caddy/heimdall-origin.key ] ||
 			tls_line="	tls /etc/caddy/heimdall-origin.pem /etc/caddy/heimdall-origin.key"
 		cat >/etc/caddy/Caddyfile <<EOF
-# Written by Heimdall's install-hub.sh: only the ingest path is public.
+# Written by Heimdall's install-hub.sh: only the ingest path and a blank
+# splash page at / are public. Nothing names the software or its version.
 $ingest_host {
 $tls_line
+	header {
+		-Server
+		-Via
+		defer
+	}
 	@ingest path /api/v1/ingest
 	request_body @ingest {
 		max_size 6MB
 	}
-	reverse_proxy @ingest 127.0.0.1:8443
+	handle @ingest {
+		reverse_proxy 127.0.0.1:8443
+	}
+	@root {
+		method GET HEAD
+		path /
+	}
+	handle @root {
+		root * /etc/caddy/heimdall-splash
+		header {
+			Content-Security-Policy "$splash_csp"
+			X-Content-Type-Options nosniff
+			Referrer-Policy no-referrer
+			X-Frame-Options DENY
+			Cache-Control no-store
+			Permissions-Policy "camera=(), microphone=(), geolocation=()"
+			-ETag
+			-Last-Modified
+			defer
+		}
+		file_server
+	}
+	handle {
+		respond 404
+	}
+}
+
+# Plain HTTP only redirects (ACME challenges are answered before this), and
+# without the Server header Caddy's automatic redirect would send.
+http:// {
+	header {
+		-Server
+		defer
+	}
+	@ingest_host host $ingest_host
+	redir @ingest_host https://{host}{uri} 308
 	respond 404
 }
 EOF
@@ -254,11 +304,18 @@ fi
 setup_caddy
 setup_admin
 
+if [ -n "$ingest_host" ]; then
+	ingest_url="https://$ingest_host/api/v1/ingest"
+elif [ -n "$ts_name" ]; then
+	ingest_url="https://$ts_name:8443/api/v1/ingest (tailnet only)"
+else
+	ingest_url="http://127.0.0.1:8443/api/v1/ingest (loopback; put HTTPS in front)"
+fi
 cat >&2 <<EOF
 
 Heimdall hub is running.
   UI:      ${ts_name:+https://$ts_name}${ts_name:-http://127.0.0.1:8080 (put HTTPS in front)}
-  Ingest:  ${ingest_host:+https://$ingest_host/api/v1/ingest}${ingest_host:-${ts_name:+https://$ts_name:8443/api/v1/ingest (tailnet only)}}${ingest_host:-${ts_name:-http://127.0.0.1:8443/api/v1/ingest (loopback; put HTTPS in front)}}
+  Ingest:  $ingest_url
 EOF
 [ "$mcp" = 0 ] || [ -z "$ts_name" ] || printf '  MCP:     https://%s:8444/mcp\n' "$ts_name" >&2
 cat >&2 <<EOF

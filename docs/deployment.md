@@ -12,7 +12,7 @@ curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/v0.4.0/ins
 sudo sh install-hub.sh --org acme --ingest-host ingest.acme.example.com --admin you@example.com --mcp
 #   or --tailnet-only instead of --ingest-host if every server is on your tailnet
 ```
-It downloads the verified release, creates the `heimdall-hub` user, config and database, starts the sandboxed service, publishes the UI (and MCP) with `tailscale serve`, and, with `--ingest-host`, installs Caddy to serve only the ingest path publicly. Re-running it is safe: it keeps the existing config and just migrates.
+It downloads the verified release, creates the `heimdall-hub` user, config and database, starts the sandboxed service, publishes the UI (and MCP) with `tailscale serve`, and, with `--ingest-host`, installs Caddy to serve only the ingest path publicly. The ingest host's root (`GET /`) serves a blank splash page (just the logo, a strict CSP, no `Server` header); every other path is an empty 404. Re-running it is safe: it keeps the existing config and just migrates.
 
 **New VM?** Paste [`deploy/cloud-init-hub.yaml`](../deploy/cloud-init-hub.yaml) as user data instead. It installs Tailscale and runs the same installer on first boot.
 

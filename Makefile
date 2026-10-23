@@ -18,7 +18,7 @@ test:
 	go test -mod=vendor ./...
 
 fmt:
-	@out=$$(gofmt -l cmd internal); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
+	@out=$$(gofmt -l cmd internal deploy); if [ -n "$$out" ]; then echo "gofmt needed:"; echo "$$out"; exit 1; fi
 
 vet:
 	go vet -mod=vendor ./...
@@ -75,7 +75,7 @@ dist:
 	GOOS=linux GOARCH=arm64 go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/heimdall-linux-arm64 ./cmd/heimdall & b=$$!; \
 	wait $$a && wait $$b
 	cp collector/collect.sh collector/collect.ps1 collector/install-windows.ps1 deploy/heimdall.service deploy/heimdall-collect.service \
-		deploy/heimdall-collect.timer deploy/collect.env.example dist/
+		deploy/heimdall-collect.timer deploy/collect.env.example deploy/splash.html dist/
 	sed 's/^HEIMDALL_VERSION=dev /HEIMDALL_VERSION=$(VERSION) /' collector/install.sh > dist/install.sh
 	sed 's/^HEIMDALL_VERSION=dev /HEIMDALL_VERSION=$(VERSION) /' deploy/install-hub.sh > dist/install-hub.sh
 	cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
