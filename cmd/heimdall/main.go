@@ -67,6 +67,7 @@ Commands:
   sso setup                    Set up Entra ID single sign-on (asks, writes, restarts)
   sso set-secret               Store or rotate the Entra client secret (never echoed)
   upgrade [--check]            Upgrade this hub to the latest release (sudo)
+  restart                      Restart the hub (after config changes) and check it's up (sudo)
   ingest cert                  Install a certificate for public ingest, e.g. a Cloudflare Origin cert (sudo)
   version                      Print version
 
@@ -115,6 +116,7 @@ var commands = map[string]command{
 	}),
 	"sso":     group("sso", map[string]command{"setup": cmdSSOSetup, "set-secret": cmdSSOSetSecret}),
 	"upgrade": cmdUpgrade,
+	"restart": cmdRestart,
 	"ingest":  group("ingest", map[string]command{"cert": cmdIngestCert}),
 	"serve":   cmdServe,
 	"import":  cmdImport,
