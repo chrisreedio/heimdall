@@ -140,6 +140,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", fs.Arg(0), usage)
 		return errUsage
 	}
+	if err := asHubUser(*configPath, fs.Args()); err != nil {
+		return err
+	}
 	return cmd(&app{ctx: ctx, configPath: *configPath, stdout: stdout, stderr: stderr}, fs.Args()[1:])
 }
 

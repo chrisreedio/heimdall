@@ -297,7 +297,8 @@ cd /var/lib/heimdall && sudo -u heimdall-hub heimdall -c /etc/heimdall/heimdall.
 sudo install -m 0644 heimdall.service /etc/systemd/system/
 sudo systemctl enable --now heimdall
 
-alias hd='sudo -u heimdall-hub heimdall -c /etc/heimdall/heimdall.toml'
+# On an installed hub, `sudo heimdall …` runs as heimdall-hub with /etc/heimdall/heimdall.toml.
+alias hd='sudo heimdall'
 hd org  create acme --name "Acme Corp"
 hd env  create prod
 hd host add web-01            # prints a one-time ingest token

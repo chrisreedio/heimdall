@@ -14,7 +14,7 @@
 # Afterwards: point DNS for INGEST_HOST at the VM, then create your admin over
 # Tailscale SSH (TOTP enrollment needs a terminal):
 #   tailscale ssh root@heimdall-ORG
-#   sudo -u heimdall-hub heimdall -c /etc/heimdall/heimdall.toml user create --admin you@example.com
+#   sudo heimdall user create --admin you@example.com
 package_update: true
 package_upgrade: true
 packages: [curl, unattended-upgrades]
