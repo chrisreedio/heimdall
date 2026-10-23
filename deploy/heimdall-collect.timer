@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily Heimdall inventory push
+
+[Timer]
+OnBootSec=15min
+OnCalendar=*-*-* 04:00:00
+# Spread hosts out so they don't all report at once.
+RandomizedDelaySec=1h
+Persistent=true
+
+[Install]
+WantedBy=timers.target

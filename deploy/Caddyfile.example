@@ -1,0 +1,24 @@
+# Caddy in front of Heimdall on the same box. Caddy terminates TLS (with
+# automatic certificates) and forwards to Heimdall's loopback listeners.
+#
+# heimdall.toml:
+#   [ui]     listen = "127.0.0.1:8080"   base_url = "https://heimdall.internal.example.com"
+#   [ingest] listen = "127.0.0.1:8443"   behind_proxy = true
+
+# Ingest: the only name your servers need to reach.
+ingest.heimdall.example.com {
+	# Only the ingest path exists; everything else is a 404 at Heimdall too.
+	@ingest path /api/v1/ingest
+	reverse_proxy @ingest 127.0.0.1:8443
+	respond 404
+	request_body {
+		max_size 6MB
+	}
+}
+
+# UI: keep it off the public internet. Either bind this site to a private
+# interface (bind 100.x.y.z for a tailnet IP) or restrict by source range.
+heimdall.internal.example.com {
+	bind 100.64.0.10
+	reverse_proxy 127.0.0.1:8080
+}

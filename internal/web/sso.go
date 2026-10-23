@@ -1,0 +1,116 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package web
+
+import (
+	"crypto/sha256"
+	"errors"
+	"net/http"
+	"time"
+
+	"github.com/chrisreedio/heimdall/internal/auth"
+	"github.com/chrisreedio/heimdall/internal/store"
+)
+
+// ssoRequestTTL bounds how long a user may spend at Microsoft's sign-in.
+const ssoRequestTTL = 10 * time.Minute
+
+// Fixed messages: nothing from the identity provider is shown verbatim.
+const (
+	msgSSOExpired = "Sign-in expired, try again."
+	msgSSOFailed  = "Sign-in failed. Try again, or ask an admin to check the server log."
+	msgSSODown    = "Single sign-on is unavailable right now. Try again shortly."
+)
+
+// ssoLogin starts an Entra ID sign-in. The state, nonce and PKCE verifier
+// stay server-side (only the state's hash is stored, and it's single use).
+func (s *server) ssoLogin(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.SSO == nil {
+		s.notFound(w, r, nil)
+		return
+	}
+	next := safeNext(r.URL.Query().Get("next"))
+	req, err := s.cfg.SSO.Begin(r.Context())
+	if err != nil {
+		s.log.Warn("sso: begin failed", "err", err)
+		s.loginError(w, r, http.StatusBadGateway, next, msgSSODown)
+		return
+	}
+	err = s.st.PutAuthRequest(r.Context(), sha256.Sum256([]byte(req.State)), store.AuthRequest{
+		Nonce: req.Nonce, Verifier: req.Verifier, ReturnTo: next, CreatedAt: s.now(),
+	})
+	if err != nil {
+		s.fail(w, r, nil, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.Redirect(w, r, req.URL, http.StatusSeeOther)
+}
+
+// ssoCallback finishes a sign-in. Microsoft redirects here cross-site, so
+// a SameSite=Strict cookie set now wouldn't accompany a further redirect;
+// instead a small same-site page hands off with a meta refresh.
+func (s *server) ssoCallback(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.SSO == nil {
+		s.notFound(w, r, nil)
+		return
+	}
+	ctx := r.Context()
+	q := r.URL.Query()
+	state := q.Get("state")
+	if state == "" || len(state) > 512 {
+		s.loginError(w, r, http.StatusBadRequest, "/", msgSSOExpired)
+		return
+	}
+	// Taking the request consumes it, so a state can never be reused, even
+	// when the rest of the callback fails.
+	req, err := s.st.TakeAuthRequest(ctx, sha256.Sum256([]byte(state)), s.now(), ssoRequestTTL)
+	if errors.Is(err, store.ErrNotFound) {
+		s.loginError(w, r, http.StatusBadRequest, "/", msgSSOExpired)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, nil, err)
+		return
+	}
+	next := safeNext(req.ReturnTo)
+
+	if e := q.Get("error"); e != "" {
+		s.log.Warn("sso: identity provider returned an error", "error", truncate(e, 100),
+			"description", truncate(q.Get("error_description"), 300))
+		s.loginError(w, r, http.StatusUnauthorized, next, msgSSOFailed)
+		return
+	}
+	code := q.Get("code")
+	if code == "" || len(code) > 4096 {
+		s.loginError(w, r, http.StatusBadRequest, next, msgSSOFailed)
+		return
+	}
+	id, err := s.cfg.SSO.Finish(ctx, code, req.Verifier, req.Nonce)
+	if err != nil {
+		s.log.Warn("sso: sign-in rejected", "err", err) // entra errors never include tokens or codes
+		s.loginError(w, r, http.StatusUnauthorized, next, msgSSOFailed)
+		return
+	}
+	token, err := s.auth.LoginIdentity(ctx, store.EntraIdentity{
+		TenantID: id.TenantID, ObjectID: id.ObjectID, Email: id.Email, Name: id.Name,
+	}, id.Roles, clientIP(r), r.UserAgent())
+	if errors.Is(err, auth.ErrNotProvisioned) {
+		s.loginError(w, r, http.StatusForbidden, next, auth.ErrNotProvisioned.Error())
+		return
+	}
+	if err != nil {
+		s.log.Error("sso: session creation failed", "err", err)
+		s.loginError(w, r, http.StatusInternalServerError, next, msgSSOFailed)
+		return
+	}
+	s.setSession(w, token, int(s.cfg.SessionMax.Seconds()))
+	s.renderPage(w, r, http.StatusOK, "signedin", page{Title: "Signed in", Refresh: next, Body: next})
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
+}

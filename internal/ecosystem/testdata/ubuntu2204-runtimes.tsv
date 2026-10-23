@@ -1,0 +1,15 @@
+libnode72	12.22.9~dfsg-1ubuntu3.6	amd64	nodejs	12.22.9~dfsg-1ubuntu3.6
+libpython3-stdlib	3.10.6-1~22.04.1	amd64	python3-defaults	3.10.6-1~22.04.1
+libpython3.10-minimal	3.10.12-1~22.04.18	amd64	python3.10	3.10.12-1~22.04.18
+libpython3.10-stdlib	3.10.12-1~22.04.18	amd64	python3.10	3.10.12-1~22.04.18
+nodejs	12.22.9~dfsg-1ubuntu3.6	amd64	nodejs	12.22.9~dfsg-1ubuntu3.6
+php-common	2:92ubuntu1	all	php-defaults	92ubuntu1
+php8.1-cli	8.1.2-1ubuntu2.28	amd64	php8.1	8.1.2-1ubuntu2.28
+php8.1-common	8.1.2-1ubuntu2.28	amd64	php8.1	8.1.2-1ubuntu2.28
+php8.1-fpm	8.1.2-1ubuntu2.28	amd64	php8.1	8.1.2-1ubuntu2.28
+php8.1-opcache	8.1.2-1ubuntu2.28	amd64	php8.1	8.1.2-1ubuntu2.28
+php8.1-readline	8.1.2-1ubuntu2.28	amd64	php8.1	8.1.2-1ubuntu2.28
+python3	3.10.6-1~22.04.1	amd64	python3-defaults	3.10.6-1~22.04.1
+python3-minimal	3.10.6-1~22.04.1	amd64	python3-defaults	3.10.6-1~22.04.1
+python3.10	3.10.12-1~22.04.18	amd64	python3.10	3.10.12-1~22.04.18
+python3.10-minimal	3.10.12-1~22.04.18	amd64	python3.10	3.10.12-1~22.04.18

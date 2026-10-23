@@ -1,0 +1,26 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<h1>Patch plans</h1>
+{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+<p class="muted">Group hosts into batches, tick each one off as you patch it. A ticked host is <strong>verified</strong> automatically by its next check-in with no pending security updates.</p>
+<div class="scroll"><table>
+  <thead><tr><th>Plan</th><th>Org</th><th>Hosts</th><th>Done</th><th>Verified</th><th>Status</th><th>Created</th></tr></thead>
+  <tbody>{{range .Plans}}<tr>
+    <td><a href="/plans/{{.ID}}">{{.Name}}</a></td>
+    <td>{{if .OrgSlug}}{{.OrgSlug}}{{else}}<span class="muted">all orgs</span>{{end}}</td>
+    <td>{{.Hosts}}</td><td>{{.Done}}</td><td>{{.Verified}}</td>
+    <td>{{if .ClosedAt.IsZero}}open{{else}}closed{{end}}</td>
+    <td>{{time .CreatedAt}}</td>
+  </tr>{{else}}<tr><td colspan="7" class="muted">No plans yet.</td></tr>{{end}}</tbody>
+</table></div>
+{{if or .Orgs .CanAllOrgs}}
+<section class="card">
+  <h2>New plan</h2>
+  <form method="post" action="/plans" class="row">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <label>Name <input name="name" required maxlength="200" placeholder="October patching"></label>
+    <label>Org <select name="org">{{range .Orgs}}<option value="{{.Slug}}">{{.Name}}</option>{{end}}{{if .CanAllOrgs}}<option value="">All orgs</option>{{end}}</select></label>
+    <button type="submit">Create</button>
+  </form>
+</section>
+{{end}}
+{{end}}{{end}}

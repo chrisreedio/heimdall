@@ -1,0 +1,39 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}{{$id := .Plan.ID}}{{$can := .CanOperate}}
+<p><a href="/plans">← Patch plans</a></p>
+<h1>{{.Plan.Name}}</h1>
+{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+<p class="muted">{{.Plan.Hosts}} hosts · {{.Plan.Done}} done · {{.Plan.Verified}} verified{{if not .Plan.ClosedAt.IsZero}} · closed {{time .Plan.ClosedAt}}{{end}}</p>
+<div class="scroll"><table>
+  <thead><tr><th>Batch</th><th>Host</th><th>Pending security</th><th>State</th>{{if $can}}<th></th>{{end}}</tr></thead>
+  <tbody>{{range .Items}}<tr>
+    <td>{{.Batch}}</td>
+    <td><a href="{{hostURL .Host.OrgSlug .Host.Name}}">{{.Host.Name}}</a></td>
+    <td>{{.PendingSecurity}}</td>
+    <td>{{if not .VerifiedAt.IsZero}}<span class="badge ok">verified</span>{{else if not .DoneAt.IsZero}}<span class="badge">done{{if .DoneBy}} by {{.DoneBy}}{{end}}</span> <span class="muted">waiting for a clean check-in</span>{{else}}to do{{end}}</td>
+    {{if $can}}<td>
+      <form method="post" action="/plans/{{$id}}/{{if .DoneAt.IsZero}}done{{else}}undo{{end}}" class="inline">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.Host.OrgSlug}}"><input type="hidden" name="host" value="{{.Host.Name}}">
+        <button type="submit" class="link">{{if .DoneAt.IsZero}}mark done{{else}}undo{{end}}</button>
+      </form>
+      <form method="post" action="/plans/{{$id}}/remove" class="inline">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.Host.OrgSlug}}"><input type="hidden" name="host" value="{{.Host.Name}}">
+        <button type="submit" class="link">remove</button>
+      </form>
+    </td>{{end}}
+  </tr>{{else}}<tr><td colspan="5" class="muted">No hosts in this plan yet.</td></tr>{{end}}</tbody>
+</table></div>
+{{if $can}}
+{{if .Candidates}}<section class="card">
+  <h2>Add a host</h2>
+  <form method="post" action="/plans/{{$id}}/add" class="row">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <label>Host <select name="hostref" required>{{range .Candidates}}<option value="{{.OrgSlug}}/{{.Name}}">{{.OrgSlug}}/{{.Name}}</option>{{end}}</select></label>
+    <label>Batch <input name="batch" type="number" min="1" max="1000" value="1"></label>
+    <button type="submit">Add</button>
+  </form>
+</section>{{end}}
+<form method="post" action="/plans/{{$id}}/close"><input type="hidden" name="csrf" value="{{$csrf}}"><button type="submit">Close plan</button></form>
+{{else if and (not .Plan.ClosedAt.IsZero) .CanReopen}}
+<form method="post" action="/plans/{{$id}}/reopen"><input type="hidden" name="csrf" value="{{$csrf}}"><button type="submit" class="link">Reopen plan</button></form>
+{{end}}
+{{end}}{{end}}

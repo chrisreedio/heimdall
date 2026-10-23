@@ -1,0 +1,40 @@
+{{define "content"}}{{with .Body}}
+<div class="head">
+  <h1>Sites</h1>
+  {{if .ShowOrgs}}
+  <form method="get" action="/sites" class="filter">
+    <label>Org
+      <select name="org">
+        <option value="">All</option>
+        {{range .Orgs}}<option value="{{.Slug}}"{{if eq .Slug $.Body.Org}} selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </label>
+    <button type="submit">Filter</button>
+  </form>
+  {{end}}
+</div>
+
+{{if .Sites}}
+<div class="scroll"><table>
+  <thead><tr><th>Site</th><th>Host</th><th>Web server</th><th>PHP-FPM</th><th>Laravel</th><th>Flags</th><th class="num">KEV</th><th class="num">Critical</th><th class="num">High</th><th class="num">Fixable</th></tr></thead>
+  <tbody>
+  {{range .Sites}}
+  <tr>
+    <td><span class="id">{{with first .ServerNames}}{{.}}{{else}}{{$.Body.Org}}{{end}}</span><div class="muted small">{{.Root}}</div>{{if gt (len .ServerNames) 1}}<div class="muted small">{{join .ServerNames ", "}}</div>{{end}}</td>
+    <td><a href="{{hostURL .Org .Host}}">{{.Host}}</a>{{if $.Body.ShowOrgs}} <span class="muted">({{.Org}})</span>{{end}}</td>
+    <td>{{with .WebServer}}{{.}}{{else}}<span class="muted">listed</span>{{end}}</td>
+    <td>{{with .PHPFPM}}{{.}}{{else}}<span class="muted">unknown</span>{{end}} {{template "lifebadge" .PHPLife}}</td>
+    <td>{{if .FrameworkVersion}}{{.FrameworkVersion}} {{template "lifebadge" .FrameworkLife}}{{else}}<span class="muted">—</span>{{end}}</td>
+    <td>{{template "sitebadges" .Site}}</td>
+    <td class="num">{{if .Counts.KEV}}<span class="badge kev">{{.Counts.KEV}}</span>{{else}}0{{end}}</td>
+    <td class="num">{{.Counts.Critical}}</td>
+    <td class="num">{{.Counts.High}}</td>
+    <td class="num">{{.Counts.Fixable}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{else}}
+<p class="empty">No sites found yet. The collector (0.2.0+) discovers sites from enabled nginx and Apache vhosts, plus any app roots listed in <code>HEIMDALL_SITES</code>.</p>
+{{end}}
+{{end}}{{end}}

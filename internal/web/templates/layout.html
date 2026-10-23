@@ -1,0 +1,41 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+{{if .Refresh}}<meta http-equiv="refresh" content="0;url={{.Refresh}}">{{end}}
+<title>{{.Title}} · Heimdall</title>
+<link rel="stylesheet" href="/static/app.css?v={{.Version}}">
+<link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+<script src="/static/app.js?v={{.Version}}" defer></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">Heimdall</a>
+  {{if .Viewer}}
+  <nav aria-label="Main">
+    <a href="/"{{if eq .Nav "dashboard"}} aria-current="page"{{end}}>Dashboard</a>
+    <a href="/hosts"{{if eq .Nav "hosts"}} aria-current="page"{{end}}>Hosts</a>
+    <a href="/sites"{{if eq .Nav "sites"}} aria-current="page"{{end}}>Sites</a>
+    <a href="/search"{{if eq .Nav "search"}} aria-current="page"{{end}}>Search</a>
+    <a href="/anomalies"{{if eq .Nav "anomalies"}} aria-current="page"{{end}}>Anomalies</a>
+    <a href="/drift"{{if eq .Nav "drift"}} aria-current="page"{{end}}>Drift</a>
+    <a href="/plans"{{if eq .Nav "plans"}} aria-current="page"{{end}}>Plans</a>
+    {{if .Viewer.IsAdmin}}<a href="/admin/users"{{if eq .Nav "users"}} aria-current="page"{{end}}>Users</a>{{end}}
+  </nav>
+  <div class="who">
+    <span class="email">{{.Viewer.Email}}</span>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="link">Sign out</button>
+    </form>
+  </div>
+  {{end}}
+</header>
+<main>
+{{template "content" .}}
+</main>
+<footer>Heimdall {{.Version}}</footer>
+</body>
+</html>{{end}}

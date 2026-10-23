@@ -1,0 +1,27 @@
+{{define "life"}}{{if not .Known}}<span class="muted">no lifecycle data yet</span>{{else if .EOL}}<span class="badge bad">end of life</span>{{with .EOLDate}} since {{date .}}{{end}}{{else if .EOLDate}}supported until {{date .EOLDate}} ({{.DaysLeft}} days){{else}}supported{{end}}{{end}}
+
+{{/* lifebadge renders a compact badge for a *report.Lifecycle (nil-safe). */}}
+{{define "lifebadge"}}{{$s := lifeState .}}{{if eq $s "eol"}}<span class="badge bad" title="end of life{{with .EOLDate}} since {{date .}}{{end}}">EOL</span>{{else if eq $s "soon"}}<span class="badge warn" title="end of life {{date .EOLDate}}">EOL in {{.DaysLeft}}d</span>{{end}}{{end}}
+
+{{/* sitebadges: problem badges for a report.Site. */}}
+{{define "sitebadges"}}{{if unmet .PHPSatisfied}}<span class="badge warn" title="composer.json requires php {{.PHPRequirement}}">requirement not met</span> {{end}}{{if not .Readable}}<span class="badge muted" title="the collector couldn't read composer.json/composer.lock">unreadable</span>{{end}}{{end}}
+
+{{/* findings renders a findings table ([]report.Finding). */}}
+{{define "findings"}}
+<div class="scroll"><table class="findings">
+  <thead><tr><th></th><th>Severity</th><th>Vulnerability</th><th>Package</th><th>Installed</th><th>Fixed in</th><th>First seen</th></tr></thead>
+  <tbody>
+  {{range .}}
+  <tr>
+    <td>{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}</td>
+    <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}</td>
+    <td><span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Summary}}<div class="summary">{{.Summary}}</div>{{end}}</td>
+    <td>{{.Package}}{{if gt (len .Binaries) 1}}<div class="muted small">{{join .Binaries ", "}}</div>{{end}}</td>
+    <td class="ver">{{.Version}}</td>
+    <td class="ver">{{if .Fixed}}{{.Fixed}}{{if .FixPending}} <span class="badge ok">update pending</span>{{end}}{{else}}<span class="muted">no fix yet</span>{{end}}</td>
+    <td>{{time .FirstSeen}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{end}}

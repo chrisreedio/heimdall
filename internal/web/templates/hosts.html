@@ -1,0 +1,43 @@
+{{define "content"}}{{with .Body}}
+<div class="head">
+  <h1>Hosts</h1>
+<p><a href="/hosts/new">+ Add a host</a></p>
+  {{if .ShowOrgs}}
+  <form method="get" action="/hosts" class="filter">
+    <label>Org
+      <select name="org">
+        <option value="">All</option>
+        {{range .Orgs}}<option value="{{.Slug}}"{{if eq .Slug $.Body.Org}} selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </label>
+    <button type="submit">Filter</button>
+  </form>
+  {{end}}
+</div>
+{{if .Hosts}}
+<div class="scroll"><table>
+  <thead><tr><th>Host</th>{{if .ShowOrgs}}<th>Org</th>{{end}}<th>Env</th><th>OS</th><th class="num">Open</th><th class="num">KEV</th><th class="num">Fixable</th><th>Tags</th><th>Last seen</th></tr></thead>
+  <tbody>
+  {{range .Hosts}}
+  <tr>
+    <td><a href="{{hostURL .OrgSlug .Name}}">{{.Name}}</a></td>
+    {{if $.Body.ShowOrgs}}<td>{{.OrgSlug}}</td>{{end}}
+    <td>{{.EnvSlug}}</td>
+    {{if .Reported}}
+    <td>{{.Row.OS}}</td>
+    <td class="num">{{.Row.Counts.Total}}</td>
+    <td class="num">{{if .Row.Counts.KEV}}<span class="badge kev">{{.Row.Counts.KEV}}</span>{{else}}0{{end}}</td>
+    <td class="num">{{.Row.Counts.Fixable}}</td>
+    {{else}}
+    <td colspan="4" class="muted">waiting for first report</td>
+    {{end}}
+    <td>{{range .Tags}}<span class="tag">{{.}}</span> {{end}}</td>
+    <td{{if .Row.Stale}} class="stale"{{end}}>{{ago .LastSeenAt}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{else}}
+<p class="empty">No hosts yet. Add one with <code>heimdall host add &lt;hostname&gt;</code>.</p>
+{{end}}
+{{end}}{{end}}

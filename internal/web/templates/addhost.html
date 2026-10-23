@@ -1,0 +1,38 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<p><a href="/hosts">← Hosts</a></p>
+<h1>Add a host</h1>
+{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+{{if .Added}}
+<section class="card">
+  <h2>{{.Host.Name}} is registered</h2>
+  <p><strong>Ingest token, shown once.</strong> You'll paste it on the server when the installer asks. Heimdall keeps only its hash.</p>
+  <div class="copy"><code id="token">{{.Token}}</code> <button type="button" class="link" data-copy="token" hidden>copy</button></div>
+  {{if .Unpinned}}<p class="alert">This hub isn't a tagged release build, so replace <code>vX.Y.Z</code> below with the release you're using.</p>{{end}}
+
+  <h3>Linux</h3>
+  <p class="muted">Downloads the collector from the signed GitHub release (never from this hub), verifies its checksum, installs it as an unprivileged user and sends a first report.</p>
+  <pre id="cmd-linux">{{.Linux}}</pre> <button type="button" class="link" data-copy="cmd-linux" hidden>copy</button>
+
+  <details><summary>New VM? cloud-init user data</summary>
+  <p class="muted">Paste as the VM's user data. It contains the token, and cloud metadata is readable by processes on that VM, so use it only for VMs you're creating fresh.</p>
+  <pre id="cmd-cloud">{{.Cloud}}</pre> <button type="button" class="link" data-copy="cmd-cloud" hidden>copy</button>
+  </details>
+
+  <details><summary>Windows (elevated PowerShell)</summary>
+  <pre id="cmd-win">{{.Windows}}</pre> <button type="button" class="link" data-copy="cmd-win" hidden>copy</button>
+  </details>
+
+  <p><a href="{{hostURL .Host.OrgSlug .Host.Name}}">Go to {{.Host.Name}}</a> · it appears after the first report.</p>
+</section>
+{{else}}
+{{if not .IngestURL}}<p class="alert">Set <code>ingest.public_url</code> in heimdall.toml so the install commands point at the right address.</p>{{end}}
+<form method="post" action="/hosts/new" class="card">
+  <input type="hidden" name="csrf" value="{{$csrf}}">
+  <label>Organization <select name="org">{{range .Orgs}}<option value="{{.Slug}}">{{.Name}}</option>{{end}}</select></label>
+  <label>Environment <select name="env">{{range $org, $envs := .Envs}}{{range $envs}}<option value="{{.Slug}}">{{$org}} / {{.Slug}}</option>{{end}}{{end}}</select></label>
+  <label>Hostname <input name="name" required maxlength="253" placeholder="web-01" autocomplete="off"></label>
+  <label>Tags <input name="tags" maxlength="300" placeholder="web, role:lb"></label>
+  <button type="submit">Register host</button>
+</form>
+{{end}}
+{{end}}{{end}}

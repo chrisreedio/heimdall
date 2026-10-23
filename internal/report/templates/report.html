@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{.Title}}</title>
+<style>
+body { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1a1a1a; background: #fff; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; }
+h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+h2 { font-size: 1.25rem; margin: 2rem 0 .5rem; border-bottom: 2px solid #ddd; padding-bottom: .25rem; }
+h3 { font-size: 1rem; margin: 1rem 0 .4rem; }
+.muted { color: #555; }
+.tiles { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+.tile { border: 1px solid #ccc; border-radius: 6px; padding: .5rem .8rem; min-width: 7rem; }
+.tile b { display: block; font-size: 1.3rem; }
+table { border-collapse: collapse; width: 100%; margin: .5rem 0 1rem; font-size: 12.5px; }
+th, td { border-bottom: 1px solid #e3e3e3; padding: .3rem .4rem; text-align: left; vertical-align: top; }
+th { background: #f4f4f4; }
+.sev { font-weight: 600; text-transform: uppercase; font-size: 11px; }
+.sev-critical { color: #a40000; } .sev-high { color: #b34700; } .sev-medium { color: #7a5c00; } .sev-low { color: #2f5f2f; } .sev-unknown { color: #555; }
+.kev { background: #a40000; color: #fff; border-radius: 3px; padding: 0 .3rem; font-size: 11px; }
+.host { page-break-inside: auto; }
+footer { margin-top: 2rem; font-size: 12px; color: #555; }
+@media print {
+  body { margin: 0; max-width: none; font-size: 11px; }
+  .host { page-break-before: always; }
+  .host:first-of-type { page-break-before: auto; }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<h1>{{.Title}}</h1>
+<p class="muted">Generated {{date .Report.GeneratedAt}} · {{len .Report.Hosts}} hosts · {{.Sites}} sites</p>
+
+<div class="tiles">
+  <div class="tile"><b>{{.Totals.Total}}</b>open findings</div>
+  <div class="tile"><b>{{.Totals.KEV}}</b>known exploited</div>
+  <div class="tile"><b>{{.Totals.Critical}}</b>critical</div>
+  <div class="tile"><b>{{.Totals.High}}</b>high</div>
+  <div class="tile"><b>{{.Totals.Fixable}}</b>fixable now</div>
+  <div class="tile"><b>{{.Totals.NoFix}}</b>no fix yet</div>
+</div>
+
+{{range .Report.Hosts}}
+<section class="host">
+  <h2>{{.Name}} <span class="muted">({{.Org}})</span></h2>
+  <p>{{.OS}} · last seen {{date .LastSeen}}</p>
+  <ul>
+    {{with .OSLife}}<li>OS lifecycle: {{life .}}</li>{{end}}
+    {{range .Runtimes}}<li>Runtime {{.Name}} {{.Version}}: {{life .Life}}</li>{{end}}
+  </ul>
+  <p>{{.Counts.Total}} open: {{.Counts.KEV}} KEV, {{.Counts.Critical}} critical, {{.Counts.High}} high, {{.Counts.Medium}} medium, {{.Counts.Low}} low · {{.Counts.Fixable}} fixable ({{.Counts.FixPending}} via pending updates)</p>
+
+  {{if .Sites}}
+  <h3>Sites</h3>
+  <table>
+    <thead><tr><th>Root</th><th>Server names</th><th>PHP-FPM</th><th>Framework</th><th>Findings</th></tr></thead>
+    <tbody>
+    {{range .Sites}}
+      <tr>
+        <td>{{.Root}}{{if not .Readable}} <span class="muted">(unreadable)</span>{{end}}</td>
+        <td>{{join .ServerNames ", "}}</td>
+        <td>{{if .PHPFPM}}{{.PHPFPM}} — {{life .PHPLife}}{{if .PHPSatisfied}}{{if not (deref .PHPSatisfied)}}<br><b>does not satisfy {{.PHPRequirement}}</b>{{end}}{{end}}{{end}}</td>
+        <td>{{if .Framework}}{{.Framework}} {{.FrameworkVersion}} — {{life .FrameworkLife}}{{end}}</td>
+        <td>{{.Counts.Total}} ({{.Counts.Fixable}} fixable)</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{end}}
+
+  {{if .Findings}}
+  <h3>Findings</h3>
+  <table>
+    <thead><tr><th></th><th>Severity</th><th>Advisory</th><th>Package</th><th>Installed</th><th>Fixed</th><th>Site</th></tr></thead>
+    <tbody>
+    {{range .Findings}}
+      <tr>
+        <td>{{if .KEV}}<span class="kev">KEV</span>{{end}}</td>
+        <td class="sev sev-{{.Severity}}">{{.Severity}}</td>
+        <td>{{if .CVEs}}{{join .CVEs " "}}<br>{{end}}<span class="muted">{{.Advisory}}</span>{{if .Summary}}<br>{{.Summary}}{{end}}</td>
+        <td>{{.Package}}</td>
+        <td>{{.Version}}</td>
+        <td>{{if .Fixed}}{{.Fixed}}{{if .FixPending}} (update pending){{end}}{{else}}<span class="muted">no fix yet</span>{{end}}</td>
+        <td>{{.Site}}</td>
+      </tr>
+    {{end}}
+    </tbody>
+  </table>
+  {{end}}
+</section>
+{{end}}
+
+<footer>Heimdall report · generated {{date .Report.GeneratedAt}}</footer>
+</body>
+</html>

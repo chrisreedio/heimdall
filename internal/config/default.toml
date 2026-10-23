@@ -1,0 +1,74 @@
+# Heimdall configuration. Unknown keys are rejected.
+# Secrets (TLS keys aside, which are referenced by path) never go in this file.
+
+# Relative paths are resolved against this file's directory.
+database = "heimdall.db"
+
+[ui]
+# The UI always listens on loopback. Reach it with an SSH tunnel, or put
+# HTTPS in front with `tailscale serve 8080` or Caddy and set base_url to
+# that https:// address. Never expose it to the internet.
+listen       = "127.0.0.1:8080"
+base_url     = "http://127.0.0.1:8080"
+session_idle = "30m"
+session_max  = "12h"
+
+[auth]
+# Break-glass local accounts (password + TOTP). Set false once SSO works.
+local_login = true
+
+[auth.entra]
+enabled          = false
+tenant           = "organizations"   # or your tenant ID for single-tenant
+client_id        = ""
+allowed_tenants  = []
+app_role_mapping = true
+# The client secret/certificate is read from the systemd credential
+# "heimdall-entra", never from this file.
+
+[ingest]
+# The only listener your servers should reach. Without tls_cert/tls_key it
+# must bind to loopback behind a TLS-terminating proxy (e.g. Caddy).
+listen        = "127.0.0.1:8443"
+# tls_cert    = "/etc/heimdall/tls/cert.pem"
+# tls_key     = "/etc/heimdall/tls/key.pem"
+# What servers use to reach ingest; shown in the UI's "Add host" commands.
+# public_url  = "https://ingest.example.com"
+max_body      = "5MB"
+rate_per_host = "10/h"
+# allow_cidrs = ["203.0.113.0/24"]
+# Set true when a local proxy (Caddy/nginx on this box) terminates TLS, so
+# client IPs come from X-Forwarded-For. Only honored for loopback peers.
+behind_proxy  = false
+
+[feeds]
+sync_interval = "6h"
+osv           = true
+kev           = true
+epss          = true
+endoflife     = true
+
+[hosts]
+stale_after        = "72h"
+keep_snapshots_for = "4320h"   # 180 days; "0" keeps everything
+keep_snapshots_min = 30        # per host, whatever their age
+
+[mcp]
+# Read-only endpoint for AI assistants (Claude Code, Claude Desktop…).
+# Expose over the tailnet with `tailscale serve --bg --https 8443 8090` (or
+# similar) and set base_url to that https address. Users authenticate with
+# their own tokens: `heimdall user mcp-token create <email>`.
+enabled  = false
+listen   = "127.0.0.1:8090"
+base_url = "http://127.0.0.1:8090"
+
+[notify]
+# Counts-only digest (no hostnames, packages or CVEs), e.g. every = "24h".
+every          = "0"
+# email_to     = ["ops@example.com"]
+# email_from   = "heimdall@example.com"
+# smtp_host    = "smtp.example.com"
+smtp_port      = 587                 # STARTTLS required; 465 = implicit TLS
+# smtp_username = "heimdall"         # password: systemd credential "heimdall-smtp"
+webhook        = false               # URL: systemd credential "heimdall-webhook"
+webhook_format = "slack"

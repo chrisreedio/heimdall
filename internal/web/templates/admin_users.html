@@ -1,0 +1,53 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<h1>Users</h1>
+{{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+<p class="muted">Local accounts (password + TOTP) are created with <code>heimdall user create</code> on the hub, so the TOTP secret never passes through the browser.</p>
+
+<div class="scroll"><table>
+  <thead><tr><th>Email</th><th>Name</th><th>Kind</th><th>Admin</th><th>Roles</th><th>Last sign-in</th><th>Status</th></tr></thead>
+  <tbody>{{range .Users}}<tr>
+    <td>{{if .Email}}{{.Email}}{{else}}<span class="muted">(no email)</span>{{end}}{{if .Self}} <span class="badge">you</span>{{end}}</td>
+    <td>{{.DisplayName}}</td>
+    <td>{{.Kind}}</td>
+    <td>{{if .IsAdmin}}yes{{else}}no{{end}}</td>
+    <td>{{$email := .Email}}{{range .Roles}}<form method="post" action="/admin/users/revoke" class="inline">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="email" value="{{$email}}"><input type="hidden" name="org" value="{{.OrgSlug}}">
+        <span class="badge">{{.OrgSlug}}: {{.Role}}{{if eq .Source "entra_app_role"}} (app role){{end}}</span>
+        {{if ne .Source "entra_app_role"}}<button type="submit" class="link">revoke</button>{{end}}
+      </form>{{else}}<span class="muted">none</span>{{end}}</td>
+    <td>{{time .LastLoginAt}}</td>
+    <td>{{if .Disabled}}disabled{{else}}active{{end}}
+      {{if and .Email (not .Self)}}<form method="post" action="/admin/users/{{if .Disabled}}enable{{else}}disable{{end}}" class="inline">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="email" value="{{.Email}}">
+        <button type="submit" class="link">{{if .Disabled}}enable{{else}}disable{{end}}</button>
+      </form>{{end}}</td>
+  </tr>{{end}}</tbody>
+</table></div>
+
+<section class="card">
+  <h2>Grant a role</h2>
+  <form method="post" action="/admin/users/grant" class="row">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <label>User <select name="email" required>{{range .Users}}{{if .Email}}<option value="{{.Email}}">{{.Email}}</option>{{end}}{{end}}</select></label>
+    <label>Org <select name="org" required>{{range .Orgs}}<option value="{{.Slug}}">{{.Name}}</option>{{end}}</select></label>
+    <label>Role <select name="role" required>{{range .Roles}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+    <button type="submit">Grant</button>
+  </form>
+</section>
+
+{{if .Tenants}}
+<section class="card">
+  <h2>Add an Entra ID user</h2>
+  <p class="muted">They sign in with Microsoft; the first sign-in binds this email to their account for good.</p>
+  <form method="post" action="/admin/users/entra" class="row">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <label>Tenant <select name="tenant" required>{{range .Tenants}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+    <label>Email <input type="email" name="email" required maxlength="254"></label>
+    <label>Name <input type="text" name="name" maxlength="200"></label>
+    <label class="check"><input type="checkbox" name="admin"> Admin</label>
+    <button type="submit">Add</button>
+  </form>
+</section>
+{{end}}
+{{end}}{{end}}

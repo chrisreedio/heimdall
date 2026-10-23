@@ -1,0 +1,25 @@
+{{define "content"}}{{with .Body}}
+<h1>Search</h1>
+<form method="get" action="/search" class="search">
+  <input type="search" name="q" value="{{.Query}}" placeholder="openssl &lt; 3.0.13" maxlength="200" aria-label="Search query" autofocus>
+  <button type="submit">Search</button>
+</form>
+{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+{{with .Result}}
+  {{if .Note}}<p class="muted">{{.Note}}</p>{{end}}
+  {{if .Matches}}
+  <p class="counts">{{len .Matches}} match{{if ne (len .Matches) 1}}es{{end}}</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Host</th><th>Org</th><th>OS</th><th>Match</th><th>Version</th><th>Detail</th></tr></thead>
+    <tbody>{{range .Matches}}<tr><td><a href="{{hostURL .Org .Host}}">{{.Host}}</a></td><td>{{.Org}}</td><td>{{.OS}}</td><td>{{.Name}}</td><td class="ver">{{.Version}}</td><td>{{.Detail}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="empty">No hosts match.</p>{{end}}
+{{else}}
+  {{if not .Error}}
+  <div class="examples">
+    <p>Examples:</p>
+    <ul class="plain">{{range .Examples}}<li><a href="/search?q={{.}}"><code>{{.}}</code></a></li>{{end}}</ul>
+  </div>
+  {{end}}
+{{end}}
+{{end}}{{end}}

@@ -1,0 +1,20 @@
+{{define "content"}}{{with .Body}}
+<section class="login card">
+  <h1>Sign in</h1>
+  {{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+  {{if .SSO}}
+  <p><a class="button" href="/auth/entra/login?next={{.Next}}">Sign in with Microsoft</a></p>
+  {{end}}
+  {{if .Local}}
+  {{if .SSO}}<p class="muted">Or with a local account:</p>{{end}}
+  <form method="post" action="/login" autocomplete="on">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label>Email <input type="email" name="email" value="{{.Email}}" required autocomplete="username" maxlength="254"{{if not .SSO}} autofocus{{end}}></label>
+    <label>Password <input type="password" name="password" required autocomplete="current-password" maxlength="256"></label>
+    <label>Authenticator code <input type="text" name="code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"></label>
+    <button type="submit">Sign in</button>
+  </form>
+  {{end}}
+  {{if and (not .SSO) (not .Local)}}<p class="alert">No sign-in method is configured.</p>{{end}}
+</section>
+{{end}}{{end}}

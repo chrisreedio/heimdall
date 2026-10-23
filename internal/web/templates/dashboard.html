@@ -1,0 +1,60 @@
+{{define "content"}}{{with .Body}}
+<div class="head">
+  <h1>Dashboard</h1>
+  {{if .ShowOrgs}}
+  <form method="get" action="/" class="filter">
+    <label>Org
+      <select name="org">
+        <option value="">All</option>
+        {{range .Orgs}}<option value="{{.Slug}}"{{if eq .Slug $.Body.Org}} selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </label>
+    <button type="submit">Filter</button>
+  </form>
+  {{end}}
+</div>
+
+<section class="tiles" aria-label="Summary">
+  <div class="tile"><span class="n">{{.Tiles.Hosts}}</span><span class="l">hosts reporting</span></div>
+  <div class="tile{{if .Tiles.KEV}} bad{{end}}"><span class="n">{{.Tiles.KEV}}</span><span class="l">known-exploited findings</span></div>
+  <div class="tile{{if .Tiles.Critical}} bad{{end}}"><span class="n">{{.Tiles.Critical}}</span><span class="l">critical findings</span></div>
+  <div class="tile{{if .Tiles.Fixable}} warn{{end}}"><span class="n">{{.Tiles.Fixable}}</span><span class="l">hosts with fixes available</span></div>
+  <div class="tile{{if .Tiles.EOL}} warn{{end}}"><span class="n">{{.Tiles.EOL}}</span><span class="l">hosts running end-of-life software</span></div>
+  <div class="tile{{if .Tiles.Reboot}} warn{{end}}"><span class="n">{{.Tiles.Reboot}}</span><span class="l">reboots required</span></div>
+  <div class="tile{{if .Tiles.Stale}} warn{{end}}"><span class="n">{{.Tiles.Stale}}</span><span class="l">stale hosts</span></div>
+  <a class="tile{{if .Tiles.Sites}} warn{{end}}" href="/sites"><span class="n">{{.Tiles.Sites}}</span><span class="l">sites needing attention</span></a>
+</section>
+
+<section>
+  <h2>Patch first</h2>
+  {{if .Rows}}
+  <div class="scroll"><table>
+    <thead><tr><th>Host</th>{{if .ShowOrgs}}<th>Org</th>{{end}}<th>OS</th><th class="num">KEV</th><th class="num">Critical</th><th class="num">High</th><th class="num">Fixable</th><th>Flags</th><th>Last seen</th></tr></thead>
+    <tbody>
+    {{range .Rows}}
+    <tr>
+      <td><a href="{{hostURL .Org .Name}}">{{.Name}}</a></td>
+      {{if $.Body.ShowOrgs}}<td>{{.Org}}</td>{{end}}
+      <td>{{.OS}}</td>
+      <td class="num">{{if .Counts.KEV}}<span class="badge kev">{{.Counts.KEV}}</span>{{else}}0{{end}}</td>
+      <td class="num">{{.Counts.Critical}}</td>
+      <td class="num">{{.Counts.High}}</td>
+      <td class="num">{{.Counts.Fixable}}</td>
+      <td>{{if .EOL}}<span class="badge warn">EOL</span> {{end}}{{if .Reboot}}<span class="badge warn">reboot</span> {{end}}{{if not .Ecosystem}}<span class="badge muted">no matching</span>{{end}}</td>
+      <td{{if .Stale}} class="stale"{{end}}>{{ago .LastSeen}}</td>
+    </tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}
+  <p class="empty">No hosts have reported yet. Install the collector on a server and run <code>heimdall-collect --push</code>.</p>
+  {{end}}
+</section>
+
+{{if .Waiting}}
+<section>
+  <h2>Waiting for first report</h2>
+  <ul class="plain">{{range .Waiting}}<li><a href="{{hostURL .OrgSlug .Name}}">{{.Name}}</a>{{if $.Body.ShowOrgs}} <span class="muted">({{.OrgSlug}})</span>{{end}}</li>{{end}}</ul>
+</section>
+{{end}}
+{{end}}{{end}}

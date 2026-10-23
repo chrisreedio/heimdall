@@ -1,0 +1,71 @@
+{
+ "schema_version": "1.2.1",
+ "result": {
+  "name": "laravel",
+  "releases": [
+   {
+    "name": "12",
+    "codename": null,
+    "label": "12",
+    "releaseDate": "2025-02-24",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEoas": true,
+    "eoasFrom": "2026-08-13",
+    "isEol": false,
+    "eolFrom": "2027-02-24",
+    "isMaintained": true,
+    "latest": {
+     "name": "12.70.1",
+     "date": "2026-10-21",
+     "link": "https://laravel.com/framework/docs/12.x/releases"
+    },
+    "custom": {
+     "supportedPhpVersions": "8.2 - 8.5"
+    }
+   },
+   {
+    "name": "11",
+    "codename": null,
+    "label": "11",
+    "releaseDate": "2024-03-12",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEoas": true,
+    "eoasFrom": "2025-09-03",
+    "isEol": true,
+    "eolFrom": "2026-03-12",
+    "isMaintained": false,
+    "latest": {
+     "name": "11.57.0",
+     "date": "2026-09-29",
+     "link": "https://laravel.com/framework/docs/11.x/releases"
+    },
+    "custom": {
+     "supportedPhpVersions": "8.2 - 8.4"
+    }
+   },
+   {
+    "name": "10",
+    "codename": null,
+    "label": "10",
+    "releaseDate": "2023-02-14",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEoas": true,
+    "eoasFrom": "2024-08-06",
+    "isEol": true,
+    "eolFrom": "2025-02-04",
+    "isMaintained": false,
+    "latest": {
+     "name": "10.50.3",
+     "date": "2026-08-11",
+     "link": "https://laravel.com/framework/docs/10.x/releases"
+    },
+    "custom": {
+     "supportedPhpVersions": "8.1 - 8.3"
+    }
+   }
+  ]
+ }
+}

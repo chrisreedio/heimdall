@@ -1,0 +1,30 @@
+{
+  "format": "heimdall.snapshot/v1",
+  "collector": {
+    "version": "0.1.0",
+    "sha256": "9f2c4e1b7a3d5c6e8f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60"
+  },
+  "collected_at": "2026-10-22T04:17:03Z",
+  "os": {
+    "id": "debian",
+    "id_like": "",
+    "version_id": "12",
+    "version_codename": "bookworm",
+    "pretty_name": "Debian GNU/Linux 12 (bookworm)"
+  },
+  "kernel": { "release": "6.1.0-26-amd64", "arch": "x86_64" },
+  "uptime_seconds": 1209600,
+  "reboot_required": true,
+  "package_manager": "dpkg",
+  "packages": [
+    { "name": "openssl", "version": "3.0.14-1~deb12u2", "arch": "amd64", "source_name": "openssl", "source_version": "3.0.14-1~deb12u2" },
+    { "name": "libssl3", "version": "3.0.14-1~deb12u2", "arch": "amd64", "source_name": "openssl", "source_version": "3.0.14-1~deb12u2" },
+    { "name": "openssh-server", "version": "1:9.2p1-2+deb12u3", "arch": "amd64", "source_name": "openssh", "source_version": "1:9.2p1-2+deb12u3" },
+    { "name": "tzdata", "version": "2024a-0+deb12u1", "arch": "all", "source_name": "", "source_version": "" }
+  ],
+  "updates": [
+    { "name": "openssh-server", "arch": "amd64", "version": "1:9.2p1-2+deb12u5", "security": true },
+    { "name": "tzdata", "arch": "all", "version": "2025b-0+deb12u1", "security": false }
+  ],
+  "unavailable": []
+}

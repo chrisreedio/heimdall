@@ -1,0 +1,22 @@
+{{define "content"}}{{with .Body}}
+<p><a href="{{hostURL .Org .Name}}">← {{.Name}}</a></p>
+<h1>Changes on {{.Name}}</h1>
+{{if .HasDiff}}
+<p class="muted">Snapshot {{.From.ID}} ({{time .From.ReceivedAt}}) → {{.To.ID}} ({{time .To.ReceivedAt}}){{if ne .From.Kernel .To.Kernel}} · kernel {{.From.Kernel}} → {{.To.Kernel}}{{end}}</p>
+{{if .Diff.Empty}}<p>No package changes.</p>{{end}}
+{{if .Diff.Downgraded}}<h2>Downgraded</h2><ul>{{range .Diff.Downgraded}}<li><span class="badge sev-high">downgrade</span> {{.Name}} {{.From}} → {{.To}}</li>{{end}}</ul>{{end}}
+{{if .Diff.Added}}<h2>Added</h2><ul>{{range .Diff.Added}}<li>{{.Name}} {{.To}}</li>{{end}}</ul>{{end}}
+{{if .Diff.Removed}}<h2>Removed</h2><ul>{{range .Diff.Removed}}<li>{{.Name}} {{.From}}</li>{{end}}</ul>{{end}}
+{{if .Diff.Upgraded}}<h2>Upgraded</h2><ul>{{range .Diff.Upgraded}}<li>{{.Name}} {{.From}} → {{.To}}</li>{{end}}</ul>{{end}}
+{{else}}<p>This host needs at least two snapshots to show changes.</p>{{end}}
+<h2>Snapshots</h2>
+<div class="scroll"><table>
+  <thead><tr><th>ID</th><th>Received</th><th>Source</th><th>Kernel</th><th>Packages</th><th>Pending</th></tr></thead>
+  <tbody>{{range .Snapshots}}<tr><td>{{.ID}}</td><td>{{time .ReceivedAt}}</td><td>{{.Source}}</td><td>{{.Kernel}}</td><td>{{.Packages}}</td><td>{{.PendingUpdates}}</td></tr>{{end}}</tbody>
+</table></div>
+<form method="get" class="row">
+  <label>From <select name="from">{{range .Snapshots}}<option value="{{.ID}}">{{.ID}} · {{time .ReceivedAt}}</option>{{end}}</select></label>
+  <label>To <select name="to">{{range .Snapshots}}<option value="{{.ID}}">{{.ID}} · {{time .ReceivedAt}}</option>{{end}}</select></label>
+  <button type="submit">Compare</button>
+</form>
+{{end}}{{end}}

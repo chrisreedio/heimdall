@@ -1,0 +1,69 @@
+# Heimdall hub. Install:
+#   sudo useradd --system --home-dir /var/lib/heimdall --shell /usr/sbin/nologin heimdall-hub
+#   sudo install -m 0755 heimdall /usr/local/bin/heimdall
+#   sudo install -d -m 0700 -o heimdall-hub -g heimdall-hub /etc/heimdall /var/lib/heimdall
+#   sudo -u heimdall-hub heimdall -c /etc/heimdall/heimdall.toml init --database /var/lib/heimdall/heimdall.db
+#   sudo install -m 0644 heimdall.service /etc/systemd/system/
+#   sudo systemctl enable --now heimdall
+#
+# Admin commands run as the same user:
+#   sudo -u heimdall-hub heimdall -c /etc/heimdall/heimdall.toml host list
+
+[Unit]
+Description=Heimdall hub (inventory ingest)
+Documentation=https://github.com/chrisreedio/heimdall
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=heimdall-hub
+Group=heimdall-hub
+ExecStart=/usr/local/bin/heimdall -c /etc/heimdall/heimdall.toml serve
+# Entra ID SSO: the client secret, passed as a private systemd credential
+# (never in heimdall.toml). The file should be root-owned, mode 0600.
+#LoadCredential=heimdall-entra:/etc/heimdall/entra-secret
+Restart=on-failure
+RestartSec=5s
+
+# Files: only the state directory is writable, and everything is private.
+UMask=0077
+StateDirectory=heimdall
+StateDirectoryMode=0700
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+
+# Privileges: none needed (the ingest port is unprivileged).
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+
+# Kernel and process isolation.
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+# System calls and sockets.
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Outbound traffic is limited to the feed hosts in M2, when feed sync
+# arrives (IPAddressAllow/IPAddressDeny).
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+/bin/
+
+# Local hub state: never commit inventory data or local config.
+*.db
+*.db-wal
+*.db-shm
+/heimdall.toml
+/dist/

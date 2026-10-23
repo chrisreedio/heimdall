@@ -1,0 +1,49 @@
+# Heimdall collector: one push per run, triggered by heimdall-collect.timer.
+# See docs/collector.md for installation.
+
+[Unit]
+Description=Heimdall collector (push inventory to the hub)
+Documentation=https://github.com/chrisreedio/heimdall/blob/main/docs/collector.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=heimdall
+Group=heimdall
+EnvironmentFile=/etc/heimdall/collect.env
+ExecStart=/usr/local/bin/heimdall-collect --push
+TimeoutStartSec=5min
+
+# Files: read-only everywhere except private temp dirs. Home directories
+# stay readable for M4 (Laravel sites under /home/forge and similar).
+UMask=0077
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+
+# Privileges: none.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+
+# Kernel and process isolation.
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+
+# System calls and sockets (dnf is Python, so no MemoryDenyWriteExecute).
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

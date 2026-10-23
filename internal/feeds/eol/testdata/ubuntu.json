@@ -1,0 +1,92 @@
+{
+ "schema_version": "1.2.1",
+ "result": {
+  "name": "ubuntu",
+  "releases": [
+   {
+    "name": "24.04",
+    "codename": "Noble Numbat",
+    "label": "24.04 'Noble Numbat' (LTS)",
+    "releaseDate": "2024-04-25",
+    "isLts": true,
+    "ltsFrom": null,
+    "isEoas": false,
+    "eoasFrom": "2029-05-31",
+    "isEol": false,
+    "eolFrom": "2029-05-31",
+    "isEoes": false,
+    "eoesFrom": "2034-04-25",
+    "isMaintained": true,
+    "latest": {
+     "name": "24.04.5",
+     "date": "2026-09-10",
+     "link": "https://wiki.ubuntu.com/NobleNumbat/ReleaseNotes/"
+    },
+    "custom": null
+   },
+   {
+    "name": "23.10",
+    "codename": "Mantic Minotaur",
+    "label": "23.10 'Mantic Minotaur'",
+    "releaseDate": "2023-10-12",
+    "isLts": false,
+    "ltsFrom": null,
+    "isEoas": true,
+    "eoasFrom": "2024-07-12",
+    "isEol": true,
+    "eolFrom": "2024-07-12",
+    "isEoes": null,
+    "eoesFrom": null,
+    "isMaintained": false,
+    "latest": {
+     "name": "23.10",
+     "date": "2023-10-12",
+     "link": "https://wiki.ubuntu.com/ManticMinotaur/ReleaseNotes/"
+    },
+    "custom": null
+   },
+   {
+    "name": "22.04",
+    "codename": "Jammy Jellyfish",
+    "label": "22.04 'Jammy Jellyfish' (LTS)",
+    "releaseDate": "2022-04-21",
+    "isLts": true,
+    "ltsFrom": null,
+    "isEoas": true,
+    "eoasFrom": "2024-09-30",
+    "isEol": false,
+    "eolFrom": "2027-06-01",
+    "isEoes": false,
+    "eoesFrom": "2032-04-21",
+    "isMaintained": true,
+    "latest": {
+     "name": "22.04.5",
+     "date": "2024-09-12",
+     "link": "https://wiki.ubuntu.com/JammyJellyfish/ReleaseNotes/"
+    },
+    "custom": null
+   },
+   {
+    "name": "20.04",
+    "codename": "Focal Fossa",
+    "label": "20.04 'Focal Fossa' (LTS)",
+    "releaseDate": "2020-04-23",
+    "isLts": true,
+    "ltsFrom": null,
+    "isEoas": true,
+    "eoasFrom": "2022-10-01",
+    "isEol": true,
+    "eolFrom": "2025-05-31",
+    "isEoes": false,
+    "eoesFrom": "2030-04-23",
+    "isMaintained": true,
+    "latest": {
+     "name": "20.04.6",
+     "date": "2023-03-23",
+     "link": "https://wiki.ubuntu.com/FocalFossa/ReleaseNotes/"
+    },
+    "custom": null
+   }
+  ]
+ }
+}

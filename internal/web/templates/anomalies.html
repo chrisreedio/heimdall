@@ -1,0 +1,30 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<h1>Anomalies</h1>
+{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+<p class="muted">Tripwires, not intrusion detection: an alert is worth checking, but no alerts doesn't mean a host is clean. <a href="https://github.com/chrisreedio/heimdall/blob/main/docs/anomaly-signals.md">What each signal means</a>.</p>
+{{$rules := .Rules}}
+<div class="scroll"><table>
+  <thead><tr><th>Detected</th><th>Host</th><th>Severity</th><th>Signal</th><th>Summary</th><th>Triage</th></tr></thead>
+  <tbody>{{range .Items}}<tr>
+    <td>{{time .DetectedAt}}</td>
+    <td><a href="{{hostURL .Host.OrgSlug .Host.Name}}">{{.Host.Name}}</a></td>
+    <td><span class="badge sev-{{sev .Severity}}">{{.Severity}}</span></td>
+    <td>{{.Rule}}</td>
+    <td>{{.Summary}}</td>
+    <td>{{if .CanOperate}}
+      <form method="post" action="/anomalies/{{.ID}}/ack" class="row">
+        <input type="hidden" name="csrf" value="{{$csrf}}">
+        <input name="note" required maxlength="200" placeholder="What you found">
+        <button type="submit">Acknowledge</button>
+      </form>
+      <details><summary>Mute this signal on {{.Host.Name}}</summary>
+      <form method="post" action="/anomalies/{{.ID}}/suppress" class="row">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="rule" value="{{.Rule}}">
+        <label>Days <input name="days" type="number" min="1" max="365" value="7"></label>
+        <input name="note" required maxlength="200" placeholder="Why, e.g. runs Livepatch">
+        <button type="submit">Mute</button>
+      </form></details>
+    {{else}}<span class="muted">operator role needed</span>{{end}}</td>
+  </tr>{{else}}<tr><td colspan="6" class="muted">No open anomalies.</td></tr>{{end}}</tbody>
+</table></div>
+{{end}}{{end}}

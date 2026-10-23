@@ -1,0 +1,17 @@
+{{define "content"}}{{with .Body}}
+<h1>Drift</h1>
+<p class="muted">Hosts that share a tag should usually match. This shows packages that are missing on some of them or installed at different versions.</p>
+<form method="get" class="row">
+  <label>Tag <select name="tag">{{range .Tags}}<option value="{{.}}"{{if eq . $.Body.Tag}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+  <button type="submit">Compare</button>
+</form>
+{{if .Tag}}
+  {{if lt (len .Hosts) 2}}<p>Fewer than two reporting hosts you can see are tagged <code>{{.Tag}}</code>.</p>
+  {{else if not .Rows}}<p>All {{len .Hosts}} hosts tagged <code>{{.Tag}}</code> have identical packages.</p>
+  {{else}}{{$hosts := .Hosts}}
+  <div class="scroll"><table>
+    <thead><tr><th>Package</th>{{range $hosts}}<th>{{.}}</th>{{end}}</tr></thead>
+    <tbody>{{range .Rows}}{{$vs := .Versions}}<tr><td>{{.Name}}</td>{{range $hosts}}<td>{{with index $vs .}}{{.}}{{else}}<span class="muted">—</span>{{end}}</td>{{end}}</tr>{{end}}</tbody>
+  </table></div>{{end}}
+{{end}}
+{{end}}{{end}}

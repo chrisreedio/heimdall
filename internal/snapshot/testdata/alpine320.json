@@ -1,0 +1,18 @@
+{
+  "format": "heimdall.snapshot/v1",
+  "collector": { "version": "0.1.0", "sha256": "9f2c4e1b7a3d5c6e8f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60" },
+  "collected_at": "2026-10-22T04:17:03Z",
+  "os": { "id": "alpine", "id_like": "", "version_id": "3.20.3", "version_codename": "", "pretty_name": "Alpine Linux v3.20" },
+  "kernel": { "release": "6.6.52-0-lts", "arch": "x86_64" },
+  "uptime_seconds": 0,
+  "reboot_required": null,
+  "package_manager": "apk",
+  "packages": [
+    { "name": "musl", "version": "1.2.5-r0", "arch": "x86_64", "source_name": "musl", "source_version": "" },
+    { "name": "busybox", "version": "1.36.1-r29", "arch": "x86_64", "source_name": "busybox", "source_version": "" }
+  ],
+  "updates": [
+    { "name": "busybox", "arch": "x86_64", "version": "1.36.1-r30", "security": null }
+  ],
+  "unavailable": ["reboot_required", "uptime"]
+}

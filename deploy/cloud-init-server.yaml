@@ -1,0 +1,10 @@
+#cloud-config
+# A new server that reports to Heimdall on first boot. The hub's Hosts → Add
+# a host page fills this in for you, token included.
+#
+# Replace: VERSION (e.g. v0.4.0), HUB (https ingest URL), TOKEN (from
+# `heimdall host add`). The token is readable from this VM's metadata; it
+# can only send reports for this one host.
+packages: [curl]
+runcmd:
+  - [sh, -c, "cd /root && curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/VERSION/install.sh && printf '%s\\n' 'TOKEN' | sh install.sh --hub HUB --token-stdin"]

@@ -1,0 +1,24 @@
+#cloud-config
+# Heimdall hub on a fresh Ubuntu 24.04 or Debian 12 VM: paste as "user data"
+# when creating the VM (Hetzner, DigitalOcean, Lightsail, EC2, Azure…).
+#
+# Replace before use:
+#   TS_AUTHKEY   a one-off, pre-approved Tailscale auth key (admin console →
+#                Settings → Keys). It's readable from this VM's metadata, so
+#                use a single-use key.
+#   ORG          your organization slug, e.g. acme
+#   INGEST_HOST  public name servers report to, e.g. ingest.acme.example.com
+#                (or replace "--ingest-host INGEST_HOST" with --tailnet-only)
+#   VERSION      release tag, e.g. v0.4.0
+#
+# Afterwards: point DNS for INGEST_HOST at the VM, then create your admin over
+# Tailscale SSH (TOTP enrollment needs a terminal):
+#   tailscale ssh root@heimdall-ORG
+#   sudo -u heimdall-hub heimdall -c /etc/heimdall/heimdall.toml user create --admin you@example.com
+package_update: true
+package_upgrade: true
+packages: [curl, unattended-upgrades]
+runcmd:
+  - [sh, -c, "curl -fsSL https://tailscale.com/install.sh | sh"]
+  - [tailscale, up, --ssh, --authkey=TS_AUTHKEY, --hostname=heimdall-ORG]
+  - [sh, -c, "cd /root && curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/VERSION/install-hub.sh && sh install-hub.sh --org ORG --ingest-host INGEST_HOST --mcp"]
