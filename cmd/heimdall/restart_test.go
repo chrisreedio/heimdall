@@ -23,7 +23,7 @@ func TestRestart(t *testing.T) {
 	src := setTOMLKeys(config.Template("heimdall.db"), "ui", [][2]string{{"listen", strconv.Quote(strings.TrimPrefix(srv.URL, "http://"))}})
 	os.WriteFile(cfgPath, src, 0o600)
 	stub(t, &isRoot, func() bool { return true })
-	stub(t, &restartWait, 2*time.Second)
+	stub(t, &restartWait, 300*time.Millisecond)
 	var calls []string
 	stub(t, &systemctl, func(a *app, args ...string) error { calls = append(calls, args[0]); return nil })
 	journal := 0
