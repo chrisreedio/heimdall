@@ -203,8 +203,8 @@ func TestSitePageNotFound(t *testing.T) {
 	e.st.AddHost(t.Context(), "test", "acme", "prod", "site-host", nil)
 	for _, path := range []string{
 		"/hosts/acme/site-host/site?root=%2Fvar%2Fwww%2Fnope", // no such site
-		"/hosts/acme/nope/site?root=%2Fvar%2Fwww",            // no such host
-		"/hosts/other/site-host/site?root=%2F",               // no such org
+		"/hosts/acme/nope/site?root=%2Fvar%2Fwww",             // no such host
+		"/hosts/other/site-host/site?root=%2F",                // no such org
 	} {
 		if w := e.get(path, signedIn(e)); w.Code != http.StatusNotFound {
 			t.Errorf("%s: %d", path, w.Code)
