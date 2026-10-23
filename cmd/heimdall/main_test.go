@@ -233,3 +233,33 @@ func TestWriteQR(t *testing.T) {
 		t.Error("expected explicit colours and a reset at line end")
 	}
 }
+
+func TestSSOSetSecret(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "entra-secret")
+	old := stdin
+	defer func() { stdin = old }()
+	stdin = strings.NewReader("  s3cr3t~value \n")
+	var out, errb bytes.Buffer
+	if err := run(t.Context(), []string{"sso", "set-secret", "--stdin", "--file", path}, &out, &errb); err != nil {
+		t.Fatal(err, errb.String())
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %v", fi.Mode().Perm())
+	}
+	t.Setenv("HEIMDALL_ENTRA_SECRET_FILE", path)
+	if got, err := entraSecret(); err != nil || got != "s3cr3t~value" {
+		t.Errorf("round trip = %q, %v", got, err)
+	}
+	stdin = strings.NewReader("two\nlines\n")
+	if err := run(t.Context(), []string{"sso", "set-secret", "--stdin", "--file", path}, &out, &errb); err == nil {
+		t.Error("multi-line input accepted")
+	}
+	stdin = strings.NewReader("")
+	if err := run(t.Context(), []string{"sso", "set-secret", "--file", path}, &out, &errb); err == nil {
+		t.Error("non-terminal stdin without --stdin accepted")
+	}
+}
