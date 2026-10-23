@@ -208,7 +208,7 @@ Supported platforms: **Ubuntu 22.04/24.04, Debian 12, Rocky 9, AlmaLinux 9 and A
 - Session cookies use `Secure`, `HttpOnly`, `SameSite=Strict`, idle and absolute timeouts, and the `__Host-` prefix
 - CSRF tokens on every state-changing request
 - Server-rendered `html/template` escapes output automatically. There is **no inline JS**, and the strict CSP is `default-src 'self'; frame-ancestors 'none'; form-action 'self'`.
-- Standard security headers: HSTS, `X-Content-Type-Options`, `Referrer-Policy: no-referrer`
+- Standard security headers: HSTS, `X-Content-Type-Options`, `Referrer-Policy: same-origin` (nothing leaks to other sites)
 - Login throttling and lockout
 - Roles (`viewer`, `operator`, `admin`). On an install that holds several orgs, roles are scoped per org, enforced in the data-access layer and not just in handlers.
 - An **audit log** records logins, failed logins, token creation and rotation, and user and org changes

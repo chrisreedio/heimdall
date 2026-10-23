@@ -142,7 +142,10 @@ func (s *server) headers(next http.Handler) http.Handler {
 		h := w.Header()
 		h.Set("Content-Security-Policy", CSP)
 		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("Referrer-Policy", "no-referrer")
+		// same-origin, not no-referrer: under no-referrer browsers send
+		// "Origin: null" on form POSTs, which the Origin check must refuse.
+		// Nothing is sent to other sites either way.
+		h.Set("Referrer-Policy", "same-origin")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Cross-Origin-Opener-Policy", "same-origin")
 		if s.secure {
@@ -220,16 +223,23 @@ func (s *server) requireAdmin(h authedHandler) authedHandler {
 // match the configured base URL.
 func (s *server) sameOrigin(r *http.Request) bool {
 	origins := loopbackAliases(s.origin)
-	if o := r.Header.Get("Origin"); o != "" {
-		return slices.Contains(origins, o)
-	}
-	ref := r.Header.Get("Referer")
-	for _, o := range origins {
-		if ref == o || strings.HasPrefix(ref, o+"/") {
-			return true
+	o, ref := r.Header.Get("Origin"), r.Header.Get("Referer")
+	ok := false
+	if o != "" {
+		ok = slices.Contains(origins, o)
+	} else {
+		for _, want := range origins {
+			if ref == want || strings.HasPrefix(ref, want+"/") {
+				ok = true
+			}
 		}
 	}
-	return false
+	if !ok {
+		// Says why a POST got 403 without logging anything sensitive.
+		s.log.Warn("refused cross-origin POST", "path", r.URL.Path, "origin", o, "referer_set", ref != "",
+			"expected", s.origin, "hint", "open the UI at ui.base_url")
+	}
+	return ok
 }
 
 // loopbackAliases returns the origins equivalent to origin. For a loopback
