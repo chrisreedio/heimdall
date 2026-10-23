@@ -157,7 +157,7 @@ func (s *Store) SetUserDisabled(ctx context.Context, actor, email string, disabl
 		set, action = `disabled_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`, "user.disable"
 	}
 	return s.tx(ctx, func(tx *sql.Tx) error {
-		uid, err := userIDByEmail(ctx, tx, email)
+		uid, email, err := userIDByRef(ctx, tx, email)
 		if err != nil {
 			return err
 		}

@@ -95,8 +95,9 @@ func (s *server) adminAction(w http.ResponseWriter, r *http.Request, v *auth.Vie
 		ok = "revoked"
 	case "disable", "enable":
 		disable := r.PathValue("action") == "disable"
-		if email, nerr := store.NormalizeEmail(f("email")); disable && nerr == nil && email == v.Email {
-			err = errors.New("you can't disable your own account")
+		email, _ := store.NormalizeEmail(f("email"))
+		if disable && (f("email") == store.UserRef(v.UserID) || (email != "" && email == v.Email)) {
+			err = errors.New("you can't disable the account you're signed in with")
 			break
 		}
 		err = s.st.SetUserDisabled(ctx, actor, f("email"), disable)

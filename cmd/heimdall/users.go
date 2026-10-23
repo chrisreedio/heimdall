@@ -213,14 +213,14 @@ func cmdUserList(a *app, args []string) error {
 		for j, m := range ms {
 			roles[j] = m.OrgSlug + ":" + string(m.Role)
 		}
-		rows[i] = []string{u.Email, u.Kind, u.DisplayName, admin, strings.Join(roles, ","), formatTime(u.LastLoginAt), status}
+		rows[i] = []string{store.UserRef(u.ID), u.Email, u.Kind, u.DisplayName, admin, strings.Join(roles, ","), formatTime(u.LastLoginAt), status}
 	}
-	return table(a, "EMAIL\tKIND\tNAME\tADMIN\tROLES\tLAST LOGIN\tSTATUS", rows)
+	return table(a, "ID\tEMAIL\tKIND\tNAME\tADMIN\tROLES\tLAST LOGIN\tSTATUS", rows)
 }
 
 func setDisabled(a *app, args []string, disabled bool) error {
 	verb := map[bool]string{true: "disable", false: "enable"}[disabled]
-	pos, err := parse(a.flags("user "+verb, "<email>"), args, 1)
+	pos, err := parse(a.flags("user "+verb, "<email|#id>"), args, 1)
 	if err != nil {
 		return err
 	}
@@ -336,7 +336,7 @@ func createEntraUser(a *app, email, tenant, oid, name string, admin bool) error 
 }
 
 func cmdUserGrant(a *app, args []string) error {
-	fs := a.flags("user grant", "[--org <org>] --role viewer|operator|admin <email>")
+	fs := a.flags("user grant", "[--org <org>] --role viewer|operator|admin <email|#id>")
 	org := fs.String("org", "", "organization slug (optional if there is only one)")
 	roleFlag := fs.String("role", "", "viewer, operator or admin (required)")
 	pos, err := parse(fs, args, 1)
@@ -366,7 +366,7 @@ func cmdUserGrant(a *app, args []string) error {
 }
 
 func cmdUserRevoke(a *app, args []string) error {
-	fs := a.flags("user revoke", "[--org <org>] <email>")
+	fs := a.flags("user revoke", "[--org <org>] <email|#id>")
 	org := fs.String("org", "", "organization slug (optional if there is only one)")
 	pos, err := parse(fs, args, 1)
 	if err != nil {

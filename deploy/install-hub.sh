@@ -226,7 +226,7 @@ EOF
 
 # setup_admin creates the first admin (with --admin) if missing.
 setup_admin() {
-	if [ -n "$admin" ] && ! hd user list 2>/dev/null | grep -q "^$admin "; then
+	if [ -n "$admin" ] && ! hd user list 2>/dev/null | awk -v e="$admin" '$2 == e && $3 == "local" { f = 1 } END { exit !f }'; then
 		if [ -t 0 ]; then
 			say "Creating admin $admin (choose a password, then add the TOTP secret to your authenticator)"
 			hd user create --admin "$admin"
