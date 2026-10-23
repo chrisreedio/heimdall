@@ -34,7 +34,7 @@ jobs:
       # The checks and the two reproducibility builds run side by side.
       - name: Check, and confirm the build is reproducible
         run: |
-          make check >check.log 2>&1 & c=$!
+          make -j4 --output-sync=target check >check.log 2>&1 & c=$!
           make reproducible VERSION="$GITHUB_REF_NAME" >repro.log 2>&1 & r=$!
           s=0; wait $c || s=1; wait $r || s=1
           echo "::group::make check"; cat check.log; echo "::endgroup::"
