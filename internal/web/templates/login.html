@@ -1,12 +1,31 @@
 {{define "content"}}{{with .Body}}
-<section class="login card">
-  <h1>Sign in</h1>
+<div class="signin">
+<section class="card" aria-labelledby="signin-title">
+  <img class="mark" src="/static/icon.svg" alt="" width="56" height="56">
+  <h1 id="signin-title">Sign in to Heimdall</h1>
+  <p class="sub">Server inventory, vulnerabilities and patching</p>
   {{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
   {{if .SSO}}
-  <p><a class="button" href="/auth/entra/login?next={{.Next}}">Sign in with Microsoft</a></p>
+  <a class="ms-button" href="/auth/entra/login?next={{.Next}}">
+    <svg width="20" height="20" viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+    Sign in with Microsoft
+  </a>
   {{end}}
   {{if .Local}}
-  {{if .SSO}}<p class="muted">Or with a local account:</p>{{end}}
+  {{if .SSO}}<div class="divider">or</div>
+  <details{{if .Email}} open{{end}}>
+    <summary>Use a local account</summary>
+    {{template "localForm" .}}
+  </details>
+  {{else}}{{template "localForm" .}}{{end}}
+  {{end}}
+  {{if and (not .SSO) (not .Local)}}<p class="alert">No sign-in method is configured.</p>{{end}}
+  <p class="fine">Only accounts an admin has added can sign in.</p>
+</section>
+</div>
+{{end}}{{end}}
+
+{{define "localForm"}}
   <form method="post" action="/login" autocomplete="on">
     <input type="hidden" name="next" value="{{.Next}}">
     <label>Email <input type="email" name="email" value="{{.Email}}" required autocomplete="username" maxlength="254"{{if not .SSO}} autofocus{{end}}></label>
@@ -14,7 +33,4 @@
     <label>Authenticator code <input type="text" name="code" required inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code"></label>
     <button type="submit">Sign in</button>
   </form>
-  {{end}}
-  {{if and (not .SSO) (not .Local)}}<p class="alert">No sign-in method is configured.</p>{{end}}
-</section>
-{{end}}{{end}}
+{{end}}
