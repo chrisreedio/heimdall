@@ -42,15 +42,12 @@
 <p class="empty">This host hasn't reported yet. It appears here after the installer from <a href="/hosts/new">Add a host</a> finishes on the server.{{if .AutoName}} It's then renamed to the server's own hostname.{{end}}</p>
 {{else}}
 <section class="facts card">
-  <dl>
-    <div><dt>OS</dt><dd>{{.Summary.OS}}</dd></div>
-    <div><dt>Last seen</dt><dd{{if .Stale}} class="stale"{{end}}>{{time .Summary.ReceivedAt}} ({{ago .Summary.ReceivedAt}}, via {{.Summary.Source}})</dd></div>
-    <div><dt>Collector</dt><dd>{{.Summary.CollectorVersion}}</dd></div>
-    <div><dt>Packages</dt><dd>{{.Summary.Packages}} installed, {{.Summary.PendingUpdates}} with updates ({{.Summary.PendingSecurity}} security)</dd></div>
-    <div><dt>Reboot</dt><dd>{{.Reboot}}</dd></div>
-    {{with .Report.OSLife}}<div><dt>OS lifecycle</dt><dd>{{template "life" .}}</dd></div>{{end}}
-    {{range .Report.Runtimes}}<div><dt>{{.Name}} {{.Version}}</dt><dd>{{with .Life}}{{template "life" .}}{{else}}lifecycle unknown{{end}}</dd></div>{{end}}
-  </dl>
+  <div class="fact">{{template "icon" "server"}}<div><div class="k">Operating system</div><div class="v">{{.Summary.OS}}</div>{{with .Report.OSLife}}<div class="pills">{{template "lifepill" .}}</div>{{end}}</div></div>
+  <div class="fact">{{template "icon" "clock"}}<div><div class="k">Last report</div><div class="v" title="{{time .Summary.ReceivedAt}}">{{ago .Summary.ReceivedAt}}</div><div class="pills">{{if .Stale}}<span class="pill warn">stale</span>{{else}}<span class="pill ok"><span class="dot"></span>reporting</span>{{end}}<span class="pill muted">via {{.Summary.Source}}</span></div></div></div>
+  <div class="fact">{{template "icon" "power"}}<div><div class="k">Reboot</div><div class="v">{{if eq .Reboot "required"}}Required{{else if eq .Reboot "not required"}}Not needed{{else}}Unknown{{end}}</div><div class="pills">{{if eq .Reboot "required"}}<span class="pill warn">restart to finish updates</span>{{else if eq .Reboot "not required"}}<span class="pill ok">up to date</span>{{end}}</div></div></div>
+  <div class="fact">{{template "icon" "package"}}<div><div class="k">Packages</div><div class="v">{{.Summary.Packages}} installed</div><div class="pills">{{if .Summary.PendingUpdates}}<span class="pill warn">{{.Summary.PendingUpdates}} update{{if ne .Summary.PendingUpdates 1}}s{{end}}</span>{{else}}<span class="pill ok">all current</span>{{end}}{{if .Summary.PendingSecurity}}<span class="pill bad">{{.Summary.PendingSecurity}} security</span>{{end}}</div></div></div>
+  <div class="fact">{{template "icon" "chip"}}<div><div class="k">Collector</div><div class="v">{{.Summary.CollectorVersion}}</div>{{if .CollectorKnown}}<div class="pills">{{if .CollectorBehind}}<span class="pill warn" title="Re-run install.sh from this hub's release on the server">update available</span>{{else}}<span class="pill ok">current</span>{{end}}</div>{{end}}</div></div>
+  {{if .Report.Runtimes}}<div class="runtimes-row">{{template "icon" "layers"}}<span class="k">Runtimes</span>{{range .Report.Runtimes}}<span class="runtime"><strong>{{.Name}}</strong> {{.Version}} {{template "lifepill" .Life}}</span>{{end}}</div>{{end}}
 </section>
 
 {{if .Anomalies}}
@@ -63,23 +60,12 @@
 </section>
 {{end}}
 
-<section>
+<section id="findings">
   <h2>Findings</h2>
-  {{with .Report.Counts}}
-  <div class="chips" aria-label="Open findings by severity">
-    <span class="chip"><strong>{{.Total}}</strong> open</span>
-    <span class="chip{{if .KEV}} chip-kev{{end}}" title="CISA Known Exploited Vulnerabilities"><strong>{{.KEV}}</strong> known-exploited</span>
-    <span class="chip{{if .Critical}} chip-critical{{end}}"><strong>{{.Critical}}</strong> critical</span>
-    <span class="chip{{if .High}} chip-high{{end}}"><strong>{{.High}}</strong> high</span>
-    <span class="chip"><strong>{{.Medium}}</strong> medium</span>
-    <span class="chip"><strong>{{.Low}}</strong> low</span>
-    <span class="chip"><strong>{{.Unknown}}</strong> unrated</span>
-    <span class="chip chip-ok" title="{{.FixPending}} via updates already pending on the host"><strong>{{.Fixable}}</strong> fixable now</span>
-  </div>
-  {{end}}
+  {{template "chips" (chipsFor .Report.Counts .OSView)}}
   <h3>OS packages</h3>
   {{if not .Report.Ecosystem}}<p class="empty">Vulnerability matching isn't supported for this OS yet.</p>
-  {{else if .OSFindings}}{{template "findingsSplit" .OSFindings}}
+  {{else if .OSFindings}}{{template "osfindings" .OSView}}
   {{else}}<p class="empty">No open findings in OS packages.</p>{{end}}
 </section>
 
@@ -88,10 +74,9 @@
   <h2>Sites</h2>
   {{range .Sites}}
   <div class="card site">
-    <h3>{{with first .ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}} {{with .Label}}<span class="site-label label-{{.}}">{{.}}</span>{{end}} {{template "sitebadges" .Site}}</h3>
+    <h3><a href="{{siteURL $.Body.Org $.Body.Name .Root}}">{{with first .ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}}</a> {{with .Label}}<span class="site-label label-{{.}}">{{.}}</span>{{end}} {{template "sitebadges" .Site}}</h3>
     <dl>
-      <div><dt>Root</dt><dd><code>{{.Root}}</code></dd></div>
-      {{if ne .DocumentRoot .Root}}<div><dt>Document root</dt><dd><code>{{.DocumentRoot}}</code></dd></div>{{end}}
+      <div class="wide"><dt>Root</dt><dd><code class="path">{{pathBreak .Root}}</code>{{if and .DocumentRoot (ne .DocumentRoot .Root)}} <span class="muted">serving</span> <code class="path">{{pathBreak (relPath .Root .DocumentRoot)}}</code>{{end}}</dd></div>
       {{if gt (len .ServerNames) 1}}<div><dt>Server names</dt><dd>{{join .ServerNames ", "}}</dd></div>{{end}}
       <div><dt>Web server</dt><dd>{{with .WebServer}}{{.}}{{else}}<span class="muted">listed in HEIMDALL_SITES</span>{{end}}</dd></div>
       <div><dt>PHP-FPM</dt><dd>{{with .PHPFPM}}{{.}}{{else}}<span class="muted">unknown</span>{{end}}{{with .PHPLife}} · {{template "life" .}}{{end}}</dd></div>
@@ -107,7 +92,7 @@
       <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
     </div>
     {{end}}
-    {{template "findingsSplit" .Findings}}
+    {{template "findingsSplit" (findings .Findings $.Body.ShowAll (print (hostURL $.Body.Org $.Body.Name) "?findings=all#findings"))}}
     {{else if .Readable}}<p class="empty">No open findings in Composer packages.</p>{{end}}
   </div>
   {{end}}
@@ -123,11 +108,14 @@
     <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
   </div>
   {{end}}
-  <p class="muted small">Heimdall never runs these for you. Review them, then run them on the host.</p>
-  <div class="scroll"><table>
-    <thead><tr><th>Package</th><th>Installed</th><th>Available</th><th></th></tr></thead>
-    <tbody>{{range .Pending}}<tr><td>{{.Name}}</td><td class="ver">{{.Version}}</td><td class="ver">{{.PendingVersion}}</td><td>{{if .PendingSecurity}}<span class="badge warn">security</span>{{end}}</td></tr>{{end}}</tbody>
-  </table></div>
+  <p class="muted small">{{len .Pending}} package{{if ne (len .Pending) 1}}s{{end}} can be updated{{with .PendingSecurity}}, <strong>{{.}} with security fixes</strong>{{end}}. Heimdall never runs these for you. Review them, then run them on the host.</p>
+  <details class="pending-list"{{if le (len .Pending) 8}} open{{end}}>
+    <summary>Show all {{len .Pending}} package{{if ne (len .Pending) 1}}s{{end}}</summary>
+    <div class="scroll"><table>
+      <thead><tr><th>Package</th><th>Installed</th><th>Available</th><th></th></tr></thead>
+      <tbody>{{range .Pending}}<tr><td>{{.Name}}</td><td class="ver">{{.Version}}</td><td class="ver">{{.PendingVersion}}</td><td>{{if .PendingSecurity}}<span class="badge warn">security</span>{{end}}</td></tr>{{end}}</tbody>
+    </table></div>
+  </details>
   {{else}}<p class="empty">No pending updates.</p>{{end}}
 </section>
 

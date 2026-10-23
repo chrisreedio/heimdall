@@ -244,6 +244,9 @@ func runFindings(ctx context.Context, syncer *findings.Syncer, tripwires *anomal
 					log.Warn("anomaly", "host", host.Name, "rule", an.Rule, "severity", an.Severity, "summary", an.Summary)
 				}
 			}
+			if err := syncer.SyncMissingEOL(ctx); err != nil {
+				log.Warn("lifecycle data fetch failed", "err", err)
+			}
 			if r, err := syncer.Engine.EvaluateHost(ctx, host); err != nil {
 				log.Warn("findings update failed", "host", host.Name, "err", err)
 			} else if r.Ecosystem != "" {

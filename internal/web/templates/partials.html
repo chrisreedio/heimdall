@@ -4,7 +4,7 @@
 {{define "lifebadge"}}{{$s := lifeState .}}{{if eq $s "eol"}}<span class="badge bad" title="end of life{{with .EOLDate}} since {{date .}}{{end}}">EOL</span>{{else if eq $s "soon"}}<span class="badge warn" title="end of life {{date .EOLDate}}">EOL in {{.DaysLeft}}d</span>{{end}}{{end}}
 
 {{/* sitebadges: problem badges for a report.Site. */}}
-{{define "sitebadges"}}{{if unmet .PHPSatisfied}}<span class="badge warn" title="composer.json requires php {{.PHPRequirement}}">requirement not met</span> {{end}}{{if not .Readable}}<span class="badge muted" title="the collector couldn't read composer.json/composer.lock">unreadable</span>{{end}}{{end}}
+{{define "sitebadges"}}{{if unmet .PHPSatisfied}}<span class="badge warn" title="composer.json requires PHP {{.PHPRequirement}}, but the PHP-FPM serving it runs {{.PHPFPM}}">PHP version not allowed</span> {{end}}{{if not .Readable}}<span class="badge muted" title="the collector couldn't read composer.json/composer.lock">unreadable</span>{{end}}{{end}}
 
 {{/* findings renders a findings table ([]report.Finding). */}}
 {{define "findings"}}
@@ -28,10 +28,80 @@
 
 {{/* findingsSplit: fixable findings first; those with no fix released yet
      folded away, since there's nothing to do about them today. */}}
-{{define "findingsSplit"}}{{$fix := fixable . true}}{{$nofix := fixable . false}}
-{{if $fix}}{{template "findings" $fix}}{{else}}<p class="empty">Nothing here can be fixed by updating yet.</p>{{end}}
+{{define "findingsSplit"}}{{$all := .All}}{{$fix := fixable .List true}}{{$nofix := fixable .List false}}
+{{if $fix}}{{template "findings" (head $fix findingsCap $all)}}
+{{if and (not $all) (gt (len $fix) findingsCap)}}<p class="more">Showing the {{findingsCap}} most important of {{len $fix}} fixable findings. <a href="{{.AllURL}}">Show all</a></p>{{end}}
+{{else}}<p class="empty">Nothing here can be fixed by updating yet.</p>{{end}}
 {{if $nofix}}<details class="nofix">
   <summary>No fix released yet ({{len $nofix}})</summary>
-  {{template "findings" $nofix}}
+  {{template "findings" (head $nofix findingsCap $all)}}
+  {{if and (not $all) (gt (len $nofix) findingsCap)}}<p class="more">Showing {{findingsCap}} of {{len $nofix}}. <a href="{{.AllURL}}">Show all</a></p>{{end}}
 </details>{{end}}
+{{end}}
+
+{{/* osfindings: a host's OS findings by package (default) or one by one,
+     filtered and a page at a time (a findingsView). */}}
+{{define "osfindings"}}
+<div class="view-bar">
+  <nav class="seg" aria-label="Group findings">
+    <a href="{{index .ViewLink "packages"}}"{{if eq .View "packages"}} aria-current="true"{{end}}>By package</a>
+    <a href="{{index .ViewLink "all"}}"{{if eq .View "all"}} aria-current="true"{{end}}>All findings</a>
+  </nav>
+  <span class="muted small">{{.Total}} finding{{if ne .Total 1}}s{{end}}{{if or .Sev .Fixable}} match{{if eq .Total 1}}es{{end}} the filter{{end}}{{if eq .View "packages"}}{{if .Groups}} · page {{.Page}} of {{.Pages}}{{end}}{{else if .Rows}} · page {{.Page}} of {{.Pages}}{{end}}</span>
+</div>
+{{with .FixCmd}}<div class="cmd fix-cmd">
+  <div class="cmd-label">{{if eq $.PM "composer"}}Update {{$.FixPkgs}} Composer package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}} <span class="muted small">· run in the site root</span>{{else}}Patch {{$.FixPkgs}} package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}}{{end}}{{if $.FixPending}} <span class="muted small">· {{$.FixPending}} already have the update downloaded and pending</span>{{end}}</div>
+  <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
+  <p class="muted small">Upgrades only these packages. Filter by severity above to patch, say, just the critical ones first. Heimdall never runs it for you.</p>
+</div>{{end}}
+{{if eq .View "packages"}}
+  {{if .Groups}}
+  <div class="pkg-list" role="table" aria-label="Findings by package">
+    <div class="pkg-grid pkg-head" role="row"><span>Package</span><span>Installed</span><span>Worst</span><span class="num">KEV</span><span class="num">Crit</span><span class="num">High</span><span class="num">Med</span><span class="num">Low</span><span class="num">Fixable</span></div>
+    {{range .Groups}}<details class="pkg-row">
+      <summary class="pkg-grid" role="row">
+        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span></span>
+        <span class="ver">{{.Version}}</span>
+        <span><span class="sev sev-{{sev .Worst}}">{{.Worst}}</span></span>
+        <span class="num">{{if .KEV}}<span class="badge kev">{{.KEV}}</span>{{else}}<span class="muted">0</span>{{end}}</span>
+        <span class="num">{{index .BySev "critical"}}</span><span class="num">{{index .BySev "high"}}</span><span class="num">{{index .BySev "medium"}}</span><span class="num">{{index .BySev "low"}}</span>
+        <span class="num">{{if .Fixable}}{{.Fixable}}{{if .FixPending}} <span class="badge ok" title="an update that fixes some is already pending">pending</span>{{end}}{{else}}<span class="muted">0</span>{{end}}</span>
+      </summary>
+      <div class="pkg-panel">
+        {{if gt (len .Binaries) 1}}<p class="muted small">Binary packages: {{join .Binaries ", "}}</p>{{end}}
+        <ul class="pkg-findings">{{range head .Findings 100 false}}<li><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .KEV}} <span class="badge kev">KEV</span>{{end}} <span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Fixed}} <span class="muted small">fixed in {{.Fixed}}</span>{{else}} <span class="muted small">no fix yet</span>{{end}}{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</li>{{end}}</ul>
+        {{if gt (len .Findings) 100}}<p class="more">The 100 most important of {{len .Findings}}; switch to All findings to see every one.</p>{{end}}
+      </div>
+    </details>{{end}}
+  </div>
+  {{else}}<p class="empty">No findings match the filter.</p>{{end}}
+{{else}}
+  {{if .Rows}}{{template "findings" .Rows}}{{else}}<p class="empty">No findings match the filter.</p>{{end}}
+{{end}}
+{{if gt .Pages 1}}<nav class="pager" aria-label="Pages">
+  {{with .PrevLink}}<a class="button secondary" href="{{.}}">← Previous</a>{{else}}<span></span>{{end}}
+  <span class="muted small">Page {{.Page}} of {{.Pages}}</span>
+  {{with .NextLink}}<a class="button secondary" href="{{.}}">Next →</a>{{else}}<span></span>{{end}}
+</nav>{{end}}
+{{end}}
+
+{{/* icon: a small inline stroke icon by name. */}}
+{{define "icon"}}<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{if eq . "server"}}<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>{{else if eq . "clock"}}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>{{else if eq . "chip"}}<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>{{else if eq . "package"}}<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>{{else if eq . "power"}}<path d="M12 3v8"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/>{{else if eq . "layers"}}<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>{{else if eq . "calendar"}}<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>{{else if eq . "globe"}}<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>{{else if eq . "code"}}<path d="M8 6l-6 6 6 6M16 6l6 6-6 6"/>{{else if eq . "check"}}<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>{{end}}</svg>{{end}}
+
+{{/* lifepill: a lifecycle as a colored pill (*report.Lifecycle, nil-safe). */}}
+{{define "lifepill"}}{{$s := lifeState .}}{{if eq $s "eol"}}<span class="pill bad" title="end of life{{with .EOLDate}} since {{fullDate .}}{{end}}">EoL{{with .EOLDate}} {{month .}}{{end}}</span>{{else if eq $s "soon"}}<span class="pill warn" title="end of life {{fullDate .EOLDate}}, {{.DaysLeft}} days from now">EoL in {{.DaysLeft}}d</span>{{else if eq $s "ok"}}<span class="pill ok" title="supported{{with .EOLDate}} until {{fullDate .}}{{end}}">{{with .EOLDate}}EoL {{month .}}{{else}}supported{{end}}</span>{{else}}<span class="pill muted" title="no lifecycle data yet">EoL unknown</span>{{end}}{{end}}
+
+{{/* chips: severity counts that filter a findingsView (chipsFor). */}}
+{{define "chips"}}
+  <div class="chips" aria-label="Filter findings by severity">
+    <a class="chip{{if not $.V.Sev}} active{{end}}" href="{{$.V.AllSevLink}}"><strong>{{.C.Total}}</strong> open</a>
+    <a class="chip{{if .C.KEV}} chip-kev{{end}}{{if eq $.V.Sev "kev"}} active{{end}}" href="{{index $.V.SevLinks "kev"}}" title="CISA Known Exploited Vulnerabilities"><strong>{{.C.KEV}}</strong> known-exploited</a>
+    <a class="chip{{if .C.Critical}} chip-critical{{end}}{{if eq $.V.Sev "critical"}} active{{end}}" href="{{index $.V.SevLinks "critical"}}"><strong>{{.C.Critical}}</strong> critical</a>
+    <a class="chip{{if .C.High}} chip-high{{end}}{{if eq $.V.Sev "high"}} active{{end}}" href="{{index $.V.SevLinks "high"}}"><strong>{{.C.High}}</strong> high</a>
+    <a class="chip{{if eq $.V.Sev "medium"}} active{{end}}" href="{{index $.V.SevLinks "medium"}}"><strong>{{.C.Medium}}</strong> medium</a>
+    <a class="chip{{if eq $.V.Sev "low"}} active{{end}}" href="{{index $.V.SevLinks "low"}}"><strong>{{.C.Low}}</strong> low</a>
+    <a class="chip{{if eq $.V.Sev "unknown"}} active{{end}}" href="{{index $.V.SevLinks "unknown"}}"><strong>{{.C.Unknown}}</strong> unrated</a>
+    {{if $.V.Fixable}}<a class="chip chip-ok active" href="{{index $.V.FixLink "off"}}" title="{{.C.FixPending}} via updates already pending on the host"><strong>{{.C.Fixable}}</strong> fixable now</a>
+    {{else}}<a class="chip chip-ok" href="{{index $.V.FixLink "on"}}" title="Show only findings an update fixes ({{.C.FixPending}} already pending on the host)"><strong>{{.C.Fixable}}</strong> fixable now</a>{{end}}
+  </div>
 {{end}}

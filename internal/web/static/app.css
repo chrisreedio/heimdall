@@ -535,3 +535,109 @@ details.label-pick button { padding: 4px 10px; font-size: 13px; }
 .new-env label { font-weight: 600; font-size: 13px; }
 .new-env input { margin-top: 6px; }
 .js-new-env .new-env[hidden] { display: none; }
+
+/* Host page: paths wrap only at "/", findings tables are capped. */
+.site dl .wide { grid-column: 1 / -1; }
+code.path { overflow-wrap: normal; word-break: normal; white-space: normal; }
+p.more { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+details.pending-list > summary { font-weight: 600; margin: 12px 0 8px; color: var(--link); }
+
+/* Host findings: filters, view toggle, package rows, pager. */
+a.chip { text-decoration: none; }
+a.chip:hover { border-color: var(--link); }
+.chip.active { outline: 2px solid var(--link); outline-offset: 1px; }
+.view-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin: 0 0 12px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg a { padding: 6px 12px; font-size: 13px; color: var(--muted); text-decoration: none; }
+.seg a + a { border-left: 1px solid var(--border); }
+.seg a[aria-current] { background: var(--code-bg); color: var(--text); font-weight: 600; }
+/* Package rows: fixed columns, so opening one never shifts the others. */
+.pkg-list { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.pkg-grid {
+  display: grid; align-items: center; gap: 0 12px; padding: 9px 14px;
+  grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.6fr) 88px repeat(5, 52px) 92px;
+}
+.pkg-head { font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--border); background: var(--code-bg); }
+.pkg-row + .pkg-row { border-top: 1px solid var(--border); }
+.pkg-row > summary { cursor: pointer; list-style: none; }
+.pkg-row > summary::-webkit-details-marker { display: none; }
+.pkg-row > summary:hover { background: var(--code-bg); }
+.pkg-row[open] > summary { background: var(--code-bg); }
+.pkg-name { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.pkg-name .id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pkg-name::before { content: "\25B8"; color: var(--muted); font-size: 11px; }
+.pkg-row[open] .pkg-name::before { content: "\25BE"; }
+.pkg-grid .ver { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pkg-grid .num { text-align: right; }
+.pkg-panel { padding: 4px 14px 14px 34px; border-top: 1px dashed var(--border); }
+.fix-cmd { margin: 4px 0 16px; }
+@media (max-width: 760px) {
+  .pkg-grid { grid-template-columns: minmax(0, 1fr) 80px 44px 44px 60px; }
+  .pkg-grid > :nth-child(2), .pkg-grid > :nth-child(6), .pkg-grid > :nth-child(7), .pkg-grid > :nth-child(8) { display: none; }
+}
+ul.pkg-findings { list-style: none; margin: 10px 0 4px; padding: 0; display: grid; gap: 8px; max-width: 70ch; }
+ul.pkg-findings .summary { color: var(--muted); font-size: 12px; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pager { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin: 14px 0 0; }
+.pager > :last-child { justify-self: end; }
+
+/* Host facts: icon tiles with status pills. */
+.facts.card { display: grid; gap: 18px 24px; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.fact { display: flex; gap: 12px; min-width: 0; }
+.fact.wide { grid-column: 1 / -1; }
+.fact > .icon {
+  flex: none; width: 34px; height: 34px; padding: 7px; border-radius: 9px;
+  background: var(--code-bg); color: var(--link); border: 1px solid var(--border);
+}
+.fact .k { font-size: 12px; color: var(--muted); }
+.fact .v { font-size: 15px; font-weight: 600; margin-top: 1px; overflow-wrap: anywhere; }
+.pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill.ok { background: var(--ok-bg); color: var(--ok-fg); }
+.pill.warn { background: var(--high-bg); color: var(--high-fg); }
+.pill.bad { background: var(--crit-bg); color: var(--crit-fg); }
+.pill.muted { background: var(--unk-bg); color: var(--unk-fg); font-weight: 500; }
+.pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.runtimes { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 4px; }
+.runtime { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
+
+/* Facts: one row of five on wide screens, runtimes in a strip below. */
+/* OS, last report, reboot, packages, collector: the short ones narrower. */
+.facts.card { grid-template-columns: minmax(0, 1.7fr) minmax(0, 1.2fr) minmax(0, .75fr) minmax(0, 1fr) minmax(0, .75fr); gap: 14px 20px; padding: 16px 18px; }
+.fact { gap: 10px; }
+.fact > .icon { width: 30px; height: 30px; padding: 6px; border-radius: 8px; }
+.fact .v { font-size: 14px; }
+.pills { margin-top: 5px; }
+.runtimes-row {
+  grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px;
+  padding-top: 12px; border-top: 1px solid var(--border);
+}
+.runtimes-row > .icon { width: 18px; height: 18px; color: var(--link); }
+.runtimes-row > .k { font-size: 12px; color: var(--muted); margin-right: 4px; }
+@media (max-width: 1100px) { .facts.card { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 760px) { .facts.card { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 440px) { .facts.card { grid-template-columns: minmax(0, 1fr); } }
+
+/* Site page. */
+.other-sites li { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.facts .runtimes-row code.path { font-size: 13px; }
+
+/* Package rows are <summary> elements: drop the generic summary margin. */
+.pkg-row > summary { margin: 0; font-weight: 400; }
+.pkg-name .id { font-weight: 600; }
+/* The site page has six facts: an even 3 x 2. */
+.facts.card.site-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 760px) { .facts.card.site-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 440px) { .facts.card.site-facts { grid-template-columns: minmax(0, 1fr); } }
+.k.cap { text-transform: capitalize; }
+
+/* Site page: a quiet "on host · environment" line under the title. */
+.site-meta { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.site-meta .icon { width: 15px; height: 15px; }
+.site-meta a { font-weight: 600; }
+details.head-pick { position: relative; }
+details.head-pick[open] form { position: absolute; top: 26px; left: 0; z-index: 5; padding: 10px; box-shadow: var(--shadow); margin: 0; white-space: nowrap; }
+
+/* Facts: a status pill sits beside its value, wrapping only when narrow. */
+.fact > div:not(.k) { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; column-gap: 8px; min-width: 0; }
+.fact > div > .k { flex-basis: 100%; }
+.fact > div > .pills { margin-top: 0; }

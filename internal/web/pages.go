@@ -16,6 +16,7 @@ import (
 	"github.com/chrisreedio/heimdall/internal/report"
 	"github.com/chrisreedio/heimdall/internal/search"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/updates"
 	"github.com/chrisreedio/heimdall/internal/version"
 )
 
@@ -291,27 +292,32 @@ func (s *server) hostsPage(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 // ── Host page ──────────────────────────────────────────────────────────────
 
 type hostBody struct {
-	Org, Name   string
-	AutoName    bool // takes the hostname it reports first
-	Tags        []string
-	Env         string
-	Envs        []store.Env // the org's environments, for moving the host
-	CanAdmin    bool        // may rename the host
-	Notice      string      // fixed messages only (see renameNotices)
-	RenameError string
-	Reported    bool
-	Summary     store.SnapshotSummary
-	Reboot      string
-	Report      report.Host
-	OSFindings  []report.Finding
-	Sites       []siteSection
-	Stale       bool
-	Pending     []store.InventoryPackage
-	Packages    []store.InventoryPackage
-	Commands    []command
-	Anomalies   []store.AnomalyRow
-	PackageMgr  string
-	ShowOrgName bool
+	Org, Name       string
+	AutoName        bool // takes the hostname it reports first
+	Tags            []string
+	Env             string
+	Envs            []store.Env // the org's environments, for moving the host
+	CanAdmin        bool        // may rename the host
+	Notice          string      // fixed messages only (see renameNotices)
+	RenameError     string
+	Reported        bool
+	Summary         store.SnapshotSummary
+	Reboot          string
+	Report          report.Host
+	OSFindings      []report.Finding
+	Sites           []siteSection
+	Stale           bool
+	Pending         []store.InventoryPackage
+	PendingSecurity int
+	OSView          findingsView
+	CollectorBehind bool // the host's collector is older than this hub's release
+	CollectorKnown  bool // this hub is a release build, so the comparison means something
+	ShowAll         bool // show every finding instead of the first findingsCap
+	Packages        []store.InventoryPackage
+	Commands        []command
+	Anomalies       []store.AnomalyRow
+	PackageMgr      string
+	ShowOrgName     bool
 }
 
 type command struct {
@@ -410,8 +416,29 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 			body.Pending = append(body.Pending, p)
 		}
 	}
+	// Security updates first, then by name.
+	slices.SortStableFunc(body.Pending, func(a, b store.InventoryPackage) int {
+		if a.PendingSecurity != b.PendingSecurity {
+			if a.PendingSecurity {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	for _, p := range body.Pending {
+		if p.PendingSecurity {
+			body.PendingSecurity++
+		}
+	}
+	body.ShowAll = r.URL.Query().Get("findings") == "all"
 	body.PackageMgr = packageManager(inv)
 	body.Commands = upgradeCommands(body.PackageMgr, body.Pending)
+	body.OSView = buildFindingsView("/hosts/"+url.PathEscape(host.OrgSlug)+"/"+url.PathEscape(host.Name), packageManager(inv), r.URL.Query(), body.OSFindings)
+	if v := strings.TrimSpace(sum.CollectorVersion); v != "" && releaseTag.MatchString(s.cfg.Version) {
+		body.CollectorKnown = true
+		body.CollectorBehind = updates.Newer(s.cfg.Version, "v"+strings.TrimPrefix(v, "v"))
+	}
 
 	if body.Anomalies, err = s.st.Anomalies(ctx, host.ID); err != nil {
 		s.fail(w, r, v, err)
@@ -845,6 +872,85 @@ func (s *server) siteLabel(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		if f := r.PostForm.Get("filter"); slices.Contains(store.SiteLabels, f) {
 			back += "&label=" + f
 		}
+		if b := r.PostForm.Get("back"); strings.HasPrefix(b, "/hosts/") {
+			back = safeNext(b)
+		}
 		http.Redirect(w, r, back, http.StatusSeeOther)
 	}
+}
+
+// ── Site page ──────────────────────────────────────────────────────────────
+
+type siteBody struct {
+	Org, Host, Env string
+	Site           report.Site
+	Label          string
+	LabelSet       bool
+	CanAdmin       bool
+	Labels         []string
+	View           findingsView
+	Others         []report.Site // the host's other sites
+	Notice         string
+}
+
+// sitePage shows one site (a web root on a host): its stack, lifecycle and
+// Composer findings.
+func (s *server) sitePage(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	ctx := r.Context()
+	host, err := s.st.HostByName(ctx, r.PathValue("org"), r.PathValue("host"))
+	if err != nil || !v.Scope.CanView(host.OrgID) {
+		s.notFound(w, r, v)
+		return
+	}
+	root := r.URL.Query().Get("root")
+	rep, err := report.Build(ctx, s.st, report.Filter{Org: host.OrgSlug, Scope: v.Scope}, s.now())
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	var h report.Host
+	for _, rh := range rep.Hosts {
+		if rh.Name == host.Name {
+			h = rh
+		}
+	}
+	body := siteBody{Org: host.OrgSlug, Host: host.Name, Env: host.EnvSlug, CanAdmin: v.Scope.CanAdmin(host.OrgID), Labels: store.SiteLabels}
+	found := false
+	for _, site := range h.Sites {
+		if site.Root == root {
+			body.Site, found = site, true
+		} else {
+			body.Others = append(body.Others, site)
+		}
+	}
+	if !found {
+		s.notFound(w, r, v)
+		return
+	}
+	labels, err := s.st.SiteLabelsByName(ctx)
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if l, ok := labels[store.SiteLabelKey(host.OrgSlug, host.Name, root)]; ok {
+		body.Label, body.LabelSet = l, true
+	} else {
+		body.Label = suggestSiteLabel(body.Site.ServerNames)
+	}
+	var fs []report.Finding
+	for _, f := range h.Findings {
+		if f.Site == root {
+			fs = append(fs, f)
+		}
+	}
+	base := "/hosts/" + url.PathEscape(host.OrgSlug) + "/" + url.PathEscape(host.Name) + "/site?root=" + url.QueryEscape(root)
+	body.View = buildFindingsView(base, "composer", r.URL.Query(), fs)
+	if r.URL.Query().Get("labeled") == "1" {
+		body.Notice = "Label saved."
+	}
+	name := root
+	if len(body.Site.ServerNames) > 0 && body.Site.ServerNames[0] != "_" {
+		name = body.Site.ServerNames[0]
+	}
+	s.render(w, r, http.StatusOK, "site", v, name, "sites", body)
 }

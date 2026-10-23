@@ -3,6 +3,7 @@
 package web
 
 import (
+	"html/template"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/chrisreedio/heimdall/internal/auth"
+	"github.com/chrisreedio/heimdall/internal/report"
 	"github.com/chrisreedio/heimdall/internal/store"
 )
 
@@ -173,5 +175,39 @@ func TestEnvironmentsAndSiteLabels(t *testing.T) {
 	}
 	if w := e.post("/hosts/acme/box-1/env", url.Values{"csrf": {csrf}, "env": {"shared-hosting"}}, signedIn(e), origin(e.baseURL)); w.Code != http.StatusNotFound {
 		t.Errorf("operator moving a host: %d", w.Code)
+	}
+}
+
+func TestHostPageHelpers(t *testing.T) {
+	pathBreak := funcs["pathBreak"].(func(string) template.HTML)
+	if got := pathBreak(`/home/<b>evil</b>/x`); string(got) != `/<wbr>home/<wbr>&lt;b&gt;evil&lt;/<wbr>b&gt;/<wbr>x` {
+		t.Errorf("pathBreak = %q", got)
+	}
+	relPath := funcs["relPath"].(func(string, string) string)
+	if got := relPath("/home/forge/site/current", "/home/forge/site/current/public"); got != "public" {
+		t.Errorf("relPath inside = %q", got)
+	}
+	if got := relPath("/var/www/a", "/srv/b"); got != "/srv/b" {
+		t.Errorf("relPath outside = %q", got)
+	}
+	head := funcs["head"].(func([]report.Finding, int, bool) []report.Finding)
+	list := make([]report.Finding, 250)
+	if len(head(list, 200, false)) != 200 || len(head(list, 200, true)) != 250 || len(head(list[:5], 200, false)) != 5 {
+		t.Error("head doesn't cap as expected")
+	}
+}
+
+func TestSitePageNotFound(t *testing.T) {
+	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, nil)
+	e.seed()
+	e.st.AddHost(t.Context(), "test", "acme", "prod", "site-host", nil)
+	for _, path := range []string{
+		"/hosts/acme/site-host/site?root=%2Fvar%2Fwww%2Fnope", // no such site
+		"/hosts/acme/nope/site?root=%2Fvar%2Fwww",             // no such host
+		"/hosts/other/site-host/site?root=%2F",                // no such org
+	} {
+		if w := e.get(path, signedIn(e)); w.Code != http.StatusNotFound {
+			t.Errorf("%s: %d", path, w.Code)
+		}
 	}
 }

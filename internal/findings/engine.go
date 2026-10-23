@@ -294,10 +294,14 @@ func (e *Engine) ensureAdvisories(ctx context.Context, ids []string, modified ma
 			}
 		}()
 	}
-	for _, id := range need {
+	// A first run can be thousands of advisories: report progress.
+	for i, id := range need {
 		select {
 		case jobs <- id:
 		case <-ctx.Done():
+		}
+		if n := i + 1; n%1000 == 0 && n < len(need) {
+			e.Log.Info("findings: fetching advisories", "done", n, "of", len(need))
 		}
 	}
 	close(jobs)

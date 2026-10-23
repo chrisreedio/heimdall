@@ -132,6 +132,7 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("GET /{$}", s.requireAuth(s.withScope(s.dashboard)))
 	mux.HandleFunc("GET /hosts", s.requireAuth(s.withScope(s.hostsPage)))
 	mux.HandleFunc("GET /hosts/{org}/{host}", s.requireAuth(s.hostPage))
+	mux.HandleFunc("GET /hosts/{org}/{host}/site", s.requireAuth(s.sitePage))
 	mux.HandleFunc("GET /sites", s.requireAuth(s.withScope(s.sitesPage)))
 	mux.HandleFunc("GET /search", s.requireAuth(s.withScope(s.searchPage)))
 	mux.HandleFunc("GET /hosts/new", s.requireAuth(s.addHostPage))
@@ -429,7 +430,7 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, v *auth.Viewer, er
 
 func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
-		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost"}
+		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "site"}
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/"+n+".html")
@@ -443,6 +444,9 @@ func parsePages() (map[string]*template.Template, error) {
 
 var severities = map[string]bool{"critical": true, "high": true, "medium": true, "low": true}
 
+// findingsCap is how many findings a table shows before "Show all".
+const findingsCap = 200
+
 var funcs = template.FuncMap{
 	"devMode":  func() bool { return devMode },
 	"devLogin": func() string { return devLoginEmail },
@@ -454,13 +458,13 @@ var funcs = template.FuncMap{
 		if t.IsZero() {
 			return "never"
 		}
-		return t.Local().Format("2006-01-02 15:04")
+		return t.Local().Format("Jan 2, 2006 3:04 PM")
 	},
 	"day": func(t time.Time) string {
 		if t.IsZero() {
 			return ""
 		}
-		return t.Local().Format("2006-01-02")
+		return asDay(t).Format("Jan 2, 2006")
 	},
 	// fixable keeps the findings that have (want=true) or lack a fix.
 	"fixable": func(fs []report.Finding, want bool) []report.Finding {
@@ -476,9 +480,31 @@ var funcs = template.FuncMap{
 		if t == nil {
 			return ""
 		}
-		return t.Format(time.DateOnly)
+		return asDay(*t).Format("Jan 2, 2006")
 	},
-	"ago": ago,
+	// month and longDate are friendlier dates for prose and pills
+	// ("Feb 2025", "4 Feb 2025"); tables keep ISO dates.
+	"month": func(t *time.Time) string {
+		if t == nil {
+			return ""
+		}
+		return asDay(*t).Format("Jan 2006")
+	},
+	"longDate": func(t *time.Time) string {
+		if t == nil {
+			return ""
+		}
+		return asDay(*t).Format("Jan 2, 2006")
+	},
+	// fullDate is for tooltips: "Friday, October 23, 2026".
+	"fullDate": func(t *time.Time) string {
+		if t == nil {
+			return ""
+		}
+		return asDay(*t).Format("Monday, January 2, 2006")
+	},
+	"dayAgo": func(t *time.Time) string { return dayAgo(t, time.Now()) },
+	"ago":    ago,
 	// sev maps a severity to a CSS class suffix from a fixed set.
 	"sev": func(s string) string {
 		if severities[s] {
@@ -486,7 +512,42 @@ var funcs = template.FuncMap{
 		}
 		return "unknown"
 	},
-	"join":      strings.Join,
+	"join": strings.Join,
+	// findings passes a findings list to the findingsSplit partial along
+	// with whether to show it all, and the URL that shows it all.
+	"findings": func(list []report.Finding, all bool, allURL string) map[string]any {
+		return map[string]any{"List": list, "All": all, "AllURL": allURL}
+	},
+	// head returns the first n findings (all of them if all is set).
+	"head": func(list []report.Finding, n int, all bool) []report.Finding {
+		if all || len(list) <= n {
+			return list
+		}
+		return list[:n]
+	},
+	"findingsCap": func() int { return findingsCap },
+	"chipsFor": func(c report.Counts, v findingsView) map[string]any {
+		return map[string]any{"C": c, "V": v}
+	},
+	// siteURL is a site's page: sites are a host plus a web root.
+	"siteURL": func(org, host, root string) string {
+		return "/hosts/" + url.PathEscape(org) + "/" + url.PathEscape(host) + "/site?root=" + url.QueryEscape(root)
+	},
+	// pathBreak renders a path that may wrap only after a "/".
+	"pathBreak": func(p string) template.HTML {
+		parts := strings.Split(p, "/")
+		for i := range parts {
+			parts[i] = template.HTMLEscapeString(parts[i])
+		}
+		return template.HTML(strings.Join(parts, "/<wbr>"))
+	},
+	// relPath shows p relative to base when it's inside it.
+	"relPath": func(base, p string) string {
+		if rest, ok := strings.CutPrefix(p, strings.TrimSuffix(base, "/")+"/"); ok && rest != "" {
+			return rest
+		}
+		return p
+	},
 	"lifeState": lifeState,
 	// unmet: a known-false requirement check (nil means unknown).
 	"unmet": func(b *bool) bool { return b != nil && !*b },
@@ -498,11 +559,13 @@ var funcs = template.FuncMap{
 	},
 }
 
-func ago(t time.Time) string {
+func ago(t time.Time) string { return agoAt(t, time.Now()) }
+
+func agoAt(t, now time.Time) string {
 	if t.IsZero() {
 		return "never"
 	}
-	d := time.Since(t)
+	d := now.Sub(t)
 	switch {
 	case d < time.Minute:
 		return "just now"
@@ -512,4 +575,47 @@ func ago(t time.Time) string {
 		return fmt.Sprintf("%dh ago", int(d.Hours()))
 	}
 	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+}
+
+// dayAgo describes a date relative to today: "Today 2:01 PM (3h ago)" and
+// "Yesterday 4:10 PM" for timestamps ("today" and "yesterday" for plain
+// dates), "3 days ago", then "Oct 23, 2026" once it's a month or more back.
+func dayAgo(t *time.Time, now time.Time) string {
+	if t == nil {
+		return ""
+	}
+	y1, m1, d1 := asDay(*t).Date()
+	y2, m2, d2 := now.Local().Date()
+	days := int(time.Date(y2, m2, d2, 0, 0, 0, 0, time.UTC).Sub(time.Date(y1, m1, d1, 0, 0, 0, 0, time.UTC)).Hours() / 24)
+	switch {
+	case days < 0:
+		return t.Format("Jan 2, 2006")
+	case days == 0 && isPlainDate(*t):
+		return "today"
+	case days == 0:
+		return "Today " + t.Local().Format("3:04 PM") + " (" + agoAt(*t, now) + ")"
+	case days == 1 && isPlainDate(*t):
+		return "yesterday"
+	case days == 1:
+		return "Yesterday " + t.Local().Format("3:04 PM")
+	case days < 30:
+		return fmt.Sprintf("%d days ago", days)
+	}
+	return t.Format("Jan 2, 2006")
+}
+
+// asDay is t in the viewer's time zone, except plain dates (lifecycle
+// dates, stored as midnight UTC), which would otherwise shift to the day
+// before for anyone west of UTC.
+func asDay(t time.Time) time.Time {
+	if isPlainDate(t) {
+		return t.UTC()
+	}
+	return t.Local()
+}
+
+// isPlainDate reports whether t is a date without a time (midnight UTC).
+func isPlainDate(t time.Time) bool {
+	u := t.UTC()
+	return u.Hour() == 0 && u.Minute() == 0 && u.Second() == 0 && u.Nanosecond() == 0
 }
