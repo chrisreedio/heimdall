@@ -44,7 +44,7 @@ To keep Cloudflare (WAF, DDoS protection) in front of public ingest, Caddy can't
 4. Collectors are plain `curl`. If **Bot Fight Mode** or a challenge rule is on, add a WAF skip rule for `/api/v1/ingest`, or servers will be challenged instead of reporting.
 5. **Allow 443 only from Cloudflare**, so nobody can reach the origin around the WAF. See below.
 
-Check it: `curl -i https://<ingest-host>/` returns `404` (from Caddy, through Cloudflare), and `curl -k --connect-timeout 5 https://<origin-ip>/` from anywhere else times out.
+Check it: `curl -i https://<ingest-host>/` returns `200` with the blank splash page and `curl -i https://<ingest-host>/x` an empty `404` (from Caddy, through Cloudflare); nothing else is public, and `curl -k --connect-timeout 5 https://<origin-ip>/` from anywhere else times out.
 
 #### Allowing 443 only from Cloudflare's IP ranges
 

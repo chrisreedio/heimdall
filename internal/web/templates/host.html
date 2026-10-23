@@ -14,6 +14,17 @@
   </details>{{end}}
 </div>
 <div class="host-tags">
+  <span class="env-badge" title="Environment">{{.Env}}</span>
+  {{if .CanAdmin}}<details class="edit-tags">
+    <summary class="link">Change</summary>
+    <form method="post" action="{{hostURL .Org .Name}}/env" class="row card">
+      <input type="hidden" name="csrf" value="{{$csrf}}">
+      <label>Environment <select name="env" id="host-env">{{range .Envs}}<option value="{{.Slug}}"{{if eq .Slug $.Body.Env}} selected{{end}}>{{.Slug}}</option>{{end}}</select></label>
+      <div class="new-env" data-new-env-for="host-env"><label>Or a new one <input name="new_env" maxlength="63" placeholder="shared-hosting" autocomplete="off" autocapitalize="none" spellcheck="false"></label></div>
+      <button type="submit">Move</button>
+    </form>
+  </details>{{end}}
+  <span class="sep" aria-hidden="true">·</span>
   {{range .Tags}}<span class="tag">{{.}}</span>{{else}}<span class="muted small">No tags</span>{{end}}
   {{if .CanAdmin}}<details class="edit-tags">
     <summary class="link">Edit tags</summary>
@@ -77,7 +88,7 @@
   <h2>Sites</h2>
   {{range .Sites}}
   <div class="card site">
-    <h3>{{with first .ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}} {{template "sitebadges" .Site}}</h3>
+    <h3>{{with first .ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}} {{with .Label}}<span class="site-label label-{{.}}">{{.}}</span>{{end}} {{template "sitebadges" .Site}}</h3>
     <dl>
       <div><dt>Root</dt><dd><code>{{.Root}}</code></dd></div>
       {{if ne .DocumentRoot .Root}}<div><dt>Document root</dt><dd><code>{{.DocumentRoot}}</code></dd></div>{{end}}

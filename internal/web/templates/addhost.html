@@ -72,7 +72,11 @@
       {{if not $single}}</optgroup>{{end}}
       {{end}}
     </select>
-    <p class="hint">Groups servers, for example prod and staging.</p>
+    <div class="new-env" data-new-env-for="env">
+      <label for="new_env">Or a new environment <span class="optional">optional</span></label>
+      <input id="new_env" name="new_env" maxlength="63" placeholder="shared-hosting" autocomplete="off" autocapitalize="none" spellcheck="false" value="{{.Form.NewEnv}}">
+    </div>
+    <p class="hint">Groups servers: prod and staging, or whatever fits, such as shared-hosting or internal.</p>
   </div>
   <div class="field">
     <label for="tags">Tags <span class="optional">optional</span></label>

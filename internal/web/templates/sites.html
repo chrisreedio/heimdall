@@ -1,4 +1,4 @@
-{{define "content"}}{{with .Body}}
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
 <div class="head">
   <h1>Sites</h1>
   {{if .ShowOrgs}}
@@ -14,13 +14,25 @@
   {{end}}
 </div>
 
+{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+<nav class="filter-chips labels" aria-label="Site label">
+  <a href="/sites{{with .Org}}?org={{.}}{{end}}"{{if not .Label}} aria-current="true"{{end}}>All</a>
+  {{range .Labels}}<a href="/sites?label={{.}}{{with $.Body.Org}}&org={{.}}{{end}}"{{if eq . $.Body.Label}} aria-current="true"{{end}}><span class="label-dot label-{{.}}"></span>{{.}} <span>{{index $.Body.Counts .}}</span></a>{{end}}
+</nav>
 {{if .Sites}}
 <div class="scroll"><table>
-  <thead><tr><th>Site</th><th>Host</th><th>Web server</th><th>PHP-FPM</th><th>Laravel</th><th>Flags</th><th class="num">KEV</th><th class="num">Critical</th><th class="num">High</th><th class="num">Fixable</th></tr></thead>
+  <thead><tr><th>Site</th><th>Label</th><th>Host</th><th>Web server</th><th>PHP-FPM</th><th>Laravel</th><th>Flags</th><th class="num">KEV</th><th class="num">Critical</th><th class="num">High</th><th class="num">Fixable</th></tr></thead>
   <tbody>
-  {{range .Sites}}
+  {{range .Sites}}{{$row := .}}
   <tr>
     <td><span class="id">{{with first .ServerNames}}{{if eq . "_"}}<span class="muted">default server</span>{{else}}{{.}}{{end}}{{else}}{{$.Body.Org}}{{end}}</span><div class="muted small">{{.Root}}</div>{{if gt (len .ServerNames) 1}}<div class="muted small">{{join .ServerNames ", "}}</div>{{end}}</td>
+    <td>{{if .Label}}<span class="site-label label-{{.Label}}{{if not .LabelSet}} suggested{{end}}" title="{{if .LabelSet}}set by an admin{{else}}suggested from the site's name{{end}}">{{.Label}}</span>{{else}}<span class="muted small">unlabeled</span>{{end}}
+      {{if .CanAdmin}}<details class="label-pick"><summary class="link small">change</summary>
+        <form method="post" action="/sites/label" class="inline">
+          <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.Org}}"><input type="hidden" name="host" value="{{.Host}}"><input type="hidden" name="root" value="{{.Root}}"><input type="hidden" name="filter" value="{{$.Body.Label}}">
+          <select name="label" aria-label="Label for {{.Root}}"><option value="auto">suggest from name</option>{{range $.Body.Labels}}<option value="{{.}}"{{if and $row.LabelSet (eq . $row.Label)}} selected{{end}}>{{.}}</option>{{end}}</select>
+          <button type="submit">Save</button>
+        </form></details>{{end}}</td>
     <td><a href="{{hostURL .Org .Host}}">{{.Host}}</a>{{if $.Body.ShowOrgs}} <span class="muted">({{.Org}})</span>{{end}}</td>
     <td>{{with .WebServer}}{{.}}{{else}}<span class="muted">listed</span>{{end}}</td>
     <td>{{with .PHPFPM}}{{.}}{{else}}<span class="muted">unknown</span>{{end}} {{template "lifebadge" .PHPLife}}</td>

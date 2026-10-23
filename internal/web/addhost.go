@@ -23,7 +23,7 @@ type addHostBody struct {
 	Envs      map[string][]store.Env // org slug → envs
 	Error     string
 	IngestURL string
-	Form      struct{ Name, Tags, Env string } // kept when the form is shown again
+	Form      struct{ Name, Tags, Env, NewEnv string } // kept when the form is shown again
 	// After a successful add:
 	Added    bool
 	Host     store.Host
@@ -84,6 +84,22 @@ func (s *server) addHostSubmit(w http.ResponseWriter, r *http.Request, v *auth.V
 	if o, err := s.orgBySlug(r, org); err != nil || !v.Scope.CanAdmin(o.ID) {
 		s.notFound(w, r, v)
 		return
+	}
+	// "New environment..." creates one in the selected org.
+	if env == "__new__" && f("new_env") == "" {
+		body := addHostBody{Error: "Type a name for the new environment."}
+		body.Form.Name, body.Form.Tags = f("name"), f("tags")
+		s.renderAddHost(w, r, v, http.StatusBadRequest, body)
+		return
+	}
+	if n := strings.ToLower(f("new_env")); n != "" {
+		if err := s.ensureEnv(r, v, org, n); err != nil {
+			body := addHostBody{Error: userError(err)}
+			body.Form.Name, body.Form.Tags, body.Form.Env, body.Form.NewEnv = f("name"), f("tags"), org+"/"+env, n
+			s.renderAddHost(w, r, v, http.StatusBadRequest, body)
+			return
+		}
+		env = n
 	}
 	var tags []string
 	for t := range strings.SplitSeq(f("tags"), ",") {

@@ -109,3 +109,69 @@ func TestTaggingRoutes(t *testing.T) {
 		t.Errorf("operator renaming: %d", w.Code)
 	}
 }
+
+func TestSuggestSiteLabel(t *testing.T) {
+	for names, want := range map[string]string{
+		"example.com": "production", "www.example.com": "production", "staging.example.com": "staging",
+		"stg-api.example.com": "staging", "uat.example.com": "staging", "dev.example.com": "development",
+		"api-dev.example.com": "development", "test.example.com": "development", "_": "", "": "",
+	} {
+		var ns []string
+		if names != "" {
+			ns = []string{names}
+		}
+		if got := suggestSiteLabel(ns); got != want {
+			t.Errorf("%q: got %q, want %q", names, got, want)
+		}
+	}
+}
+
+func TestEnvironmentsAndSiteLabels(t *testing.T) {
+	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
+		c.IngestURL, c.Version = "https://ingest.example.com", "v0.4.0"
+	})
+	e.seed()
+	ctx := t.Context()
+	csrf := auth.CSRFToken(goodToken)
+	// Add a host into a brand-new environment.
+	f := url.Values{"csrf": {csrf}, "env": {"acme/__new__"}, "new_env": {"Shared-Hosting"}, "name": {"box-1"}}
+	if w := e.post("/hosts/new", f, signedIn(e), origin(e.baseURL)); w.Code != http.StatusOK {
+		t.Fatalf("add into new env: %d %s", w.Code, w.Body.String())
+	}
+	h, _ := e.st.HostByName(ctx, "acme", "box-1")
+	if h.EnvSlug != "shared-hosting" {
+		t.Errorf("env = %q", h.EnvSlug)
+	}
+	if w := e.post("/hosts/new", url.Values{"csrf": {csrf}, "env": {"acme/__new__"}, "name": {"box-2"}}, signedIn(e), origin(e.baseURL)); w.Code != http.StatusBadRequest {
+		t.Errorf("new env without a name: %d", w.Code)
+	}
+	// Move it back to prod from the host page; the Hosts page filters by env.
+	if w := e.post("/hosts/acme/box-1/env", url.Values{"csrf": {csrf}, "env": {"prod"}}, signedIn(e), origin(e.baseURL)); w.Code != http.StatusSeeOther {
+		t.Fatalf("move: %d", w.Code)
+	}
+	if h, _ = e.st.HostByName(ctx, "acme", "box-1"); h.EnvSlug != "prod" {
+		t.Errorf("after move env = %q", h.EnvSlug)
+	}
+	e.st.AddHost(ctx, "test", "acme", "shared-hosting", "box-3", nil)
+	body := e.get("/hosts?env=shared-hosting", signedIn(e)).Body.String()
+	if !strings.Contains(body, "box-3") || strings.Contains(body, ">box-1<") {
+		t.Errorf("env filter didn't filter")
+	}
+	// Site labels: admins set one, and only admins.
+	f = url.Values{"csrf": {csrf}, "org": {"acme"}, "host": {"box-1"}, "root": {"/var/www/app"}, "label": {"staging"}}
+	if w := e.post("/sites/label", f, signedIn(e), origin(e.baseURL)); w.Code != http.StatusSeeOther {
+		t.Fatalf("label: %d", w.Code)
+	}
+	if labels, _ := e.st.SiteLabelsByName(ctx); labels[store.SiteLabelKey("acme", "box-1", "/var/www/app")] != "staging" {
+		t.Errorf("labels = %v", labels)
+	}
+	orgs, _ := e.st.ListOrgs(ctx)
+	e.auth.viewer = &auth.Viewer{UserID: 1, SessionToken: goodToken, Scope: store.Scope{Orgs: map[int64]store.Role{orgs[0].ID: store.RoleOperator}}}
+	f.Set("label", "production")
+	if w := e.post("/sites/label", f, signedIn(e), origin(e.baseURL)); w.Code != http.StatusNotFound {
+		t.Errorf("operator labelling: %d", w.Code)
+	}
+	if w := e.post("/hosts/acme/box-1/env", url.Values{"csrf": {csrf}, "env": {"shared-hosting"}}, signedIn(e), origin(e.baseURL)); w.Code != http.StatusNotFound {
+		t.Errorf("operator moving a host: %d", w.Code)
+	}
+}

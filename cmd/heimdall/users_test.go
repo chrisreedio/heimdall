@@ -19,6 +19,14 @@ import (
 )
 
 // totpNow computes the current 6-digit code for a secret (RFC 6238).
+// awayFromStepBoundary waits out a TOTP step boundary that's less than 5s
+// away, so codes computed at the start of a test stay current to its end.
+func awayFromStepBoundary() {
+	if left := 30 - time.Now().Unix()%30; left < 5 {
+		time.Sleep(time.Duration(left)*time.Second + 100*time.Millisecond)
+	}
+}
+
 func totpNow(secret []byte, offset int64) string {
 	var msg [8]byte
 	binary.BigEndian.PutUint64(msg[:], uint64(time.Now().Unix()/30+offset))
@@ -39,6 +47,7 @@ func (c *cli) user(t *testing.T, cmd command, input string, args ...string) (str
 }
 
 func TestUserCommands(t *testing.T) {
+	awayFromStepBoundary()
 	c := newCLI(t)
 	c.ok("init")
 	secret := []byte("12345678901234567890")
@@ -116,6 +125,7 @@ func TestUserCommands(t *testing.T) {
 }
 
 func TestSharedEmailPickedByKind(t *testing.T) {
+	awayFromStepBoundary()
 	c := newCLI(t)
 	c.ok("init")
 	c.ok("org", "create", "acme")
