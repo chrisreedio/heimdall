@@ -1,12 +1,15 @@
 #!/bin/sh
-# release-notes.sh TAG SHA > notes.md: release notes for a tag. The body of
+# release-notes.sh TAG SHA [PREVIOUS-TAG] > notes.md: release notes for a tag. The body of
 # the PR that produced the tagged commit, then GitHub's list of every
 # change since the previous release, then how to verify the release.
 # Needs GH_TOKEN and GITHUB_REPOSITORY. Run before the release is created.
 set -eu
 tag=${1:?tag}; sha=${2:?sha}; repo=${GITHUB_REPOSITORY:?}
-prev=$(gh api "repos/$repo/releases/latest" --jq .tag_name 2>/dev/null || true)
-[ "$prev" != "$tag" ] || prev=$(gh api "repos/$repo/releases" --jq '.[1].tag_name // empty' 2>/dev/null || true)
+prev=${3:-}
+if [ -z "$prev" ]; then
+	prev=$(gh api "repos/$repo/releases/latest" --jq .tag_name 2>/dev/null || true)
+	[ "$prev" != "$tag" ] || prev=$(gh api "repos/$repo/releases" --jq '.[1].tag_name // empty' 2>/dev/null || true)
+fi
 
 # The PR for the tagged commit, without its attribution footer.
 gh api "repos/$repo/commits/$sha/pulls" \
