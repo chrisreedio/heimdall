@@ -443,6 +443,9 @@ func parsePages() (map[string]*template.Template, error) {
 
 var severities = map[string]bool{"critical": true, "high": true, "medium": true, "low": true}
 
+// findingsCap is how many findings a table shows before "Show all".
+const findingsCap = 200
+
 var funcs = template.FuncMap{
 	"devMode":  func() bool { return devMode },
 	"devLogin": func() string { return devLoginEmail },
@@ -486,7 +489,35 @@ var funcs = template.FuncMap{
 		}
 		return "unknown"
 	},
-	"join":      strings.Join,
+	"join": strings.Join,
+	// findings passes a findings list to the findingsSplit partial along
+	// with whether to show it all, and the URL that shows it all.
+	"findings": func(list []report.Finding, all bool, allURL string) map[string]any {
+		return map[string]any{"List": list, "All": all, "AllURL": allURL}
+	},
+	// head returns the first n findings (all of them if all is set).
+	"head": func(list []report.Finding, n int, all bool) []report.Finding {
+		if all || len(list) <= n {
+			return list
+		}
+		return list[:n]
+	},
+	"findingsCap": func() int { return findingsCap },
+	// pathBreak renders a path that may wrap only after a "/".
+	"pathBreak": func(p string) template.HTML {
+		parts := strings.Split(p, "/")
+		for i := range parts {
+			parts[i] = template.HTMLEscapeString(parts[i])
+		}
+		return template.HTML(strings.Join(parts, "/<wbr>"))
+	},
+	// relPath shows p relative to base when it's inside it.
+	"relPath": func(base, p string) string {
+		if rest, ok := strings.CutPrefix(p, strings.TrimSuffix(base, "/")+"/"); ok && rest != "" {
+			return rest
+		}
+		return p
+	},
 	"lifeState": lifeState,
 	// unmet: a known-false requirement check (nil means unknown).
 	"unmet": func(b *bool) bool { return b != nil && !*b },

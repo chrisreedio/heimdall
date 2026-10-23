@@ -28,10 +28,13 @@
 
 {{/* findingsSplit: fixable findings first; those with no fix released yet
      folded away, since there's nothing to do about them today. */}}
-{{define "findingsSplit"}}{{$fix := fixable . true}}{{$nofix := fixable . false}}
-{{if $fix}}{{template "findings" $fix}}{{else}}<p class="empty">Nothing here can be fixed by updating yet.</p>{{end}}
+{{define "findingsSplit"}}{{$all := .All}}{{$fix := fixable .List true}}{{$nofix := fixable .List false}}
+{{if $fix}}{{template "findings" (head $fix findingsCap $all)}}
+{{if and (not $all) (gt (len $fix) findingsCap)}}<p class="more">Showing the {{findingsCap}} most important of {{len $fix}} fixable findings. <a href="{{.AllURL}}">Show all</a></p>{{end}}
+{{else}}<p class="empty">Nothing here can be fixed by updating yet.</p>{{end}}
 {{if $nofix}}<details class="nofix">
   <summary>No fix released yet ({{len $nofix}})</summary>
-  {{template "findings" $nofix}}
+  {{template "findings" (head $nofix findingsCap $all)}}
+  {{if and (not $all) (gt (len $nofix) findingsCap)}}<p class="more">Showing {{findingsCap}} of {{len $nofix}}. <a href="{{.AllURL}}">Show all</a></p>{{end}}
 </details>{{end}}
 {{end}}

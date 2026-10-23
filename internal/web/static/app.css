@@ -535,3 +535,9 @@ details.label-pick button { padding: 4px 10px; font-size: 13px; }
 .new-env label { font-weight: 600; font-size: 13px; }
 .new-env input { margin-top: 6px; }
 .js-new-env .new-env[hidden] { display: none; }
+
+/* Host page: paths wrap only at "/", findings tables are capped. */
+.site dl .wide { grid-column: 1 / -1; }
+code.path { overflow-wrap: normal; word-break: normal; white-space: normal; }
+p.more { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+details.pending-list > summary { font-weight: 600; margin: 12px 0 8px; color: var(--link); }

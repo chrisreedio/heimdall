@@ -291,27 +291,29 @@ func (s *server) hostsPage(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 // ── Host page ──────────────────────────────────────────────────────────────
 
 type hostBody struct {
-	Org, Name   string
-	AutoName    bool // takes the hostname it reports first
-	Tags        []string
-	Env         string
-	Envs        []store.Env // the org's environments, for moving the host
-	CanAdmin    bool        // may rename the host
-	Notice      string      // fixed messages only (see renameNotices)
-	RenameError string
-	Reported    bool
-	Summary     store.SnapshotSummary
-	Reboot      string
-	Report      report.Host
-	OSFindings  []report.Finding
-	Sites       []siteSection
-	Stale       bool
-	Pending     []store.InventoryPackage
-	Packages    []store.InventoryPackage
-	Commands    []command
-	Anomalies   []store.AnomalyRow
-	PackageMgr  string
-	ShowOrgName bool
+	Org, Name       string
+	AutoName        bool // takes the hostname it reports first
+	Tags            []string
+	Env             string
+	Envs            []store.Env // the org's environments, for moving the host
+	CanAdmin        bool        // may rename the host
+	Notice          string      // fixed messages only (see renameNotices)
+	RenameError     string
+	Reported        bool
+	Summary         store.SnapshotSummary
+	Reboot          string
+	Report          report.Host
+	OSFindings      []report.Finding
+	Sites           []siteSection
+	Stale           bool
+	Pending         []store.InventoryPackage
+	PendingSecurity int
+	ShowAll         bool // show every finding instead of the first findingsCap
+	Packages        []store.InventoryPackage
+	Commands        []command
+	Anomalies       []store.AnomalyRow
+	PackageMgr      string
+	ShowOrgName     bool
 }
 
 type command struct {
@@ -410,6 +412,22 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 			body.Pending = append(body.Pending, p)
 		}
 	}
+	// Security updates first, then by name.
+	slices.SortStableFunc(body.Pending, func(a, b store.InventoryPackage) int {
+		if a.PendingSecurity != b.PendingSecurity {
+			if a.PendingSecurity {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	for _, p := range body.Pending {
+		if p.PendingSecurity {
+			body.PendingSecurity++
+		}
+	}
+	body.ShowAll = r.URL.Query().Get("findings") == "all"
 	body.PackageMgr = packageManager(inv)
 	body.Commands = upgradeCommands(body.PackageMgr, body.Pending)
 

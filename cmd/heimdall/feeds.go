@@ -27,7 +27,7 @@ func newSyncer(cfg config.Config, s *store.Store, log *slog.Logger) *findings.Sy
 		Now:         time.Now,
 		Log:         log,
 		MaxAge:      cfg.Feeds.SyncInterval.Duration,
-		Concurrency: 8,
+		Concurrency: 16,
 	}
 	s2 := &findings.Syncer{
 		Store:  s,

@@ -86,6 +86,34 @@ func (s *Syncer) syncEOL(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	return s.fetchEOL(ctx, products)
+}
+
+// SyncMissingEOL fetches lifecycle data for products hosts run that have
+// none yet, so a host's first report shows lifecycles without waiting for
+// the next scheduled sync.
+func (s *Syncer) SyncMissingEOL(ctx context.Context) error {
+	products, err := s.neededEOLProducts(ctx)
+	if err != nil {
+		return err
+	}
+	var missing []string
+	for _, p := range products {
+		cycles, err := s.Store.EOLCycles(ctx, p)
+		if err != nil {
+			return err
+		}
+		if len(cycles) == 0 {
+			missing = append(missing, p)
+		}
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	return s.fetchEOL(ctx, missing)
+}
+
+func (s *Syncer) fetchEOL(ctx context.Context, products []string) error {
 	var errs []error
 	for _, p := range products {
 		cycles, err := s.EOL.Product(ctx, p)
