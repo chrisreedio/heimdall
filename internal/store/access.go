@@ -228,7 +228,7 @@ func userIDByRef(ctx context.Context, tx *sql.Tx, ref string) (int64, string, er
 	case 1:
 		return ids[0], email, nil
 	}
-	return 0, "", &ValidationError{"user", fmt.Sprintf("several accounts use %s (e.g. a local and a Microsoft one); pick one by ID, e.g. #%d (see `heimdall user list`)", email, ids[0])}
+	return 0, "", &ValidationError{"user", fmt.Sprintf("several accounts use %s (a local and a Microsoft one); say which with --local or --entra, or by ID from `heimdall user list`, e.g. '#%d'", email, ids[0])}
 }
 
 // ── Entra users ────────────────────────────────────────────────────────────

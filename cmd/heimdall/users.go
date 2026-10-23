@@ -5,6 +5,7 @@ package main
 import (
 	"bufio"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -220,7 +221,9 @@ func cmdUserList(a *app, args []string) error {
 
 func setDisabled(a *app, args []string, disabled bool) error {
 	verb := map[bool]string{true: "disable", false: "enable"}[disabled]
-	pos, err := parse(a.flags("user "+verb, "<email|#id>"), args, 1)
+	fs := a.flags("user "+verb, "[--local|--entra] <email|#id>")
+	pick := kindFlags(fs)
+	pos, err := parse(fs, args, 1)
 	if err != nil {
 		return err
 	}
@@ -229,7 +232,11 @@ func setDisabled(a *app, args []string, disabled bool) error {
 		return err
 	}
 	defer s.Close()
-	if err := s.SetUserDisabled(a.ctx, actor(), pos[0], disabled); err != nil {
+	ref, err := pick(a, s, pos[0])
+	if err != nil {
+		return err
+	}
+	if err := s.SetUserDisabled(a.ctx, actor(), ref, disabled); err != nil {
 		return err
 	}
 	if disabled {
@@ -336,9 +343,10 @@ func createEntraUser(a *app, email, tenant, oid, name string, admin bool) error 
 }
 
 func cmdUserGrant(a *app, args []string) error {
-	fs := a.flags("user grant", "[--org <org>] --role viewer|operator|admin <email|#id>")
+	fs := a.flags("user grant", "[--org <org>] --role viewer|operator|admin [--local|--entra] <email|#id>")
 	org := fs.String("org", "", "organization slug (optional if there is only one)")
 	roleFlag := fs.String("role", "", "viewer, operator or admin (required)")
+	pick := kindFlags(fs)
 	pos, err := parse(fs, args, 1)
 	if err != nil {
 		return err
@@ -358,7 +366,11 @@ func cmdUserGrant(a *app, args []string) error {
 	if err := a.defaultOrg(s, org); err != nil {
 		return err
 	}
-	if err := s.Grant(a.ctx, actor(), pos[0], *org, role); err != nil {
+	ref, err := pick(a, s, pos[0])
+	if err != nil {
+		return err
+	}
+	if err := s.Grant(a.ctx, actor(), ref, *org, role); err != nil {
 		return err
 	}
 	fmt.Fprintf(a.stderr, "%s is now %s in %s.\n", pos[0], role, *org)
@@ -366,8 +378,9 @@ func cmdUserGrant(a *app, args []string) error {
 }
 
 func cmdUserRevoke(a *app, args []string) error {
-	fs := a.flags("user revoke", "[--org <org>] <email|#id>")
+	fs := a.flags("user revoke", "[--org <org>] [--local|--entra] <email|#id>")
 	org := fs.String("org", "", "organization slug (optional if there is only one)")
+	pick := kindFlags(fs)
 	pos, err := parse(fs, args, 1)
 	if err != nil {
 		return err
@@ -380,9 +393,51 @@ func cmdUserRevoke(a *app, args []string) error {
 	if err := a.defaultOrg(s, org); err != nil {
 		return err
 	}
-	if err := s.Revoke(a.ctx, actor(), pos[0], *org); err != nil {
+	ref, err := pick(a, s, pos[0])
+	if err != nil {
+		return err
+	}
+	if err := s.Revoke(a.ctx, actor(), ref, *org); err != nil {
 		return err
 	}
 	fmt.Fprintf(a.stderr, "Removed %s's role in %s.\n", pos[0], *org)
 	return nil
+}
+
+// kindFlags adds --local and --entra, which pick one account when a local
+// and a Microsoft account share an email. The returned func resolves the
+// argument to "#<id>" when a kind is given, and passes it through otherwise.
+func kindFlags(fs *flag.FlagSet) func(*app, *store.Store, string) (string, error) {
+	local := fs.Bool("local", false, "the local (password) account with this email")
+	entra := fs.Bool("entra", false, "the Microsoft (Entra) account with this email")
+	return func(a *app, s *store.Store, ref string) (string, error) {
+		if !*local && !*entra {
+			return ref, nil
+		}
+		if *local && *entra {
+			return "", errors.New("choose --local or --entra, not both")
+		}
+		kind := map[bool]string{true: "local", false: "entra"}[*local]
+		email, err := store.NormalizeEmail(ref)
+		if err != nil {
+			return "", err
+		}
+		users, err := s.ListUsers(a.ctx)
+		if err != nil {
+			return "", err
+		}
+		var ids []int64
+		for _, u := range users {
+			if u.Email == email && u.Kind == kind {
+				ids = append(ids, u.ID)
+			}
+		}
+		switch len(ids) {
+		case 0:
+			return "", fmt.Errorf("no %s account for %s", kind, email)
+		case 1:
+			return store.UserRef(ids[0]), nil
+		}
+		return "", fmt.Errorf("several %s accounts use %s (one per tenant); pick one by ID from `heimdall user list`, quoted: '#%d'", kind, email, ids[0])
+	}
 }

@@ -114,3 +114,36 @@ func TestUserCommands(t *testing.T) {
 		t.Error("unknown user")
 	}
 }
+
+func TestSharedEmailPickedByKind(t *testing.T) {
+	c := newCLI(t)
+	c.ok("init")
+	c.ok("org", "create", "acme")
+	secret := []byte("12345678901234567890")
+	newTOTPSecret = func() []byte { return bytes.Clone(secret) }
+	t.Cleanup(func() { newTOTPSecret = auth.NewTOTPSecret })
+	if out, err := c.user(t, cmdUserCreate, "correct horse battery\n"+totpNow(secret, 0)+"\n", "--password-stdin", "chris@example.com"); err != nil {
+		t.Fatalf("create local: %v\n%s", err, out)
+	}
+	c.ok("user", "create", "--entra", "--tenant", "11111111-1111-1111-1111-111111111111", "chris@example.com")
+
+	_, _, err := c.run("user", "grant", "--role", "operator", "chris@example.com")
+	if err == nil || !strings.Contains(err.Error(), "--local or --entra") {
+		t.Fatalf("ambiguous email: %v", err)
+	}
+	c.ok("user", "grant", "--role", "operator", "--entra", "chris@example.com")
+	out := c.ok("user", "list")
+	for _, l := range strings.Split(out, "\n") {
+		if strings.Contains(l, " entra ") != strings.Contains(l, "acme:operator") && strings.Contains(l, "chris@") {
+			t.Errorf("role landed on the wrong account:\n%s", out)
+		}
+	}
+	c.ok("user", "disable", "--local", "chris@example.com")
+	c.ok("user", "revoke", "--entra", "chris@example.com")
+	if _, _, err := c.run("user", "grant", "--role", "viewer", "--local", "--entra", "chris@example.com"); err == nil {
+		t.Error("--local with --entra accepted")
+	}
+	if _, _, err := c.run("user", "grant", "--role", "viewer", "--entra", "nobody@example.com"); err == nil {
+		t.Error("missing account accepted")
+	}
+}
