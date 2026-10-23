@@ -482,6 +482,20 @@ var funcs = template.FuncMap{
 		}
 		return t.Format(time.DateOnly)
 	},
+	// month and longDate are friendlier dates for prose and pills
+	// ("Feb 2025", "4 Feb 2025"); tables keep ISO dates.
+	"month": func(t *time.Time) string {
+		if t == nil {
+			return ""
+		}
+		return t.Format("Jan 2006")
+	},
+	"longDate": func(t *time.Time) string {
+		if t == nil {
+			return ""
+		}
+		return t.Format("2 Jan 2006")
+	},
 	"ago": ago,
 	// sev maps a severity to a CSS class suffix from a fixed set.
 	"sev": func(s string) string {
