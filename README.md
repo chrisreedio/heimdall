@@ -227,7 +227,7 @@ Heimdall acts as a confidential OIDC client using the **authorization code flow 
 - **No silent self-signup:** an Entra user has to be provisioned in Heimdall first, either by `oid` or by an email that is bound to the `oid` on first login, and only within an allowed tenant. Unknown users are rejected, and the rejection is logged.
 - **Roles:** granted in Heimdall, or optionally mapped from Entra **app roles** in the token (`Heimdall.Admin`, `Heimdall.Operator`, `Heimdall.Viewer`). Per-org role names such as `Heimdall.Org.acme.Viewer` only matter on multi-org installs. Group claims aren't used, because of the group overage limit.
 - **MFA and device policy:** enforced on the Entra side through Conditional Access. Heimdall doesn't ask for TOTP again for SSO users.
-- **Credentials:** a client secret or certificate is loaded from systemd credentials, never from the config file. A certificate is preferred. Store a secret with `sudo heimdall sso set-secret`: it prompts with echo off and writes `/etc/heimdall/entra-secret` owner-only.
+- **Credentials:** a client secret or certificate is loaded from systemd credentials, never from the config file. A certificate is preferred. `sudo heimdall sso setup` walks through it: it shows the redirect URI to register, asks for the IDs and the secret (echo off), writes the config, the secret (`/etc/heimdall/entra-secret`, owner-only) and the unit's `LoadCredential` line, and restarts the hub. `heimdall sso set-secret` rotates the secret.
 - **Sessions:** a Heimdall session is created after login and is limited by the same idle and absolute timeouts. No refresh tokens are kept, and Heimdall calls no Graph APIs and requests only the `openid profile email` scopes.
 
 ### Process & host

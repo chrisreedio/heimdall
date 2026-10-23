@@ -64,7 +64,9 @@ Commands:
   notify preview|send          Show or send the counts-only digest now
   plan create|list|show|add|rm|done|undo|close
                                Patch plans: batch hosts, tick them off, auto-verify
-  sso set-secret               Store the Entra client secret (prompted, never echoed)
+  sso setup                    Set up Entra ID single sign-on (asks, writes, restarts)
+  sso set-secret               Store or rotate the Entra client secret (never echoed)
+  upgrade [--check]            Upgrade this hub to the latest release (sudo)
   version                      Print version
 
 The config path can also be set with HEIMDALL_CONFIG.
@@ -110,7 +112,8 @@ var commands = map[string]command{
 		"reset-totp": cmdUserResetTOTP, "passwd": cmdUserPasswd, "grant": cmdUserGrant, "revoke": cmdUserRevoke,
 		"mcp-token": group("user mcp-token", map[string]command{"create": cmdMCPTokenCreate, "list": cmdMCPTokenList, "revoke": cmdMCPTokenRevoke}),
 	}),
-	"sso":     group("sso", map[string]command{"set-secret": cmdSSOSetSecret}),
+	"sso":     group("sso", map[string]command{"setup": cmdSSOSetup, "set-secret": cmdSSOSetSecret}),
+	"upgrade": cmdUpgrade,
 	"serve":   cmdServe,
 	"import":  cmdImport,
 	"version": func(a *app, _ []string) error { _, err := fmt.Fprintln(a.stdout, version); return err },

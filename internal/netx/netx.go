@@ -30,6 +30,10 @@ var FeedHosts = []string{
 // ReleaseHosts are where the hub checks for newer releases (version only).
 var ReleaseHosts = []string{"api.github.com"}
 
+// UpgradeHosts are what `heimdall upgrade` may contact: the latest-release
+// API and the release downloads (which redirect to GitHub's asset host).
+var UpgradeHosts = []string{"api.github.com", "github.com", "release-assets.githubusercontent.com", "objects.githubusercontent.com"}
+
 // EntraHosts are the hosts single sign-on may contact. They're kept apart
 // from FeedHosts so feed sync can never reach the identity provider.
 var EntraHosts = []string{"login.microsoftonline.com"}
