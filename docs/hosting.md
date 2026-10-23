@@ -96,7 +96,7 @@ Keep the UI on `serve`, never `funnel`.
        az storage blob upload --auth-mode login --account-name <acct> -c heimdall \
          -f /var/backups/h-$(date +%F).age -n h-$(date +%F).age
      ```
-5. **SSO:** you're already in Entra. Register the app in the org's tenant (see the README's SSO section), and put the client secret in the systemd credential, not on the VM's disk in plain sight (`LoadCredential=heimdall-entra:/etc/heimdall/entra-secret`, mode 0600, root-owned).
+5. **SSO:** you're already in Entra. Register the app in the org's tenant (see the README's SSO section), and put the client secret in the systemd credential, not on the VM's disk in plain sight (`sudo heimdall sso set-secret` stores it root-only without it entering your shell history; the unit loads it with `LoadCredential=heimdall-entra:/etc/heimdall/entra-secret`).
 
 **Skip:** App Service, Container Apps, Azure SQL and Application Gateway. One VM is the right shape.
 

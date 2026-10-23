@@ -58,7 +58,7 @@ Follow the [quick start](../README.md#quick-start), then:
 | Task | Command |
 |---|---|
 | First admin | `hd user create --admin you@example.com` |
-| Entra SSO | Register an app (redirect `https://<ui>/auth/callback`), set `[auth.entra]`, add `LoadCredential=heimdall-entra:/etc/heimdall/entra-secret` to the unit |
+| Entra SSO | Register an app (redirect `https://<ui>/auth/callback`), set `[auth.entra]`, store the secret with `sudo heimdall sso set-secret` (prompted, never echoed), and uncomment `LoadCredential=heimdall-entra:/etc/heimdall/entra-secret` in the unit |
 | Trust the collector release | `hd collector trust --version 0.3.0 <sha256 of collect.sh>` |
 | Digest | Set `[notify]` and add `LoadCredential=heimdall-smtp:…` or `heimdall-webhook:…` |
 
