@@ -1,5 +1,5 @@
 {{define "content"}}{{with .Body}}
-<p><a href="{{hostURL .Org .Name}}">← {{.Name}}</a></p>
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/hosts">Hosts</a> <span aria-hidden="true">/</span> <a href="{{hostURL .Org .Name}}">{{.Name}}</a> <span aria-hidden="true">/</span> Changes</nav>
 <h1>Changes on {{.Name}}</h1>
 {{if .HasDiff}}
 <p class="muted">Snapshot {{.From.ID}} ({{time .From.ReceivedAt}}) → {{.To.ID}} ({{time .To.ReceivedAt}}){{if ne .From.Kernel .To.Kernel}} · kernel {{.From.Kernel}} → {{.To.Kernel}}{{end}}</p>
@@ -14,7 +14,7 @@
   <thead><tr><th>ID</th><th>Received</th><th>Source</th><th>Kernel</th><th>Packages</th><th>Pending</th></tr></thead>
   <tbody>{{range .Snapshots}}<tr><td>{{.ID}}</td><td>{{time .ReceivedAt}}</td><td>{{.Source}}</td><td>{{.Kernel}}</td><td>{{.Packages}}</td><td>{{.PendingUpdates}}</td></tr>{{end}}</tbody>
 </table></div>
-<form method="get" class="row">
+<form method="get" class="row card">
   <label>From <select name="from">{{range .Snapshots}}<option value="{{.ID}}">{{.ID}} · {{time .ReceivedAt}}</option>{{end}}</select></label>
   <label>To <select name="to">{{range .Snapshots}}<option value="{{.ID}}">{{.ID}} · {{time .ReceivedAt}}</option>{{end}}</select></label>
   <button type="submit">Compare</button>

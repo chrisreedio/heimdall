@@ -15,13 +15,23 @@
   <tr>
     <td>{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}</td>
     <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}</td>
-    <td><span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Summary}}<div class="summary">{{.Summary}}</div>{{end}}</td>
+    <td><span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</td>
     <td>{{.Package}}{{if gt (len .Binaries) 1}}<div class="muted small">{{join .Binaries ", "}}</div>{{end}}</td>
     <td class="ver">{{.Version}}</td>
     <td class="ver">{{if .Fixed}}{{.Fixed}}{{if .FixPending}} <span class="badge ok">update pending</span>{{end}}{{else}}<span class="muted">no fix yet</span>{{end}}</td>
-    <td>{{time .FirstSeen}}</td>
+    <td class="nowrap" title="{{time .FirstSeen}}">{{day .FirstSeen}}</td>
   </tr>
   {{end}}
   </tbody>
 </table></div>
+{{end}}
+
+{{/* findingsSplit: fixable findings first; those with no fix released yet
+     folded away, since there's nothing to do about them today. */}}
+{{define "findingsSplit"}}{{$fix := fixable . true}}{{$nofix := fixable . false}}
+{{if $fix}}{{template "findings" $fix}}{{else}}<p class="empty">Nothing here can be fixed by updating yet.</p>{{end}}
+{{if $nofix}}<details class="nofix">
+  <summary>No fix released yet ({{len $nofix}})</summary>
+  {{template "findings" $nofix}}
+</details>{{end}}
 {{end}}

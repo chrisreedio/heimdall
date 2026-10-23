@@ -20,7 +20,7 @@
   <tbody>
   {{range .Sites}}
   <tr>
-    <td><span class="id">{{with first .ServerNames}}{{.}}{{else}}{{$.Body.Org}}{{end}}</span><div class="muted small">{{.Root}}</div>{{if gt (len .ServerNames) 1}}<div class="muted small">{{join .ServerNames ", "}}</div>{{end}}</td>
+    <td><span class="id">{{with first .ServerNames}}{{if eq . "_"}}<span class="muted">default server</span>{{else}}{{.}}{{end}}{{else}}{{$.Body.Org}}{{end}}</span><div class="muted small">{{.Root}}</div>{{if gt (len .ServerNames) 1}}<div class="muted small">{{join .ServerNames ", "}}</div>{{end}}</td>
     <td><a href="{{hostURL .Org .Host}}">{{.Host}}</a>{{if $.Body.ShowOrgs}} <span class="muted">({{.Org}})</span>{{end}}</td>
     <td>{{with .WebServer}}{{.}}{{else}}<span class="muted">listed</span>{{end}}</td>
     <td>{{with .PHPFPM}}{{.}}{{else}}<span class="muted">unknown</span>{{end}} {{template "lifebadge" .PHPLife}}</td>

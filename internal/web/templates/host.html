@@ -1,12 +1,13 @@
 {{define "content"}}{{with .Body}}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/hosts">Hosts</a> <span aria-hidden="true">/</span> {{.Name}}</nav>
 <div class="head">
   <h1>{{.Name}}</h1>
-  <p><a href="{{hostURL .Org .Name}}/changes">What changed</a></p>
   {{if .ShowOrgName}}<span class="muted">org {{.Org}}</span>{{end}}
+  <a class="button secondary head-action" href="{{hostURL .Org .Name}}/changes">What changed</a>
 </div>
 
 {{if not .Reported}}
-<p class="empty">This host hasn't reported yet. Install the collector with its token and run <code>heimdall-collect --push</code>.</p>
+<p class="empty">This host hasn't reported yet. It appears here after the installer from <a href="/hosts/new">Add a host</a> finishes on the server.</p>
 {{else}}
 <section class="facts card">
   <dl>
@@ -32,10 +33,21 @@
 
 <section>
   <h2>Findings</h2>
-  {{with .Report.Counts}}<p class="counts">{{.Total}} open: {{.KEV}} known-exploited, {{.Critical}} critical, {{.High}} high, {{.Medium}} medium, {{.Low}} low, {{.Unknown}} unrated. <strong>{{.Fixable}} fixable now</strong> ({{.FixPending}} via updates already pending), {{.NoFix}} with no fix released.</p>{{end}}
+  {{with .Report.Counts}}
+  <div class="chips" aria-label="Open findings by severity">
+    <span class="chip"><strong>{{.Total}}</strong> open</span>
+    <span class="chip{{if .KEV}} chip-kev{{end}}" title="CISA Known Exploited Vulnerabilities"><strong>{{.KEV}}</strong> known-exploited</span>
+    <span class="chip{{if .Critical}} chip-critical{{end}}"><strong>{{.Critical}}</strong> critical</span>
+    <span class="chip{{if .High}} chip-high{{end}}"><strong>{{.High}}</strong> high</span>
+    <span class="chip"><strong>{{.Medium}}</strong> medium</span>
+    <span class="chip"><strong>{{.Low}}</strong> low</span>
+    <span class="chip"><strong>{{.Unknown}}</strong> unrated</span>
+    <span class="chip chip-ok" title="{{.FixPending}} via updates already pending on the host"><strong>{{.Fixable}}</strong> fixable now</span>
+  </div>
+  {{end}}
   <h3>OS packages</h3>
   {{if not .Report.Ecosystem}}<p class="empty">Vulnerability matching isn't supported for this OS yet.</p>
-  {{else if .OSFindings}}{{template "findings" .OSFindings}}
+  {{else if .OSFindings}}{{template "findingsSplit" .OSFindings}}
   {{else}}<p class="empty">No open findings in OS packages.</p>{{end}}
 </section>
 
@@ -44,7 +56,7 @@
   <h2>Sites</h2>
   {{range .Sites}}
   <div class="card site">
-    <h3>{{with first .ServerNames}}{{.}}{{else}}{{.Root}}{{end}} {{template "sitebadges" .Site}}</h3>
+    <h3>{{with first .ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}} {{template "sitebadges" .Site}}</h3>
     <dl>
       <div><dt>Root</dt><dd><code>{{.Root}}</code></dd></div>
       {{if ne .DocumentRoot .Root}}<div><dt>Document root</dt><dd><code>{{.DocumentRoot}}</code></dd></div>{{end}}
@@ -59,11 +71,11 @@
     {{if .Findings}}
     {{with .Command}}
     <div class="cmd">
-      <div class="cmd-label">{{.Label}} <button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
-      <pre id="{{.ID}}">{{.Text}}</pre>
+      <div class="cmd-label">{{.Label}}</div>
+      <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
     </div>
     {{end}}
-    {{template "findings" .Findings}}
+    {{template "findingsSplit" .Findings}}
     {{else if .Readable}}<p class="empty">No open findings in Composer packages.</p>{{end}}
   </div>
   {{end}}
@@ -75,8 +87,8 @@
   {{if .Pending}}
   {{range .Commands}}
   <div class="cmd">
-    <div class="cmd-label">{{.Label}} <button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
-    <pre id="{{.ID}}">{{.Text}}</pre>
+    <div class="cmd-label">{{.Label}}</div>
+    <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
   </div>
   {{end}}
   <p class="muted small">Heimdall never runs these for you. Review them, then run them on the host.</p>
