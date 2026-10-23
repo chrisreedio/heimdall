@@ -45,6 +45,9 @@ func cmdServe(a *app, args []string) error {
 
 	log := slog.New(slog.NewTextHandler(a.stderr, nil))
 	h, err := ingest.NewHandler(s, cfg.Ingest, log, time.Now)
+	if h != nil {
+		h.Version = version
+	}
 	if err != nil {
 		return err
 	}
