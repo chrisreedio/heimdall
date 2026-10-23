@@ -25,6 +25,7 @@ type pkgGroup struct {
 	Binaries         []string
 	Worst            string // highest severity
 	KEV              int
+	News             int // findings named by a live news incident
 	BySev            map[string]int
 	Total, Fixable   int
 	FixPending       bool // an update that fixes some of them is already pending
@@ -196,7 +197,7 @@ func buildFindingsView(base, pm string, q url.Values, list []report.Finding) fin
 }
 
 // groupByPackage folds findings into one row per package, most urgent
-// first: known-exploited, then worst severity, then how many.
+// first: known-exploited, then in the news, then worst severity, then how many.
 func groupByPackage(list []report.Finding) []pkgGroup {
 	idx := map[string]int{}
 	var groups []pkgGroup
@@ -214,6 +215,9 @@ func groupByPackage(list []report.Finding) []pkgGroup {
 		if f.KEV {
 			g.KEV++
 		}
+		if f.InNews {
+			g.News++
+		}
 		sev := f.Severity
 		if _, known := severityRank[sev]; !known {
 			sev = "unknown"
@@ -229,7 +233,7 @@ func groupByPackage(list []report.Finding) []pkgGroup {
 	}
 	slices.SortStableFunc(groups, func(a, b pkgGroup) int {
 		for _, d := range [][2]int{
-			{a.KEV, b.KEV}, {severityRank[a.Worst], severityRank[b.Worst]},
+			{a.KEV, b.KEV}, {a.News, b.News}, {severityRank[a.Worst], severityRank[b.Worst]},
 			{a.BySev["critical"], b.BySev["critical"]}, {a.BySev["high"], b.BySev["high"]}, {a.Total, b.Total},
 		} {
 			if d[0] != d[1] {

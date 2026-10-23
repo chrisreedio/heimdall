@@ -60,7 +60,7 @@
     <div class="pkg-grid pkg-head" role="row"><span>Package</span><span>Installed</span><span>Worst</span><span class="num">KEV</span><span class="num">Crit</span><span class="num">High</span><span class="num">Med</span><span class="num">Low</span><span class="num">Fixable</span></div>
     {{range .Groups}}<details class="pkg-row">
       <summary class="pkg-grid" role="row">
-        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span></span>
+        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span>{{if .News}} <span class="badge news" title="{{.News}} named by a live incident in the news">in the news</span>{{end}}</span>
         <span class="ver">{{.Version}}</span>
         <span><span class="sev sev-{{sev .Worst}}">{{.Worst}}</span></span>
         <span class="num">{{if .KEV}}<span class="badge kev">{{.KEV}}</span>{{else}}<span class="muted">0</span>{{end}}</span>

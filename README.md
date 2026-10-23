@@ -193,7 +193,7 @@ Supported platforms: **Ubuntu 22.04/24.04, Debian 12, Rocky 9, AlmaLinux 9 and A
 - **Two listeners:** the UI binds to `127.0.0.1` or a tailnet/WireGuard interface by default. The ingest listener exposes `POST /api/v1/ingest` and nothing else, not even a health page or static files.
 - Use TLS everywhere, terminated by Heimdall or a reverse proxy (Caddy/nginx).
 - Optionally allowlist ingest source IPs or CIDRs (`ingest.allow_cidrs`).
-- Outbound traffic: only the feed hosts and `login.microsoftonline.com` (if SSO is enabled), ideally enforced with a host firewall (`IPAddressAllow=` in systemd).
+- Outbound traffic: only the feed hosts, `login.microsoftonline.com` (if SSO is enabled) and the `[news]` source hosts (if threat news is on, in their own allowlist), ideally enforced with a host firewall (`IPAddressAllow=` in systemd).
 
 ### Ingest
 - Request bodies are capped (default 5 MB), decompressed with a cap, and parsed with a strict JSON decoder that rejects unknown fields
@@ -364,6 +364,11 @@ endoflife = true
 
 [hosts]
 stale_after = "72h"
+
+[news]                             # threat news, off by default
+enabled  = false
+sources  = ["https://pwn.watch/incidents.json"]
+interval = "1h"
 ```
 
 Settings can be overridden with environment variables (`HEIMDALL_UI_LISTEN`, …). Secrets are never read from the config file. They're stored in the database or provided via systemd credentials.
@@ -547,7 +552,7 @@ Builds on M6 patch plans and M7 history. See [docs/anomaly-signals.md](docs/anom
 - [x] **Splash page on the public ingest host.** `GET /` returns a minimal dark page with the centered logo and no text, instead of a bare 404. Caddy serves it as static HTML with the logo inline, so the hub isn't involved. Headers give nothing away: no `Server` or `Via`, `Cache-Control: no-store`, a strict CSP (`default-src 'none'`, the style pinned by hash), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`. Every other path stays an empty 404, and nothing names Heimdall or a version. Existing hubs pick it up when they re-run `install-hub.sh --ingest-host`.
 - [x] **Environments that fit:** create one on the fly from Add a host ("New environment…"), move a host between environments from its page, and filter Hosts by environment. Name them after what the servers are (`shared-hosting`, `internal`), not just prod and staging.
 - [x] **Site labels:** each site is Production, Staging or Development, suggested from its name (`staging.`, `dev.`, `test.`…) and overridable by org admins. Sites can be filtered by label, and the host page shows the labels.
-- [ ] **Threat news (draft):** cross-reference a curated "what's being exploited now" feed such as pwn.watch with the inventory, so the UI can say "this is in the news and it affects 3 of your hosts". See [docs/threat-news.md](docs/threat-news.md).
+- [ ] **Threat news (draft, Phase 1 built):** cross-reference a curated "what's being exploited now" feed such as pwn.watch with the inventory, so the UI can say "this is in the news and it affects 3 of your hosts". Phase 1 (feed, confirmed CVE matches, News page, dashboard strip, Patch first boost) is in; turn it on with `[news] enabled = true`. See [docs/threat-news.md](docs/threat-news.md).
 
 ---
 

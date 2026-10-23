@@ -28,7 +28,7 @@
     {{with .Product}}<div class="muted small">{{.}}</div>{{end}}
     {{with .Summary}}<p class="news-summary" title="{{.}}">{{.}}</p>{{end}}
     {{if .Hosts}}<div class="news-affects">
-      <span class="badge bad">Affects {{len .Hosts}} of your host{{if ne (len .Hosts) 1}}s{{end}}</span>
+      <span class="badge bad">Affects {{len .Hosts}} of your hosts</span>
       {{range .Hosts}}<a class="news-host" href="{{hostURL .OrgSlug .Name}}" title="Open findings: {{.Reason}}">{{.Name}}{{if $.Body.ShowOrgs}} <span class="muted">({{.OrgSlug}})</span>{{end}}</a>{{end}}
     </div>{{end}}
     <div class="news-foot muted small">via <a href="{{.URL}}" rel="noopener noreferrer">{{.Via}}</a>{{with .CVEs}} · <span class="id">{{join . ", "}}</span>{{end}}</div>

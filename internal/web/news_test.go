@@ -90,7 +90,7 @@ func TestNewsScope(t *testing.T) {
 	e.auth.viewer = &auth.Viewer{UserID: 2, Email: "bob@example.com", SessionToken: goodToken,
 		Scope: store.Scope{Orgs: map[int64]store.Role{acme.OrgID: store.RoleViewer}}}
 	body := e.get("/news", signedIn(e)).Body.String()
-	if !strings.Contains(body, "Affects 1 of your host<") || !strings.Contains(body, "web-01") || strings.Contains(body, "globex") {
+	if !strings.Contains(body, "Affects 1 of your hosts<") || !strings.Contains(body, "web-01") || strings.Contains(body, "globex") {
 		t.Error("badge shows hosts outside the viewer's scope")
 	}
 }
