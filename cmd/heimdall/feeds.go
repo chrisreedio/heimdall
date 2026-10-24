@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -43,6 +44,21 @@ func newSyncer(cfg config.Config, s *store.Store, log *slog.Logger) *findings.Sy
 	return s2
 }
 
+// newNewsSyncer wires threat news to its own client, allowlisted to the
+// configured sources' hosts only. nil when news is off.
+func newNewsSyncer(cfg config.Config, s *store.Store, log *slog.Logger) *findings.NewsSyncer {
+	if !cfg.News.Enabled {
+		return nil
+	}
+	return &findings.NewsSyncer{
+		Store:   s,
+		HTTP:    netx.New(cfg.News.Hosts(), "heimdall/"+version+" (+https://github.com/chrisreedio/heimdall)"),
+		Sources: cfg.News.Sources,
+		Now:     time.Now,
+		Log:     log,
+	}
+}
+
 func cmdFeedsSync(a *app, args []string) error {
 	if _, err := parse(a.flags("feeds sync", ""), args, 0); err != nil {
 		return err
@@ -57,7 +73,11 @@ func cmdFeedsSync(a *app, args []string) error {
 	}
 	defer s.Close()
 	log := slog.New(slog.NewTextHandler(a.stderr, nil))
-	return newSyncer(cfg, s, log).Run(a.ctx)
+	err = newSyncer(cfg, s, log).Run(a.ctx)
+	if n := newNewsSyncer(cfg, s, log); n != nil {
+		err = errors.Join(err, n.Run(a.ctx))
+	}
+	return err
 }
 
 func cmdFeedsStatus(a *app, args []string) error {

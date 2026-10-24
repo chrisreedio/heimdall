@@ -27,7 +27,7 @@ export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
-VERSION=0.4.12
+VERSION=0.4.13
 FORMAT=heimdall.snapshot/v3
 
 die() { printf 'heimdall-collect: %s\n' "$*" >&2; exit 1; }
@@ -613,7 +613,89 @@ snapshot() {
 EOF
 }
 
+# ── Privilege watch (opt-in, install.sh --watch-privilege) ─────────────────
+# Recent privileged-access events (time and kind, plus a username only with
+# --watch-privilege-users) and whether the PAM hook is intact, as curl
+# config header lines. Headers, not snapshot fields, so collectors and hubs
+# of different versions still accept each other. Nothing is kept here: the
+# last 7 days are resent each time and the hub dedupes.
+privilege_config() {
+	hook=/usr/local/lib/heimdall/privilege-hook
+	events=/var/lib/heimdall-privilege/events
+	files=0 lines=0
+	for f in /etc/pam.d/sudo /etc/pam.d/su /etc/pam.d/sshd; do
+		[ -f "$f" ] || continue
+		files=$((files + 1))
+		if grep -Eq '^[[:space:]]*session[[:space:]].*pam_exec\.so.*/usr/local/lib/heimdall/privilege-hook' "$f" 2>/dev/null; then
+			lines=$((lines + 1))
+		fi
+	done
+	if [ -x "$hook" ] && [ -f "$events" ] && [ "$files" -gt 0 ] && [ "$lines" -eq "$files" ]; then
+		watch=on
+	elif [ ! -e "$hook" ] && [ ! -e "$events" ] && [ "$lines" -eq 0 ]; then
+		watch=off
+	else
+		watch=partial
+	fi
+	echo "header = \"X-Heimdall-Privilege-Watch: $watch\""
+	[ -r "$events" ] || return 0
+	now=$(date +%s)
+	list=$(awk -v since=$((now - 7 * 86400)) -v now="$now" '
+		$1 ~ /^[0-9]+$/ && $1 >= since && $1 <= now + 900 &&
+		($2 == "sudo" || $2 == "su" || $2 == "root-ssh") &&
+		(NF == 2 || (NF == 3 && $3 ~ /^([a-z_][a-z0-9_.-]*|\?)$/ && length($3) <= 32)) {
+			k = $1 ":" $2 (NF == 3 ? ":" $3 : "")
+			if (!(k in seen)) { seen[k] = 1; e[n++] = k } # the hub dedupes these anyway
+		}
+		END {
+			# The newest 200, at most about 8 KB.
+			out = ""
+			for (i = n - 1; i >= 0 && i >= n - 200; i--) {
+				if (length(out) + length(e[i]) > 8000) break
+				out = (out == "" ? e[i] : e[i] "," out)
+			}
+			print out
+		}' "$events" 2>/dev/null) || return 0
+	[ -z "$list" ] || echo "header = \"X-Heimdall-Privilege: v1 $list\""
+}
+
 # ── Push ────────────────────────────────────────────────────────────────────
+
+# triggers_state: what makes this collector run, for the hub to notice one
+# being switched off (sent as X-Heimdall-Triggers, never in the snapshot):
+#   systemd: timer=<is-enabled>,<is-active>; changes=<is-enabled>,<is-active>
+#   other:   cron=present|absent; hook=present|absent
+# "missing" is a unit that isn't installed, "unknown" one systemctl couldn't
+# ask about (e.g. no D-Bus).
+triggers_state() {
+	if [ -d /run/systemd/system ] && have systemctl; then
+		out=
+		for t in timer:heimdall-collect.timer changes:heimdall-collect-changes.path; do
+			en=$(systemctl is-enabled "${t#*:}" 2>&1 | head -n 1)
+			case $en in
+			enabled | enabled-runtime | disabled | static | masked | masked-runtime | indirect | generated | alias | linked | linked-runtime | transient) ;;
+			*'No such file'* | *not-found* | *'not loaded'*) en=missing ;;
+			*) en=unknown ;;
+			esac
+			act=$(systemctl is-active "${t#*:}" 2>&1 | head -n 1)
+			case $act in
+			active | inactive | failed | activating | deactivating | reloading | refreshing) ;;
+			*) act=unknown ;;
+			esac
+			out="$out${out:+; }${t%%:*}=$en,$act"
+		done
+		printf '%s' "$out"
+		return
+	fi
+	cron=absent hook=absent
+	for f in /etc/cron.hourly/heimdall-collect /etc/periodic/hourly/heimdall-collect /etc/cron.daily/heimdall-collect /etc/periodic/daily/heimdall-collect; do
+		[ ! -e "$f" ] || cron=present
+	done
+	for f in /etc/apk/commit_hooks.d/heimdall* /etc/apt/apt.conf.d/*heimdall*; do
+		[ ! -e "$f" ] || hook=present
+	done
+	printf 'cron=%s; hook=%s' "$cron" "$hook"
+}
 
 push() {
 	url=${HEIMDALL_URL:-}
@@ -654,13 +736,17 @@ push() {
 	hostname_header=
 	hn=$(uname -n 2>/dev/null | tr -cd 'A-Za-z0-9._-' | cut -c1-253)
 	[ -z "$hn" ] || hostname_header="header = \"X-Heimdall-Hostname: $hn\""
+	# The state of this collector's own timer and change watch.
+	triggers_header=
+	tr_state=$(triggers_state | tr -cd 'a-z,=; -' | cut -c1-240)
+	[ -z "$tr_state" ] || triggers_header="header = \"X-Heimdall-Triggers: $tr_state\""
 
 	# The token goes to curl on stdin via --config (printf is a shell
 	# builtin), so it never appears in any process's arguments.
 	status=$(printf '%s\n' \
 		"header = \"Authorization: Bearer $token\"" \
 		'header = "Content-Type: application/json"' \
-		"$encoding" "$cacert" "$hostname_header" |
+		"$encoding" "$cacert" "$hostname_header" "$triggers_header" "$(privilege_config)" |
 		curl --config - --silent --show-error \
 			--proto '=https,http' --tlsv1.2 \
 			--connect-timeout 10 --max-time 120 \

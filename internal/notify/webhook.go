@@ -24,6 +24,16 @@ type Webhook struct {
 }
 
 func (w *Webhook) Send(ctx context.Context, d Digest) error {
+	return w.post(ctx, d.Subject()+"\n\n"+d.Text(), d)
+}
+
+// SendAlert posts a silence alert: Slack-style text, or the Alert's JSON
+// (which has a "kind" field, so a receiver can tell it from a digest).
+func (w *Webhook) SendAlert(ctx context.Context, a Alert) error {
+	return w.post(ctx, a.Subject()+"\n\n"+a.Text(), a.capped())
+}
+
+func (w *Webhook) post(ctx context.Context, text string, asJSON any) error {
 	if w.Client == nil {
 		return errors.New("notify: webhook needs an HTTP client")
 	}
@@ -34,9 +44,9 @@ func (w *Webhook) Send(ctx context.Context, d Digest) error {
 	var payload any
 	switch w.Format {
 	case "slack":
-		payload = map[string]string{"text": d.Subject() + "\n\n" + d.Text()}
+		payload = map[string]string{"text": text}
 	case "json":
-		payload = d
+		payload = asJSON
 	default:
 		return fmt.Errorf("notify: unknown webhook format %q (want slack or json)", w.Format)
 	}

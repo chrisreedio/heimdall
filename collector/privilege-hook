@@ -1,0 +1,75 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Heimdall privilege watch: run by pam_exec when a sudo, su or root SSH
+# session opens. It records THAT privileged access happened (a timestamp
+# and a kind, plus a username only with --watch-privilege-users), never
+# what was typed. Installed by install.sh --watch-privilege as
+# /usr/local/lib/heimdall/privilege-hook; see docs/collector.md.
+#
+# It must never block or slow a login: PAM calls it as `optional`, it
+# always exits 0, makes no network requests, and gives up quietly if the
+# events file is missing or the disk is full.
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+umask 022
+
+RECORD_USERS=0 # set by install.sh --watch-privilege-users
+EVENTS_DIR=/var/lib/heimdall-privilege
+
+record() {
+	[ "${PAM_TYPE:-}" = open_session ] || return 0
+	case ${PAM_SERVICE:-} in
+	sudo | sudo-i) kind=sudo ;;
+	su | su-l) kind=su ;;
+	sshd)
+		[ "${PAM_USER:-}" = root ] || return 0
+		kind=root-ssh
+		;;
+	*) return 0 ;;
+	esac
+	[ -d "$EVENTS_DIR" ] || return 0
+	now=$(date +%s 2>/dev/null) || return 0
+	case $now in '' | *[!0-9]*) return 0 ;; esac
+
+	line="$now $kind"
+	if [ "$RECORD_USERS" = 1 ]; then
+		who=${PAM_RUSER:-${PAM_USER:-}}
+		case $who in
+		[a-z_]*) case $who in *[!a-z0-9_.-]*) who='?' ;; esac ;;
+		*) who='?' ;;
+		esac
+		[ "${#who}" -le 32 ] || who='?'
+		line="$line $who"
+	fi
+	f=$EVENTS_DIR/events
+	printf '%s\n' "$line" >>"$f" 2>/dev/null || return 0
+
+	# Keep the last 500 lines (via a temp file, then a rename).
+	n=$(wc -l <"$f" 2>/dev/null) || return 0
+	if [ "${n:-0}" -gt 500 ] 2>/dev/null; then
+		tail -n 500 "$f" >"$f.$$" 2>/dev/null && mv -f "$f.$$" "$f" 2>/dev/null
+		rm -f "$f.$$" 2>/dev/null
+	fi
+
+	# Report soon, in the background, through the same debounce as package
+	# changes: a burst of logins becomes one push about a minute after the
+	# last. Restarting the timer resets its countdown (starting a running
+	# one does nothing). Without systemd, soon.sh does the same.
+	if [ -d /run/systemd/system ] && command -v systemctl >/dev/null 2>&1; then
+		unit=heimdall-collect.service
+		for d in /etc/systemd/system /usr/lib/systemd/system /lib/systemd/system; do
+			if [ -e "$d/heimdall-collect-soon.timer" ]; then
+				unit=heimdall-collect-soon.timer
+				break
+			fi
+		done
+		systemctl restart --no-block "$unit" </dev/null >/dev/null 2>&1 &
+	elif [ -x /usr/local/lib/heimdall-collect/soon.sh ]; then
+		/usr/local/lib/heimdall-collect/soon.sh </dev/null >/dev/null 2>&1
+	fi
+	return 0
+}
+
+record </dev/null >/dev/null 2>&1
+exit 0

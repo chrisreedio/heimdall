@@ -91,6 +91,8 @@ These risks are knowingly accepted to keep things simple:
 
 **Never collected:** environment variables, `.env` files, config file contents, secrets, keys, users and groups, process arguments, shell history or any file not explicitly allowlisted. Site discovery reads web server vhost files but only reports the fields listed under [Sites & Laravel](#sites--laravel).
 
+**Never collected, even with the privilege watch:** users and commands. The opt-in [privilege watch](docs/collector.md#privilege-watch) (`install.sh --watch-privilege`) records only *when* sudo, su or a root SSH login happened and which of the three it was; usernames only with a second opt-in, `--watch-privilege-users`. Root can remove it, like anything else on the box, but removing it while the host still reports raises **privilege watch disabled**, and removing the collector raises **silence**.
+
 ### Sites & Laravel
 Most PHP apps are a site on a shared box, so Heimdall inventories **sites**, not just packages.
 
@@ -184,6 +186,7 @@ Supported platforms: **Ubuntu 22.04/24.04, Debian 12, Rocky 9, AlmaLinux 9 and A
 - Pins the hub's TLS certificate or a private CA if you want (`HEIMDALL_CA_FILE`)
 - Ignores the response body completely, so the hub can't send instructions back
 - Token is read from a `0400` file owned by the `heimdall` user, never passed on the command line
+- Reports hourly, 3 minutes after boot and about a minute after packages change (a systemd path unit, or apk/apt hooks without systemd), so the hub's tripwires see changes within minutes. A sudoers-limited one-liner reports after deploys. See [When it reports](docs/collector.md#when-it-reports).
 
 ---
 
@@ -193,14 +196,14 @@ Supported platforms: **Ubuntu 22.04/24.04, Debian 12, Rocky 9, AlmaLinux 9 and A
 - **Two listeners:** the UI binds to `127.0.0.1` or a tailnet/WireGuard interface by default. The ingest listener exposes `POST /api/v1/ingest` and nothing else, not even a health page or static files.
 - Use TLS everywhere, terminated by Heimdall or a reverse proxy (Caddy/nginx).
 - Optionally allowlist ingest source IPs or CIDRs (`ingest.allow_cidrs`).
-- Outbound traffic: only the feed hosts and `login.microsoftonline.com` (if SSO is enabled), ideally enforced with a host firewall (`IPAddressAllow=` in systemd).
+- Outbound traffic: only the feed hosts, `login.microsoftonline.com` (if SSO is enabled) and the `[news]` source hosts (if threat news is on, in their own allowlist), ideally enforced with a host firewall (`IPAddressAllow=` in systemd).
 
 ### Ingest
 - Request bodies are capped (default 5 MB), decompressed with a cap, and parsed with a strict JSON decoder that rejects unknown fields
 - Every field is validated and normalized: lengths, character sets, version formats
 - Rate-limited per token and per IP. Failed authentication attempts are logged.
 - Tokens are 256-bit random values, stored as SHA-256 hashes, scoped to one host, and revocable. Rotate them with `heimdall host token --rotate`.
-- Snapshots are append-only, so a host can't edit or delete its own history
+- Snapshots are append-only, so a host can't edit or delete its own history. A report with an unchanged inventory is stored as a small heartbeat instead of a new snapshot.
 
 ### Web UI
 - **Microsoft Entra ID (Azure AD) SSO** via OpenID Connect. See [Single sign-on](#single-sign-on-microsoft-entra-id).
@@ -319,7 +322,7 @@ sudo systemctl start heimdall-collect.service     # first push now, instead of w
 
 Then check from the hub: `hd host show web-01`.
 
-Both units are sandboxed. `systemd-analyze security` rates the hub **1.4** and the collector **1.6**, where lower means less exposed. The timer runs daily with a random delay of up to an hour. See [docs/collector.md](docs/collector.md) for details and troubleshooting.
+Both units are sandboxed. `systemd-analyze security` rates the hub **1.4** and the collector **1.6**, where lower means less exposed. The timer runs hourly, at a fixed random offset of up to 15 minutes per host; unchanged reports are stored as small heartbeats. See [docs/collector.md](docs/collector.md) for details and troubleshooting.
 
 ---
 
@@ -352,7 +355,7 @@ listen        = ":8443"
 tls_cert      = "/etc/heimdall/tls/cert.pem"
 tls_key       = "/etc/heimdall/tls/key.pem"
 max_body      = "5MB"
-rate_per_host = "10/h"
+rate_per_host = "30/h"
 # allow_cidrs = ["203.0.113.0/24"]  # optional
 
 [feeds]
@@ -364,6 +367,12 @@ endoflife = true
 
 [hosts]
 stale_after = "72h"
+alert_after = "3h"   # quiet this long: silence anomaly + immediate notice ("0" = off)
+
+[news]                             # threat news, off by default
+enabled  = false
+sources  = ["https://pwn.watch/incidents.json"]
+interval = "1h"
 ```
 
 Settings can be overridden with environment variables (`HEIMDALL_UI_LISTEN`, …). Secrets are never read from the config file. They're stored in the database or provided via systemd credentials.
@@ -404,6 +413,7 @@ organizations ─┬─ environments ─── hosts ─┬─ ingest_tokens (ha
                └─ memberships ── users*   │             ├─ runtimes
                                           └─ tags       └─ containers
 snapshots ── sites ── app_packages        (per-site composer.lock)
+heartbeats = unchanged reports (time, uptime) of a host's latest snapshot
 advisories ── affected_ranges            (cached from feeds)
 findings   = snapshot packages × advisories (materialized on ingest/sync)
 anomalies  = rule hits per host (open / acknowledged / suppressed)
@@ -547,7 +557,8 @@ Builds on M6 patch plans and M7 history. See [docs/anomaly-signals.md](docs/anom
 - [x] **Splash page on the public ingest host.** `GET /` returns a minimal dark page with the centered logo and no text, instead of a bare 404. Caddy serves it as static HTML with the logo inline, so the hub isn't involved. Headers give nothing away: no `Server` or `Via`, `Cache-Control: no-store`, a strict CSP (`default-src 'none'`, the style pinned by hash), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`. Every other path stays an empty 404, and nothing names Heimdall or a version. Existing hubs pick it up when they re-run `install-hub.sh --ingest-host`.
 - [x] **Environments that fit:** create one on the fly from Add a host ("New environment…"), move a host between environments from its page, and filter Hosts by environment. Name them after what the servers are (`shared-hosting`, `internal`), not just prod and staging.
 - [x] **Site labels:** each site is Production, Staging or Development, suggested from its name (`staging.`, `dev.`, `test.`…) and overridable by org admins. Sites can be filtered by label, and the host page shows the labels.
-- [ ] **Threat news (draft):** cross-reference a curated "what's being exploited now" feed such as pwn.watch with the inventory, so the UI can say "this is in the news and it affects 3 of your hosts". See [docs/threat-news.md](docs/threat-news.md).
+- [x] **Event-driven reports:** a report about a minute after packages change (one per `apt upgrade`, however many packages), 3 minutes after boot so "reboot required" clears quickly, and after deploys with a one-line, sudoers-limited snippet. See [When it reports](docs/collector.md#when-it-reports).
+- [ ] **Threat news (draft, Phase 1 built):** cross-reference a curated "what's being exploited now" feed such as pwn.watch with the inventory, so the UI can say "this is in the news and it affects 3 of your hosts". Phase 1 (feed, confirmed CVE matches, News page, dashboard strip, Patch first boost) is in; turn it on with `[news] enabled = true`. See [docs/threat-news.md](docs/threat-news.md).
 
 ---
 

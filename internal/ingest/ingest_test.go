@@ -10,13 +10,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/chrisreedio/heimdall/internal/config"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/store/storetest"
 )
 
 type env struct {
@@ -34,18 +34,7 @@ var fixtureTime = time.Date(2026, 10, 22, 4, 17, 3, 0, time.UTC)
 
 func newEnv(t *testing.T, mutate func(*config.Ingest)) *env {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "h.db")
-	if err := store.Create(path); err != nil {
-		t.Fatal(err)
-	}
-	st, err := store.Open(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	if _, err := st.Migrate(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	st := storetest.New(t)
 	ctx := t.Context()
 	st.CreateOrg(ctx, "test", "acme", "")
 	st.CreateEnv(ctx, "test", "acme", "prod", "")
@@ -75,8 +64,8 @@ func newEnv(t *testing.T, mutate func(*config.Ingest)) *env {
 }
 
 type req struct {
-	method, path, token, contentType, encoding, remote, xff, hostname string
-	body                                                              []byte
+	method, path, token, contentType, encoding, remote, xff, hostname, triggers string
+	body                                                                        []byte
 }
 
 func (e *env) do(r req) *httptest.ResponseRecorder {
@@ -110,6 +99,9 @@ func (e *env) do(r req) *httptest.ResponseRecorder {
 	}
 	if r.hostname != "" {
 		hr.Header.Set(HostnameHeader, r.hostname)
+	}
+	if r.triggers != "" {
+		hr.Header.Set(TriggersHeader, r.triggers)
 	}
 	w := httptest.NewRecorder()
 	e.h.ServeHTTP(w, hr)
@@ -257,7 +249,8 @@ func TestAuthFailureLockout(t *testing.T) {
 	e.expect(req{remote: "198.51.100.7:1234"}, http.StatusTooManyRequests)
 	e.expect(req{remote: "198.51.100.8:1234"}, http.StatusCreated)
 	e.now = e.now.Add(time.Minute)
-	e.expect(req{remote: "198.51.100.7:1234", body: []byte(strings.Replace(string(e.body), "04:17:03", "04:18:03", 1))}, http.StatusCreated)
+	// Same inventory a minute later: recorded as an unchanged report.
+	e.expect(req{remote: "198.51.100.7:1234", body: []byte(strings.Replace(string(e.body), "04:17:03", "04:18:03", 1))}, http.StatusOK)
 }
 
 func TestHostRateLimit(t *testing.T) {

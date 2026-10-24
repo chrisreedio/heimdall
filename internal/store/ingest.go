@@ -61,12 +61,16 @@ func (s *Store) HostByName(ctx context.Context, orgSlug, name string) (IngestHos
 	return h, err
 }
 
-// SnapshotByPayload finds an earlier snapshot of the host with the same
-// payload hash, i.e. a retry or a replay.
+// SnapshotByPayload finds an earlier snapshot or heartbeat of the host with
+// the same payload hash, i.e. a retry or a replay. id is the snapshot.
 func (s *Store) SnapshotByPayload(ctx context.Context, hostID int64, hash [32]byte) (id int64, receivedAt time.Time, found bool, err error) {
 	var received string
-	err = s.db.QueryRowContext(ctx,
-		`SELECT id, received_at FROM snapshots WHERE host_id = ? AND payload_sha256 = ?`, hostID, hash[:]).
+	// Heartbeats (unchanged reports) count too: their payloads were sent once.
+	err = s.db.QueryRowContext(ctx, `
+		SELECT id, received_at FROM snapshots WHERE host_id = ? AND payload_sha256 = ?
+		UNION ALL
+		SELECT snapshot_id, received_at FROM heartbeats WHERE host_id = ? AND payload_sha256 = ?
+		LIMIT 1`, hostID, hash[:], hostID, hash[:]).
 		Scan(&id, &received)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, time.Time{}, false, nil
@@ -93,17 +97,33 @@ type NewSnapshot struct {
 	Snapshot      *snapshot.Snapshot
 }
 
-// SaveSnapshot stores a validated snapshot with its packages, marks the
-// host as seen and records any anomalies, all in one transaction.
+// Saved is where SaveReport put a report.
+type Saved struct {
+	SnapshotID  int64 // the new snapshot, or the latest one an unchanged report matched
+	HeartbeatID int64 // set when the report was unchanged
+	Unchanged   bool  // same inventory as the host's latest snapshot: stored as a heartbeat
+}
+
+// SaveSnapshot is SaveReport, returning the snapshot ID.
 func (s *Store) SaveSnapshot(ctx context.Context, n NewSnapshot, anomalies []Anomaly) (int64, error) {
+	saved, err := s.SaveReport(ctx, n, anomalies)
+	return saved.SnapshotID, err
+}
+
+// SaveReport stores a validated report, marks the host as seen and records
+// any anomalies, all in one transaction. A report whose inventory matches
+// the host's latest snapshot (snapshot.InventoryHash) is stored as a small
+// heartbeat row with its volatile facts, instead of a full new snapshot.
+func (s *Store) SaveReport(ctx context.Context, n NewSnapshot, anomalies []Anomaly) (Saved, error) {
 	snap := n.Snapshot
+	inventory := snap.InventoryHash()
 	unavailable := func(check string) bool { return slices.Contains(snap.Unavailable, check) }
 
 	var collectorSHA []byte
 	if snap.Collector.SHA256 != "" {
 		var err error
 		if collectorSHA, err = hex.DecodeString(snap.Collector.SHA256); err != nil {
-			return 0, fmt.Errorf("collector sha256: %w", err)
+			return Saved{}, fmt.Errorf("collector sha256: %w", err)
 		}
 	}
 	var uptime, reboot sql.NullInt64
@@ -129,24 +149,83 @@ func (s *Store) SaveSnapshot(ctx context.Context, n NewSnapshot, anomalies []Ano
 		return u, ok
 	}
 
-	var id int64
+	var saved Saved
 	err := s.tx(ctx, func(tx *sql.Tx) error {
+		touch := func(snapshotID int64) error {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE hosts SET last_seen_at = ?, last_snapshot_id = ? WHERE id = ?`, received, snapshotID, n.Host.ID); err != nil {
+				return err
+			}
+			if n.Host.TokenID != 0 {
+				if _, err := tx.ExecContext(ctx,
+					`UPDATE ingest_tokens SET last_used_at = ? WHERE id = ?`, received, n.Host.TokenID); err != nil {
+					return err
+				}
+			}
+			for _, a := range anomalies {
+				if err := addAnomaly(ctx, tx, n.Host.ID, snapshotID, received, a); err != nil {
+					return err
+				}
+			}
+			return nil
+		}
+
+		// Unchanged since the latest snapshot: record a heartbeat only.
+		var latestID int64
+		var latestInventory []byte
 		err := tx.QueryRowContext(ctx, `
+			SELECT s.id, s.inventory_sha256 FROM hosts h JOIN snapshots s ON s.id = h.last_snapshot_id
+			WHERE h.id = ?`, n.Host.ID).Scan(&latestID, &latestInventory)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if latestID != 0 && string(latestInventory) == string(inventory[:]) {
+			var dup int
+			if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM snapshots WHERE host_id = ? AND payload_sha256 = ?`,
+				n.Host.ID, n.PayloadSHA256[:]).Scan(&dup); err != nil {
+				return err
+			}
+			if dup > 0 { // lost a race with an identical retry that stored the snapshot
+				return fmt.Errorf("report already stored: %w", ErrExists)
+			}
+			err := tx.QueryRowContext(ctx, `
+				INSERT INTO heartbeats (host_id, snapshot_id, source, received_at, collected_at, payload_sha256, uptime_seconds)
+				VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+				n.Host.ID, latestID, n.Source, received, snap.CollectedAt.UTC().Format(timeLayout),
+				n.PayloadSHA256[:], uptime).Scan(&saved.HeartbeatID)
+			if isUnique(err) {
+				return fmt.Errorf("report already stored: %w", ErrExists)
+			}
+			if err != nil {
+				return err
+			}
+			saved.SnapshotID, saved.Unchanged = latestID, true
+			// A plan item marked done after the fix was installed is
+			// confirmed by the next report, changed or not.
+			if err := verifyPlanItems(ctx, tx, n.Host.ID, latestID, received); err != nil {
+				return err
+			}
+			return touch(latestID)
+		}
+
+		var id int64
+		err = tx.QueryRowContext(ctx, `
 			INSERT INTO snapshots (host_id, source, received_at, collected_at, collector_version,
 				collector_sha256, payload_sha256, os_id, os_version, os_pretty, kernel, arch,
-				uptime_seconds, reboot_required, package_manager, os_id_like)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				uptime_seconds, reboot_required, package_manager, os_id_like, inventory_sha256)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			RETURNING id`,
 			n.Host.ID, n.Source, received, snap.CollectedAt.UTC().Format(timeLayout), snap.Collector.Version,
 			collectorSHA, n.PayloadSHA256[:], nullString(snap.OS.ID), nullString(snap.OS.VersionID),
 			nullString(snap.OS.PrettyName), nullString(snap.Kernel.Release), nullString(snap.Kernel.Arch),
-			uptime, reboot, nullString(snap.PackageManager), nullString(snap.OS.IDLike)).Scan(&id)
+			uptime, reboot, nullString(snap.PackageManager), nullString(snap.OS.IDLike), inventory[:]).Scan(&id)
 		if isUnique(err) {
 			return fmt.Errorf("snapshot already stored: %w", ErrExists)
 		}
 		if err != nil {
 			return err
 		}
+		saved.SnapshotID = id
 
 		stmt, err := tx.PrepareContext(ctx, `
 			INSERT INTO packages (snapshot_id, ecosystem, name, version, arch, source_name, source_version,
@@ -180,25 +259,9 @@ func (s *Store) SaveSnapshot(ctx context.Context, n NewSnapshot, anomalies []Ano
 		if err := verifyPlanItems(ctx, tx, n.Host.ID, id, received); err != nil {
 			return err
 		}
-
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE hosts SET last_seen_at = ?, last_snapshot_id = ? WHERE id = ?`, received, id, n.Host.ID); err != nil {
-			return err
-		}
-		if n.Host.TokenID != 0 {
-			if _, err := tx.ExecContext(ctx,
-				`UPDATE ingest_tokens SET last_used_at = ? WHERE id = ?`, received, n.Host.TokenID); err != nil {
-				return err
-			}
-		}
-		for _, a := range anomalies {
-			if err := addAnomaly(ctx, tx, n.Host.ID, id, received, a); err != nil {
-				return err
-			}
-		}
-		return nil
+		return touch(id)
 	})
-	return id, err
+	return saved, err
 }
 
 // saveSites stores a v2 snapshot's sites and their Composer packages.
@@ -330,7 +393,7 @@ func (s *Store) Anomalies(ctx context.Context, hostID int64) ([]AnomalyRow, erro
 type SnapshotSummary struct {
 	ID               int64
 	Source           string
-	ReceivedAt       time.Time
+	ReceivedAt       time.Time // the host's last report (unchanged reports don't store a new snapshot)
 	CollectorVersion string
 	OS               string
 	Packages         int
@@ -346,7 +409,7 @@ func (s *Store) LatestSnapshot(ctx context.Context, hostID int64) (SnapshotSumma
 	var os sql.NullString
 	var reboot sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT s.id, s.source, s.received_at, s.collector_version, coalesce(s.os_pretty, s.os_id), s.reboot_required,
+		SELECT s.id, s.source, coalesce(h.last_seen_at, s.received_at), s.collector_version, coalesce(s.os_pretty, s.os_id), s.reboot_required,
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id),
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id AND p.pending_version IS NOT NULL),
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id AND p.pending_security = 1)

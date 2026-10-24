@@ -1,0 +1,46 @@
+{{define "content"}}{{with .Body}}
+<div class="head">
+  <h1>News</h1>
+  {{if .Affecting}}<span class="pill bad">{{.Affecting}} affect{{if eq .Affecting 1}}s{{end}} your hosts</span>{{end}}
+</div>
+<p class="lede">Security incidents being exploited or patched right now. A host counts as affected only when one of an incident's CVEs is an open finding on it, so a host drops off once it's patched.</p>
+
+{{if .Total}}
+<nav class="filter-chips" aria-label="Filter news">
+  <a href="/news"{{if not .Filter}} aria-current="true"{{end}}>All <span>{{.Total}}</span></a>
+  <a href="/news?affects=me"{{if eq .Filter "me"}} aria-current="true"{{end}}>Affects me <span>{{.Affecting}}</span></a>
+  {{range .Categories}}<a href="/news?category={{.Slug}}"{{if eq .Slug $.Body.Filter}} aria-current="true"{{end}}>{{.Label}} <span>{{.Count}}</span></a>{{end}}
+</nav>
+{{end}}
+
+{{if .Items}}
+<ol class="news-list">
+  {{range .Items}}{{$p := .Patch}}
+  <li class="card news-item{{if .Hosts}} affects{{end}}">
+    <div class="news-meta">
+      <span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>
+      <span class="pill muted">{{.CategoryLabel}}</span>
+      {{with $p.Label}}<span class="pill {{$p.Class}}">{{.}}</span>{{end}}
+      {{if eq .Status "live"}}<span class="pill warn"><span class="dot"></span>live</span>{{else}}<span class="pill muted" title="{{with .Closed}}{{fullDate .}}{{end}}">closed{{with .Closed}} {{longDate .}}{{end}}</span>{{end}}
+      <span class="muted small news-date" title="Started {{fullDate .Started}}">{{dayAgo .Started}}</span>
+    </div>
+    <h2 class="news-title"><a href="{{.URL}}" rel="noopener noreferrer">{{.Title}}</a></h2>
+    {{with .Product}}<div class="muted small">{{.}}</div>{{end}}
+    {{with .Summary}}<p class="news-summary" title="{{.}}">{{.}}</p>{{end}}
+    {{if .Hosts}}<div class="news-affects">
+      <span class="badge bad">Affects {{len .Hosts}} of your hosts</span>
+      {{range .Hosts}}<a class="news-host" href="{{hostURL .OrgSlug .Name}}" title="Open findings: {{.Reason}}">{{.Name}}{{if $.Body.ShowOrgs}} <span class="muted">({{.OrgSlug}})</span>{{end}}</a>{{end}}
+    </div>{{end}}
+    <div class="news-foot muted small">via <a href="{{.URL}}" rel="noopener noreferrer">{{.Via}}</a>{{with .CVEs}} · <span class="id">{{join . ", "}}</span>{{end}}</div>
+  </li>
+  {{end}}
+</ol>
+{{if .More}}<p class="more muted">Showing the {{len .Items}} newest; {{.More}} older incident{{if ne .More 1}}s are{{else}} is{{end}} not listed.</p>{{end}}
+{{else if eq .Filter "me"}}
+<p class="empty">Nothing in the news affects your hosts right now.</p>
+{{else if .Total}}
+<p class="empty">No incidents in this category.</p>
+{{else}}
+<p class="empty">No news yet. Incidents appear after the next feed sync (<code>heimdall feeds sync</code> runs one now); <code>heimdall feeds status</code> shows how the last one went.</p>
+{{end}}
+{{end}}{{end}}

@@ -35,7 +35,7 @@ listen        = "127.0.0.1:8443"
 # What servers use to reach ingest; shown in the UI's "Add host" commands.
 # public_url  = "https://ingest.example.com"
 max_body      = "5MB"
-rate_per_host = "10/h"
+rate_per_host = "30/h"
 # allow_cidrs = ["203.0.113.0/24"]
 # Set true when a local proxy (Caddy/nginx on this box) terminates TLS, so
 # client IPs come from X-Forwarded-For. Only honored for loopback peers.

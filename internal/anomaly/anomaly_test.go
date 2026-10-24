@@ -3,17 +3,18 @@
 package anomaly
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"fmt"
 	"io"
 	"log/slog"
-	"path/filepath"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/chrisreedio/heimdall/internal/snapshot"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/store/storetest"
 )
 
 type env struct {
@@ -22,21 +23,11 @@ type env struct {
 	now time.Time
 	eng *Engine
 	seq int
+	gap time.Duration // between pushes; 0 = a day
 }
 
 func newEnv(t *testing.T) *env {
-	path := filepath.Join(t.TempDir(), "h.db")
-	if err := store.Create(path); err != nil {
-		t.Fatal(err)
-	}
-	st, err := store.Open(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	if _, err := st.Migrate(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	st := storetest.New(t)
 	st.CreateOrg(t.Context(), "test", "acme", "")
 	st.CreateEnv(t.Context(), "test", "acme", "prod", "")
 	e := &env{t: t, st: st, now: time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)} // a Monday
@@ -57,10 +48,10 @@ type snap struct {
 	sha    string
 }
 
-// push stores a snapshot a day after the previous one and runs the rules.
+// push stores a report a day (or e.gap) after the previous one and runs the rules.
 func (e *env) push(h store.IngestHost, s snap) []string {
 	e.t.Helper()
-	e.now = e.now.Add(24 * time.Hour)
+	e.now = e.now.Add(cmp.Or(e.gap, 24*time.Hour))
 	e.seq++
 	if s.kernel == "" {
 		s.kernel = "6.1.0-26"
@@ -164,6 +155,22 @@ func TestRebootAndKernel(t *testing.T) {
 	}
 	if got := e.push(h, snap{pkgs: base, uptime: 600 + 86400, kernel: "6.1.0-27"}); !slices.Equal(got, []string{"kernel_no_reboot"}) {
 		t.Errorf("kernel without reboot: %v", got)
+	}
+}
+
+// Event-driven reports: one a minute after a kernel upgrade, the next 3
+// minutes after the reboot into it. That's a reboot, not a kernel that
+// changed in place.
+func TestRebootMinutesAfterReport(t *testing.T) {
+	e := newEnv(t)
+	h := e.host("web-01")
+	e.learn(h)
+	e.gap = 4 * time.Minute
+	up := int64(30 * 86400)
+	e.push(h, snap{pkgs: with(base, "linux-image-6.1.0-27", "6.1.115-1"), uptime: up})
+	got := e.push(h, snap{pkgs: with(base, "linux-image-6.1.0-27", "6.1.115-1"), kernel: "6.1.0-27", uptime: 180})
+	if !slices.Equal(got, []string{"unexpected_reboot"}) {
+		t.Errorf("reboot minutes after a report: %v", got)
 	}
 }
 

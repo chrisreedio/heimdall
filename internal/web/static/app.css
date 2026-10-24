@@ -641,3 +641,37 @@ details.head-pick[open] form { position: absolute; top: 26px; left: 0; z-index: 
 .fact > div:not(.k) { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; column-gap: 8px; min-width: 0; }
 .fact > div > .k { flex-basis: 100%; }
 .fact > div > .pills { margin-top: 0; }
+
+/* Threat news. Feed text is untrusted and always rendered escaped. */
+.news-strip {
+  display: flex; align-items: center; gap: 10px; margin: 12px 0 0;
+  padding: 8px 12px; border-radius: 8px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--crit-fg);
+}
+.news-strip:hover, .news-strip:focus-visible { text-decoration: none; border-color: var(--crit-fg); }
+.news-strip > span[aria-hidden] { margin-left: auto; color: var(--muted); }
+.badge.news { background: var(--low-bg); color: var(--low-fg); }
+a.badge.news:hover { text-decoration: none; filter: brightness(.97); }
+.news-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.news-item.card { margin-top: 0; padding: 14px 16px; border-left: 4px solid var(--border); min-width: 0; }
+.news-item.affects { border-left-color: var(--crit-fg); }
+.news-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.news-date { margin-left: auto; white-space: nowrap; }
+.news-title { font-size: 15px; margin: 8px 0 2px; overflow-wrap: anywhere; }
+.news-title a { color: var(--text); }
+.news-title a:hover { color: var(--link); }
+.news-summary {
+  margin: 6px 0 0; color: var(--muted); max-width: 90ch; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.news-affects { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 10px; }
+.news-host { font-weight: 600; }
+.news-foot { margin-top: 8px; overflow-wrap: anywhere; }
+.news-foot .id { font-size: 11.5px; }
+.news-card h2 { margin-bottom: 8px; }
+.news-mini { list-style: none; padding: 0; margin: 0; }
+.news-mini li { padding: 6px 0; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.news-mini li:last-child { border-bottom: 0; }
+.news-mini a { font-weight: 600; margin-right: 6px; }
+.news-card p { margin: 8px 0 0; }
+@media (max-width: 560px) { .news-date { margin-left: 0; flex-basis: 100%; } }

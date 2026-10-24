@@ -13,7 +13,7 @@
   <tbody>
   {{range .}}
   <tr>
-    <td>{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}</td>
+    <td>{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}</td>
     <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}</td>
     <td><span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</td>
     <td>{{.Package}}{{if gt (len .Binaries) 1}}<div class="muted small">{{join .Binaries ", "}}</div>{{end}}</td>
@@ -60,7 +60,7 @@
     <div class="pkg-grid pkg-head" role="row"><span>Package</span><span>Installed</span><span>Worst</span><span class="num">KEV</span><span class="num">Crit</span><span class="num">High</span><span class="num">Med</span><span class="num">Low</span><span class="num">Fixable</span></div>
     {{range .Groups}}<details class="pkg-row">
       <summary class="pkg-grid" role="row">
-        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span></span>
+        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span>{{if .News}} <span class="badge news" title="{{.News}} named by a live incident in the news">in the news</span>{{end}}</span>
         <span class="ver">{{.Version}}</span>
         <span><span class="sev sev-{{sev .Worst}}">{{.Worst}}</span></span>
         <span class="num">{{if .KEV}}<span class="badge kev">{{.KEV}}</span>{{else}}<span class="muted">0</span>{{end}}</span>
@@ -69,7 +69,7 @@
       </summary>
       <div class="pkg-panel">
         {{if gt (len .Binaries) 1}}<p class="muted small">Binary packages: {{join .Binaries ", "}}</p>{{end}}
-        <ul class="pkg-findings">{{range head .Findings 100 false}}<li><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .KEV}} <span class="badge kev">KEV</span>{{end}} <span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Fixed}} <span class="muted small">fixed in {{.Fixed}}</span>{{else}} <span class="muted small">no fix yet</span>{{end}}{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</li>{{end}}</ul>
+        <ul class="pkg-findings">{{range head .Findings 100 false}}<li><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .KEV}} <span class="badge kev">KEV</span>{{end}}{{if .InNews}} <span class="badge news" title="Named by a live incident in the news">in the news</span>{{end}} <span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Fixed}} <span class="muted small">fixed in {{.Fixed}}</span>{{else}} <span class="muted small">no fix yet</span>{{end}}{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</li>{{end}}</ul>
         {{if gt (len .Findings) 100}}<p class="more">The 100 most important of {{len .Findings}}; switch to All findings to see every one.</p>{{end}}
       </div>
     </details>{{end}}

@@ -1,0 +1,29 @@
+# Heimdall collector: report soon after packages change.
+#
+# A change to the package database starts heimdall-collect-changes.service,
+# which restarts heimdall-collect-soon.timer, which starts
+# heimdall-collect.service 60s after the LAST change. So a whole `apt
+# upgrade` sends one report about a minute after it ends.
+#
+# install.sh keeps only the PathChanged= lines whose path exists on the box.
+# Watch the database files themselves, not their directories: root's
+# read-only queries (dnf makecache, rpm -q) rewrite rpm's sqlite -shm/-wal
+# files, but rpmdb.sqlite only changes when packages do.
+
+[Unit]
+Description=Watch the package database for Heimdall reports
+Documentation=https://github.com/chrisreedio/heimdall/blob/main/docs/collector.md
+
+[Path]
+# dpkg (Debian, Ubuntu)
+PathChanged=/var/lib/dpkg/status
+# rpm 4.16+ (RHEL, Rocky, Alma 9), then older Berkeley DB rpm
+PathChanged=/var/lib/rpm/rpmdb.sqlite
+PathChanged=/var/lib/rpm/Packages
+# apk (Alpine)
+PathChanged=/lib/apk/db/installed
+# pacman (Arch): one directory per installed package
+PathChanged=/var/lib/pacman/local
+
+[Install]
+WantedBy=paths.target

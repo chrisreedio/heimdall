@@ -35,7 +35,7 @@ listen        = "127.0.0.1:8443"
 # What servers use to reach ingest; shown in the UI's "Add host" commands.
 # public_url  = "https://ingest.example.com"
 max_body      = "5MB"
-rate_per_host = "10/h"
+rate_per_host = "30/h"
 # allow_cidrs = ["203.0.113.0/24"]
 # Set true when a local proxy (Caddy/nginx on this box) terminates TLS, so
 # client IPs come from X-Forwarded-For. Only honored for loopback peers.
@@ -50,6 +50,7 @@ endoflife     = true
 
 [hosts]
 stale_after        = "72h"
+alert_after        = "3h"      # quiet this long: silence anomaly + immediate notice; "0" disables
 keep_snapshots_for = "4320h"   # 180 days; "0" keeps everything
 keep_snapshots_min = 30        # per host, whatever their age
 
@@ -62,6 +63,16 @@ enabled  = false
 listen   = "127.0.0.1:8090"
 base_url = "http://127.0.0.1:8090"
 
+[news]
+# Threat news: curated "being exploited right now" incidents, matched on the
+# hub against each host's open findings. Nothing about your servers leaves
+# the hub. Items credit their source ("via pwn.watch"), and the hub fetches
+# at most hourly, respecting caching headers. Any https feed in the same
+# JSON shape can be added as a source.
+enabled  = false
+sources  = ["https://pwn.watch/incidents.json"]
+interval = "1h"
+
 [updates]
 # Once a day, ask GitHub for the latest release's version number and show
 # admins a banner when a newer one exists. Nothing is downloaded.
@@ -69,6 +80,8 @@ check = true
 
 [notify]
 # Counts-only digest (no hostnames, packages or CVEs), e.g. every = "24h".
+# The same channels get immediate silence alerts (hosts.alert_after), which
+# name the quiet hosts and nothing else.
 every          = "0"
 # email_to     = ["ops@example.com"]
 # email_from   = "heimdall@example.com"

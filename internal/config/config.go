@@ -33,6 +33,36 @@ type Config struct {
 	Notify   Notify  `toml:"notify"`
 	MCP      MCP     `toml:"mcp"`
 	Updates  Updates `toml:"updates"`
+	News     News    `toml:"news"`
+}
+
+// News configures threat news: curated incident feeds cross-referenced
+// with findings on the hub. Off by default, like every outbound call a
+// hub owner hasn't turned on.
+type News struct {
+	Enabled  bool     `toml:"enabled"`
+	Sources  []string `toml:"sources"` // https URLs of incident feeds (pwn.watch's incidents.json shape)
+	Interval Duration `toml:"interval"`
+}
+
+// DefaultNewsSource is pwn.watch's full incident list.
+const DefaultNewsSource = "https://pwn.watch/incidents.json"
+
+// MaxNewsSources caps [news] sources.
+const MaxNewsSources = 10
+
+// Hosts returns the hostnames of the configured news sources, which
+// become the news fetcher's outbound allowlist.
+func (n News) Hosts() []string {
+	var out []string
+	for _, src := range n.Sources {
+		if u, err := url.Parse(src); err == nil && u.Hostname() != "" {
+			if h := strings.ToLower(u.Hostname()); !slices.Contains(out, h) {
+				out = append(out, h)
+			}
+		}
+	}
+	return out
 }
 
 // Updates controls the daily check for a newer release (admins see a
@@ -108,6 +138,9 @@ type Feeds struct {
 
 type Hosts struct {
 	StaleAfter Duration `toml:"stale_after"`
+	// AlertAfter: a host quiet for this long raises a silence anomaly and an
+	// immediate notification (once per silence). 0 disables it.
+	AlertAfter Duration `toml:"alert_after"`
 	// Snapshot retention: older than KeepFor are deleted, but each host
 	// always keeps at least KeepMin (and its latest).
 	KeepFor Duration `toml:"keep_snapshots_for"`
@@ -131,7 +164,7 @@ func Default() Config {
 		Ingest: Ingest{
 			Listen:      "127.0.0.1:8443",
 			MaxBody:     5 << 20,
-			RatePerHost: Rate{N: 10, Per: time.Hour},
+			RatePerHost: Rate{N: 30, Per: time.Hour}, // hourly reports plus event-driven ones
 		},
 		Feeds: Feeds{
 			SyncInterval: Duration{6 * time.Hour},
@@ -140,10 +173,11 @@ func Default() Config {
 			EPSS:         true,
 			EndOfLife:    true,
 		},
-		Hosts:   Hosts{StaleAfter: Duration{72 * time.Hour}, KeepFor: Duration{180 * 24 * time.Hour}, KeepMin: 30},
+		Hosts:   Hosts{StaleAfter: Duration{72 * time.Hour}, AlertAfter: Duration{3 * time.Hour}, KeepFor: Duration{180 * 24 * time.Hour}, KeepMin: 30},
 		Notify:  Notify{SMTPPort: 587, WebhookFormat: "slack"},
 		MCP:     MCP{Listen: "127.0.0.1:8090", BaseURL: "http://127.0.0.1:8090"},
 		Updates: Updates{Check: true},
+		News:    News{Sources: []string{DefaultNewsSource}, Interval: Duration{time.Hour}},
 	}
 }
 
@@ -285,7 +319,43 @@ func (c Config) Validate() error {
 			add("notify.every must be at least 1h")
 		}
 	}
+	if n := c.News; n.Enabled {
+		if len(n.Sources) == 0 {
+			add("news: enabled but sources is empty")
+		}
+		if len(n.Sources) > MaxNewsSources {
+			add("news.sources: at most %d sources", MaxNewsSources)
+		}
+		if n.Interval.Duration < time.Hour {
+			// Be polite to feeds run by volunteers.
+			add("news.interval must be at least 1h")
+		}
+	}
+	for _, src := range c.News.Sources {
+		if err := validateNewsSource(src); err != nil {
+			add("news.sources: %q %w", src, err)
+		}
+	}
 	return errors.Join(errs...)
+}
+
+// validateNewsSource accepts only a plain https URL: no credentials, no
+// fragment, and a hostname to put on the allowlist.
+func validateNewsSource(src string) error {
+	u, err := url.Parse(src)
+	switch {
+	case err != nil || len(src) > 2048 || strings.ContainsFunc(src, unicode.IsControl):
+		return errors.New("is not a valid URL")
+	case u.Scheme != "https":
+		return errors.New("must be an https URL")
+	case u.Hostname() == "" || u.Opaque != "":
+		return errors.New("must name a host")
+	case u.User != nil:
+		return errors.New("must not contain credentials")
+	case u.Fragment != "":
+		return errors.New("must not contain a fragment")
+	}
+	return nil
 }
 
 // ValidateDatabasePath rejects paths the SQLite driver would misparse.

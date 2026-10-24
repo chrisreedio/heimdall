@@ -81,6 +81,16 @@ func TestPlanLifecycle(t *testing.T) {
 	if items, _ = s.PlanItems(ctx, p.ID); !items[0].VerifiedAt.IsZero() || !items[0].DoneAt.IsZero() {
 		t.Errorf("untick: %+v", items[0])
 	}
+	// Ticked after the fix landed: the next report verifies it even though
+	// it's unchanged (stored as a heartbeat).
+	s.SetPlanItemDone(ctx, "test", 0, p.ID, host, true, now.Add(3*time.Hour))
+	saveTestSnapshot(t, s, host, now.Add(4*time.Hour), false)
+	if n, _ := s.CountRows(ctx, "heartbeats"); n != 1 {
+		t.Fatalf("heartbeats = %d, want 1", n)
+	}
+	if items, _ = s.PlanItems(ctx, p.ID); items[0].VerifiedAt.IsZero() {
+		t.Errorf("unchanged clean report should verify: %+v", items[0])
+	}
 	if err := s.ClosePlan(ctx, "test", p.ID, true, now); err != nil {
 		t.Fatal(err)
 	}
@@ -132,5 +142,35 @@ func TestPruneSnapshots(t *testing.T) {
 	}
 	if _, err := s.LatestSnapshot(ctx, host.ID); err != nil {
 		t.Errorf("latest snapshot must survive: %v", err)
+	}
+}
+
+func TestPruneKeepsRecentlyReportedSnapshots(t *testing.T) {
+	s := newStore(t)
+	ctx := t.Context()
+	setupHost(t, s)
+	host, _ := s.HostByName(ctx, "acme", "web-01.example.com")
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	day := func(n int) time.Time { return base.Add(time.Duration(n) * 24 * time.Hour) }
+	for i := range 10 { // one snapshot, then nine unchanged reports
+		saveTestSnapshot(t, s, host, day(i), false)
+	}
+	saveTestSnapshot(t, s, host, day(10), true) // a real change
+	if n, _ := s.CountRows(ctx, "snapshots"); n != 2 {
+		t.Fatalf("snapshots = %d, want 2", n)
+	}
+	// The first snapshot is old, but was still reported on days 8 and 9.
+	n, err := s.PruneSnapshots(ctx, day(8), 1)
+	if err != nil || n != 0 {
+		t.Fatalf("pruned %d, %v", n, err)
+	}
+	if hb, _ := s.CountRows(ctx, "heartbeats"); hb != 2 {
+		t.Errorf("heartbeats left = %d, want 2", hb)
+	}
+	if n, _ := s.PruneSnapshots(ctx, day(11), 1); n != 1 {
+		t.Errorf("then pruned %d, want 1", n)
+	}
+	if hb, _ := s.CountRows(ctx, "heartbeats"); hb != 0 {
+		t.Errorf("heartbeats left = %d, want 0", hb)
 	}
 }

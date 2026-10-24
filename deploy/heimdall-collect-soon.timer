@@ -1,0 +1,12 @@
+# Heimdall collector: one report 60s after the last package change.
+# Not enabled by itself: heimdall-collect-changes.service restarts it on
+# each change, which starts the countdown again.
+
+[Unit]
+Description=Heimdall report shortly after a package change
+Documentation=https://github.com/chrisreedio/heimdall/blob/main/docs/collector.md
+
+[Timer]
+OnActiveSec=60s
+AccuracySec=1s
+Unit=heimdall-collect.service

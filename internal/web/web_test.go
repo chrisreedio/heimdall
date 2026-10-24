@@ -12,7 +12,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +20,7 @@ import (
 	"github.com/chrisreedio/heimdall/internal/ingest"
 	"github.com/chrisreedio/heimdall/internal/search"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/store/storetest"
 )
 
 const goodToken = "tok-valid"
@@ -84,18 +84,7 @@ func newEnv(t *testing.T, baseURL string, sf SearchFunc) *env {
 // by default, SSO off).
 func newEnvCfg(t *testing.T, baseURL string, sf SearchFunc, adjust func(*Config)) *env {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "h.db")
-	if err := store.Create(path); err != nil {
-		t.Fatal(err)
-	}
-	st, err := store.Open(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	if _, err := st.Migrate(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	st := storetest.New(t)
 	if sf == nil {
 		sf = func(context.Context, string, store.Scope) (*search.Result, error) { return &search.Result{}, nil }
 	}

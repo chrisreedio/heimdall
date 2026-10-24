@@ -105,6 +105,19 @@ For many servers, a loop is enough:
 for h in web-01 web-02 db-01; do ssh "$h" sudo heimdall-collect upgrade; done
 ```
 
+## Threat news
+
+Heimdall can cross-reference a curated "being exploited right now" incident feed with your hosts' findings, so the dashboard says "2 in the news affect your hosts" and the News page lists what's happening. It's off by default, because the hub makes no outbound calls you haven't turned on. Turn it on in `heimdall.toml` and restart:
+
+```toml
+[news]
+enabled  = true
+sources  = ["https://pwn.watch/incidents.json"]   # the default
+interval = "1h"
+```
+
+The default source is [pwn.watch](https://pwn.watch), which publishes its incidents as JSON. Items credit their source ("via pwn.watch", linking to the incident), and the hub fetches at most hourly, respecting caching headers. Any https feed in the same shape can be added. Matching happens on the hub: nothing about your servers is sent. Run `heimdall feeds sync` to fetch now and `heimdall feeds status` to see how the last fetch went. A broken feed keeps the last good copy and never blocks the other feeds. See [threat-news.md](threat-news.md) for how matching works.
+
 ## Hardening checklist
 
 - [ ] UI reachable only over the tailnet/VPN
@@ -112,4 +125,4 @@ for h in web-01 web-02 db-01; do ssh "$h" sudo heimdall-collect upgrade; done
 - [ ] Disk or volume encryption on the hub
 - [ ] Encrypted backups shipped off-box
 - [ ] `auth.local_login = false` once SSO works (break-glass via the CLI)
-- [ ] Egress limited to the feed hosts (firewall or proxy): `api.osv.dev`, `www.cisa.gov`, `endoflife.date`, `api.first.org`, `api.github.com` (update check), and `login.microsoftonline.com` with SSO
+- [ ] Egress limited to the feed hosts (firewall or proxy): `api.osv.dev`, `www.cisa.gov`, `endoflife.date`, `api.first.org`, `api.github.com` (update check), `login.microsoftonline.com` with SSO, and your `[news]` source hosts (e.g. `pwn.watch`) if threat news is on

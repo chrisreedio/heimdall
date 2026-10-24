@@ -1,6 +1,8 @@
-# Threat news (draft)
+# Threat news
 
-> **Status: concept, not built.** This proposes using a curated "what's being exploited right now" feed, such as [pwn.watch](https://pwn.watch), together with Heimdall's inventory.
+> **Status: Phase 1 is built** (feed sync, confirmed matches, the News page, the dashboard strip, the host page's "In the news" card and the Patch first boost). It's off by default: set `enabled = true` under `[news]` in `heimdall.toml` and restart the hub. The default source is pwn.watch's `incidents.json`. Phases 2 and 3 below are still proposals.
+
+This uses a curated "what's being exploited right now" feed, such as [pwn.watch](https://pwn.watch), together with Heimdall's inventory.
 
 ## The problem
 
@@ -33,6 +35,8 @@ A curated tracker that publishes everything as JSON (`/incidents.json`, about 73
 | `summary`, `title`, `url` | plain English | What the UI shows, linking back to the source |
 | `startedAt`, `updatedAt`, `closedAt` | dates | "New this week", and retention |
 
+Items credit their source ("via pwn.watch", linking to the incident page), and the hub fetches at most hourly, respecting caching headers.
+
 ### Later: primary sources, no third party
 
 CISA advisories, Ubuntu USN, Debian DSA, Red Hat RHSA and GitHub Security Advisories all publish machine-readable feeds. They lack pwn.watch's curation and summaries, but they keep the feature working if a third-party feed goes away. The feed format below is source-neutral, so those can be added as additional sources.
@@ -55,7 +59,7 @@ The possible-match vocabulary is a small, reviewed mapping from stack names to w
 ## What changes in the product
 
 - **News page:** incidents newest first, each with an "affects N hosts" badge (confirmed, then possible) linking to those hosts, and filters for "affects me", category and severity.
-- **Dashboard:** a tile reading "**2** in the news affect your hosts", linking to the News page filtered to confirmed matches.
+- **Dashboard:** a slim strip above the tiles reading "**2** in the news affect your hosts →", linking to the News page filtered to confirmed matches. It's a strip rather than a ninth tile, so the tiles stay a 4 × 2 grid.
 - **Host page:** an "In the news" section listing incidents that match this host.
 - **Patch first:** findings that appear in a live incident rank higher, like KEV does today. Exploited-in-the-wild news is a strong signal.
 - **Digest (email or webhook):** new confirmed matches since the last digest, counts and titles only, like today's digest.
@@ -66,9 +70,9 @@ The possible-match vocabulary is a small, reviewed mapping from stack names to w
 - **Off by default.** Turn it on with:
   ```toml
   [news]
-  enabled  = false
-  sources  = ["https://pwn.watch/incidents.json"]
-  interval = "1h"
+  enabled  = true                                  # default false
+  sources  = ["https://pwn.watch/incidents.json"]  # the default; any https feed in the same shape
+  interval = "1h"                                  # at least 1h
   ```
 - The feed's hosts are added to the outbound allowlist (in its own list, like feed sync). Requests are HTTPS only, with an `If-Modified-Since`/ETag check, a size cap, a timeout and a User-Agent that identifies Heimdall.
 - Use `changes.json` for incremental updates once the full list is cached.
@@ -91,16 +95,13 @@ news_matches  item_id, host_id, kind (confirmed|possible|supply), reason, matche
 
 Matches are recomputed when a feed changes and when a host reports, the same triggers as findings. Closed incidents are kept for 90 days, then pruned.
 
-## Licensing and permission
+## Phase 1 as built
 
-pwn.watch is run by one person ([@thekitze](https://x.com/thekitze)) and doesn't state reuse terms. Before shipping a built-in default:
-
-- **Ask the owner for permission** to have Heimdall fetch the feed and show summaries with attribution.
-- **Attribute every item** ("via pwn.watch", linking to the incident page).
-- **Fetch politely:** respect caching headers and fetch at most hourly.
-- **Keep the source configurable,** so a deployment can point at any compatible feed, or none.
-
-If the answer is no, the feature still works with primary sources only, just with less helpful summaries.
+- **Fetching:** `heimdall serve` fetches each source at startup and every `interval`, and `heimdall feeds sync` does it on demand. The outbound client is allowlisted to the configured sources' hosts only. Requests are HTTPS, send `If-None-Match`/`If-Modified-Since`, time out after 60 seconds, are capped at 8 MB and identify as `heimdall/<version>`. `heimdall feeds status` shows a `news` row.
+- **Validation:** an incident is dropped (and counted in the log) if a field has the wrong type or is too long, its `url` isn't https, its `category`, `status`, `severity` or `patchStatus` isn't a known value, its slug is malformed or repeated, or its dates don't parse. `cveIds` entries that aren't `CVE-YYYY-NNNN…` (for example `GHSA-…` or `MAL-…`) are ignored rather than matched. A feed that fails to download, isn't JSON, or has no valid incidents leaves the stored copy untouched.
+- **Storage:** `news_items` (unique per source and slug), `news_matches` and `news_sources` (the ETag and Last-Modified per source), from migration 0006. Closed incidents are pruned 90 days after they close, and incidents from a source you remove from the config are deleted.
+- **Matching:** an incident affects a host when one of its CVEs is an open finding there, as the advisory's ID or one of its aliases. Matches are recomputed after each news sync, after each full findings sync and after each host report, so a patched host drops off on its next report.
+- **UI:** a News page (newest first; filters for All, Affects me and each category; per incident the severity, category, patch status, a two-line summary, "via <source>" and an "Affects N of your hosts" badge listing the hosts the viewer can see). Findings named by a **live** incident rank right after known-exploited ones and carry an "in the news" badge. Feed text is only ever rendered as escaped text.
 
 ## Phases
 

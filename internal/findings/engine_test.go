@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -21,6 +20,7 @@ import (
 	"github.com/chrisreedio/heimdall/internal/netx"
 	"github.com/chrisreedio/heimdall/internal/snapshot"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/store/storetest"
 )
 
 const (
@@ -85,18 +85,7 @@ type env struct {
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "h.db")
-	if err := store.Create(path); err != nil {
-		t.Fatal(err)
-	}
-	st, err := store.Open(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	if _, err := st.Migrate(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	st := storetest.New(t)
 	ctx := t.Context()
 	st.CreateOrg(ctx, "test", "acme", "")
 	st.CreateEnv(ctx, "test", "acme", "prod", "")

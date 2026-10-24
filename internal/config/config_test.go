@@ -97,6 +97,11 @@ func TestValidate(t *testing.T) {
 		{"plain http UI over the network", func(c *Config) { c.UI.BaseURL = "http://100.64.0.5:8080" }, "only allowed for loopback"},
 		{"UI listening on the network", func(c *Config) { c.UI.Listen = "0.0.0.0:8080" }, "loopback"},
 		{"UI base URL with a path", func(c *Config) { c.UI.BaseURL = "https://heimdall.internal/app" }, "no path"},
+		{"news over http", func(c *Config) { c.News.Sources = []string{"http://pwn.watch/incidents.json"} }, "must be an https URL"},
+		{"news with credentials", func(c *Config) { c.News.Sources = []string{"https://u:p@feed.example/x.json"} }, "credentials"},
+		{"news with no host", func(c *Config) { c.News.Sources = []string{"https:///x.json"} }, "must name a host"},
+		{"news enabled without sources", func(c *Config) { c.News.Enabled, c.News.Sources = true, nil }, "sources is empty"},
+		{"news too often", func(c *Config) { c.News.Enabled, c.News.Interval.Duration = true, 10*time.Minute }, "at least 1h"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -113,6 +118,19 @@ func TestValidate(t *testing.T) {
 	cfg.Ingest.Listen, cfg.Ingest.TLSCert, cfg.Ingest.TLSKey = ":8443", "c.pem", "k.pem"
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("public ingest with TLS should be valid: %v", err)
+	}
+
+	cfg = Default()
+	if cfg.News.Enabled || len(cfg.News.Sources) != 1 || cfg.News.Sources[0] != DefaultNewsSource || cfg.News.Interval.Duration != time.Hour {
+		t.Errorf("news defaults: %+v", cfg.News)
+	}
+	cfg.News.Enabled = true
+	cfg.News.Sources = append(cfg.News.Sources, "https://Feeds.Example.com:8443/incidents.json")
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("news enabled should be valid: %v", err)
+	}
+	if got := cfg.News.Hosts(); len(got) != 2 || got[0] != "pwn.watch" || got[1] != "feeds.example.com" {
+		t.Errorf("news hosts: %v", got)
 	}
 }
 

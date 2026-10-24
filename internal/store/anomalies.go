@@ -14,7 +14,8 @@ import (
 
 // AnomalyRules are the rule names the anomalies table accepts.
 var AnomalyRules = []string{"silence", "replay", "clock_skew", "package_change", "package_downgrade",
-	"kernel_no_reboot", "unexpected_reboot", "collector_changed", "peer_outlier"}
+	"kernel_no_reboot", "unexpected_reboot", "collector_changed", "peer_outlier", "trigger_disabled",
+	"privileged_access", "privilege_watch_disabled"}
 
 // AddAnomaly records an anomaly unless the host has an unexpired
 // suppression for the rule, or an open anomaly with the same rule and
@@ -155,9 +156,13 @@ func containsString(list []string, v string) bool {
 
 // ── Inputs for the rules ───────────────────────────────────────────────────
 
-// SnapshotFacts are the fields anomaly rules compare between snapshots.
+// SnapshotFacts are the fields anomaly rules compare between reports. A
+// report is a stored snapshot or a heartbeat (an unchanged report, which
+// carries its own received time and uptime but shares its snapshot's
+// inventory, kernel and collector).
 type SnapshotFacts struct {
-	ID              int64
+	ID              int64 // the snapshot (for a heartbeat, the one it matched)
+	HeartbeatID     int64 // 0 for a snapshot
 	ReceivedAt      time.Time
 	Kernel          string
 	UptimeSeconds   int64 // -1 if unknown
@@ -165,12 +170,26 @@ type SnapshotFacts struct {
 	CollectorVer    string
 }
 
-// RecentSnapshotFacts returns the host's newest snapshots (newest first).
+// Key identifies the report for anomaly dedupe keys.
+func (f SnapshotFacts) Key() string {
+	if f.HeartbeatID != 0 {
+		return fmt.Sprintf("hb%d", f.HeartbeatID)
+	}
+	return fmt.Sprint(f.ID)
+}
+
+// RecentSnapshotFacts returns the host's newest reports (newest first),
+// snapshots and heartbeats alike.
 func (s *Store) RecentSnapshotFacts(ctx context.Context, hostID int64, n int) ([]SnapshotFacts, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, received_at, coalesce(kernel, ''), coalesce(uptime_seconds, -1),
+		SELECT id, 0 AS hb, received_at, coalesce(kernel, ''), coalesce(uptime_seconds, -1),
 		       coalesce(lower(hex(collector_sha256)), ''), collector_version
-		FROM snapshots WHERE host_id = ? ORDER BY received_at DESC, id DESC LIMIT ?`, hostID, n)
+		FROM snapshots WHERE host_id = ?
+		UNION ALL
+		SELECT s.id, hb.id, hb.received_at, coalesce(s.kernel, ''), coalesce(hb.uptime_seconds, -1),
+		       coalesce(lower(hex(s.collector_sha256)), ''), s.collector_version
+		FROM heartbeats hb JOIN snapshots s ON s.id = hb.snapshot_id WHERE hb.host_id = ?
+		ORDER BY 3 DESC, 2 DESC, 1 DESC LIMIT ?`, hostID, hostID, n)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +198,7 @@ func (s *Store) RecentSnapshotFacts(ctx context.Context, hostID int64, n int) ([
 	for rows.Next() {
 		var f SnapshotFacts
 		var at string
-		if err := rows.Scan(&f.ID, &at, &f.Kernel, &f.UptimeSeconds, &f.CollectorSHA256, &f.CollectorVer); err != nil {
+		if err := rows.Scan(&f.ID, &f.HeartbeatID, &at, &f.Kernel, &f.UptimeSeconds, &f.CollectorSHA256, &f.CollectorVer); err != nil {
 			return nil, err
 		}
 		f.ReceivedAt = parseTime(at)
@@ -188,10 +207,12 @@ func (s *Store) RecentSnapshotFacts(ctx context.Context, hostID int64, n int) ([
 	return out, rows.Err()
 }
 
-// SnapshotCount counts a host's stored snapshots.
+// SnapshotCount counts a host's reports: stored snapshots plus heartbeats.
 func (s *Store) SnapshotCount(ctx context.Context, hostID int64) (int, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM snapshots WHERE host_id = ?`, hostID).Scan(&n)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT (SELECT count(*) FROM snapshots WHERE host_id = ?) + (SELECT count(*) FROM heartbeats WHERE host_id = ?)`,
+		hostID, hostID).Scan(&n)
 	return n, err
 }
 
@@ -247,22 +268,103 @@ func (s *Store) PeerPackages(ctx context.Context, hostID int64, names []string) 
 	return out, peers, rows.Err()
 }
 
+// SilentHost is a host that reported once but not recently.
+type SilentHost struct {
+	IngestHost
+	LastSeenAt time.Time
+	// AlertedFor is the LastSeenAt an immediate silence alert went out for
+	// (zero if none is outstanding).
+	AlertedFor time.Time
+}
+
+// SilenceKey identifies one silence episode: it starts at the last report.
+func SilenceKey(lastSeen time.Time) string { return "since:" + lastSeen.UTC().Format(timeLayout) }
+
 // SilentHosts lists hosts that reported once but not since cutoff.
-func (s *Store) SilentHosts(ctx context.Context, cutoff time.Time) ([]IngestHost, error) {
+func (s *Store) SilentHosts(ctx context.Context, cutoff time.Time) ([]SilentHost, error) {
+	return s.silentHosts(ctx, `h.last_seen_at < ?`, cutoff.UTC().Format(timeLayout))
+}
+
+// SilenceAlertsOutstanding lists hosts with an immediate silence alert sent
+// and not yet followed by a "back" notice. A host whose LastSeenAt is after
+// AlertedFor has reported again.
+func (s *Store) SilenceAlertsOutstanding(ctx context.Context) ([]SilentHost, error) {
+	return s.silentHosts(ctx, `h.silence_alerted_for IS NOT NULL`)
+}
+
+func (s *Store) silentHosts(ctx context.Context, where string, args ...any) ([]SilentHost, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT h.id, h.org_id, o.slug, h.name FROM hosts h JOIN organizations o ON o.id = h.org_id
-		WHERE h.last_seen_at IS NOT NULL AND h.last_seen_at < ?`, cutoff.UTC().Format(timeLayout))
+		SELECT h.id, h.org_id, o.slug, h.name, h.last_seen_at, h.silence_alerted_for
+		FROM hosts h JOIN organizations o ON o.id = h.org_id
+		WHERE h.last_seen_at IS NOT NULL AND `+where+` ORDER BY o.slug, h.name`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []IngestHost
+	var out []SilentHost
 	for rows.Next() {
-		var h IngestHost
-		if err := rows.Scan(&h.ID, &h.OrgID, &h.OrgSlug, &h.Name); err != nil {
+		var h SilentHost
+		var seen string
+		var alerted sql.NullString
+		if err := rows.Scan(&h.ID, &h.OrgID, &h.OrgSlug, &h.Name, &seen, &alerted); err != nil {
 			return nil, err
 		}
+		h.LastSeenAt, h.AlertedFor = parseTime(seen), parseNullTime(alerted)
 		out = append(out, h)
 	}
 	return out, rows.Err()
+}
+
+// SetSilenceAlerted records that an immediate silence alert went out for
+// the episode starting at lastSeen. ClearSilenceAlerted records that the
+// "back" notice went out, so nothing is outstanding.
+func (s *Store) SetSilenceAlerted(ctx context.Context, hostID int64, lastSeen time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE hosts SET silence_alerted_for = ? WHERE id = ?`,
+		lastSeen.UTC().Format(timeLayout), hostID)
+	return err
+}
+
+// ClearSilenceAlerted: see SetSilenceAlerted.
+func (s *Store) ClearSilenceAlerted(ctx context.Context, hostID int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE hosts SET silence_alerted_for = NULL WHERE id = ?`, hostID)
+	return err
+}
+
+// NoteSilenceEnded appends "reported again" to a host's open silence
+// anomaly for an episode, so the Anomalies page shows the gap closed. The
+// anomaly stays open: a host that went quiet and came back is what
+// tampering looks like too, so a person still acknowledges it.
+func (s *Store) NoteSilenceEnded(ctx context.Context, hostID int64, episode, back time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE anomalies SET summary = summary || ?
+		WHERE host_id = ? AND rule = 'silence' AND acknowledged_at IS NULL AND json_extract(detail, '$.key') = ?
+		  AND instr(summary, '; reported again ') = 0`,
+		"; reported again "+back.UTC().Format(time.RFC3339), hostID, SilenceKey(episode))
+	return err
+}
+
+// Suppressed reports whether a rule is muted for a host at a time.
+func (s *Store) Suppressed(ctx context.Context, hostID int64, rule string, at time.Time) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT count(*) FROM anomaly_suppressions WHERE host_id = ? AND rule = ? AND until_at > ?`,
+		hostID, rule, at.UTC().Format(timeLayout)).Scan(&n)
+	return n > 0, err
+}
+
+// HostTriggers returns the host's last reported trigger state ("" if none).
+func (s *Store) HostTriggers(ctx context.Context, hostID int64) (string, error) {
+	var v sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT triggers FROM hosts WHERE id = ?`, hostID).Scan(&v)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return v.String, err
+}
+
+// SetHostTriggers stores the host's trigger state.
+func (s *Store) SetHostTriggers(ctx context.Context, hostID int64, triggers string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE hosts SET triggers = ?, triggers_at = ? WHERE id = ?`,
+		nullString(triggers), at.UTC().Format(timeLayout), hostID)
+	return err
 }

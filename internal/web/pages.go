@@ -16,6 +16,7 @@ import (
 	"github.com/chrisreedio/heimdall/internal/report"
 	"github.com/chrisreedio/heimdall/internal/search"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/triggers"
 	"github.com/chrisreedio/heimdall/internal/updates"
 	"github.com/chrisreedio/heimdall/internal/version"
 )
@@ -107,6 +108,7 @@ type dashBody struct {
 	Tiles    tiles
 	Rows     []hostRow
 	Waiting  []store.Host
+	News     int // incidents in the news affecting a visible host
 }
 
 type tiles struct {
@@ -230,6 +232,10 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 			body.Waiting = append(body.Waiting, h)
 		}
 	}
+	if body.News, err = s.newsAffecting(r, v, org); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
 	s.render(w, r, http.StatusOK, "dashboard", v, "Dashboard", "dashboard", body)
 }
 
@@ -316,8 +322,11 @@ type hostBody struct {
 	Packages        []store.InventoryPackage
 	Commands        []command
 	Anomalies       []store.AnomalyRow
+	Privilege       *privilegeView // nil unless the privilege watch was ever on
 	PackageMgr      string
 	ShowOrgName     bool
+	News            []newsRow // incidents in the news affecting this host
+	ChangeWatch     string    // "on", "off", or "" if the collector doesn't report its triggers
 }
 
 type command struct {
@@ -439,8 +448,25 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		body.CollectorKnown = true
 		body.CollectorBehind = updates.Newer(s.cfg.Version, "v"+strings.TrimPrefix(v, "v"))
 	}
+	if raw, err := s.st.HostTriggers(ctx, host.ID); err == nil {
+		if t, err := triggers.Parse(raw); err == nil {
+			body.ChangeWatch = t.ChangeWatch()
+		}
+	}
 
 	if body.Anomalies, err = s.st.Anomalies(ctx, host.ID); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if s.cfg.News {
+		entries, err := s.st.HostNews(ctx, host.ID)
+		if err != nil {
+			s.fail(w, r, v, err)
+			return
+		}
+		body.News = newsRows(entries)
+	}
+	if body.Privilege, err = s.privilegeFor(ctx, host.ID); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}

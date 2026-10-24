@@ -62,7 +62,10 @@ func cmdServe(a *app, args []string) error {
 		}
 	}
 	tripwires := &anomaly.Engine{Store: s, Now: time.Now, Log: log}
-	go runFindings(a.ctx, syncer, tripwires, cfg.Hosts.StaleAfter.Duration, reported, cfg.Feeds.SyncInterval.Duration, log)
+	startTamperChecks(a.ctx, cfg, s, h, tripwires, log) // fast silence alerts; rules for unchanged reports
+	newsSync := newNewsSyncer(cfg, s, log)
+	go runFindings(a.ctx, syncer, newsSync, tripwires, cfg.Hosts.StaleAfter.Duration, reported,
+		cfg.Feeds.SyncInterval.Duration, cfg.News.Interval.Duration, log)
 	if every := cfg.Notify.Every.Duration; every > 0 {
 		go func() {
 			t := time.NewTicker(every)
@@ -193,6 +196,7 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger) (*http.Ser
 		EntraTenants: cfg.Auth.Entra.AllowedTenants,
 		IngestURL:    cfg.Ingest.PublicURL,
 		Updates:      updateChecker(cfg, log),
+		News:         cfg.News.Enabled,
 	}, s, authn, searchFn, log.With("component", "ui"), time.Now)
 	if err != nil {
 		return nil, err
@@ -208,20 +212,44 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger) (*http.Ser
 	}, nil
 }
 
-func runFindings(ctx context.Context, syncer *findings.Syncer, tripwires *anomaly.Engine, staleAfter time.Duration,
-	reported <-chan store.IngestHost, every time.Duration, log *slog.Logger) {
+// runFindings runs every feed sync and findings update in one goroutine, so
+// they never overlap. news may be nil (threat news off).
+func runFindings(ctx context.Context, syncer *findings.Syncer, news *findings.NewsSyncer, tripwires *anomaly.Engine,
+	staleAfter time.Duration, reported <-chan store.IngestHost, every, newsEvery time.Duration, log *slog.Logger) {
 	first := time.NewTimer(10 * time.Second) // let the listener come up first
 	defer first.Stop()
 	tick := time.NewTicker(every)
 	defer tick.Stop()
+	var newsTick <-chan time.Time
+	if news != nil && newsEvery > 0 {
+		t := time.NewTicker(newsEvery)
+		defer t.Stop()
+		newsTick = t.C
+	}
+	// A failing news feed is logged and recorded in feed status; it never
+	// stops findings or the other feeds.
+	syncNews := func() {
+		if news != nil {
+			news.Run(ctx)
+		}
+	}
+	rematch := func() {
+		if err := news.MatchAll(ctx); err != nil {
+			log.Warn("news matching failed", "err", err)
+		}
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-first.C:
 			syncer.Run(ctx)
+			syncNews()
+		case <-newsTick:
+			syncNews()
 		case <-tick.C:
 			syncer.Run(ctx)
+			rematch()
 			if n, err := tripwires.CheckSilence(ctx, staleAfter); err != nil {
 				log.Warn("silence check failed", "err", err)
 			} else if n > 0 {
@@ -254,6 +282,9 @@ func runFindings(ctx context.Context, syncer *findings.Syncer, tripwires *anomal
 				log.Warn("findings update failed", "host", host.Name, "err", err)
 			} else if r.Ecosystem != "" {
 				log.Info("findings updated", "host", host.Name, "open", r.Findings, "new", r.Added, "resolved", r.Resolved)
+			}
+			if err := news.MatchHost(ctx, host.ID); err != nil {
+				log.Warn("news matching failed", "host", host.Name, "err", err)
 			}
 		}
 	}

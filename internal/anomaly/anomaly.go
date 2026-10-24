@@ -79,12 +79,16 @@ func (e *Engine) OnSnapshot(ctx context.Context, host store.IngestHost) ([]store
 	// Reboots and kernels.
 	elapsed := int64(cur.ReceivedAt.Sub(prev.ReceivedAt).Seconds())
 	if cur.UptimeSeconds >= 0 && prev.UptimeSeconds >= 0 {
-		rebooted := cur.UptimeSeconds < elapsed-300 && cur.UptimeSeconds < prev.UptimeSeconds+elapsed-300
+		// Uptime never goes backwards without a reboot, however close
+		// together the reports are (a report minutes before a reboot, and
+		// the one 3 minutes after boot).
+		rebooted := cur.UptimeSeconds < elapsed-300 && cur.UptimeSeconds < prev.UptimeSeconds+elapsed-300 ||
+			cur.UptimeSeconds > 0 && cur.UptimeSeconds < prev.UptimeSeconds
 		switch {
 		case rebooted && !expected:
 			if err := raise(store.Anomaly{Rule: "unexpected_reboot", Severity: "low",
 				Summary: "Rebooted outside a maintenance window",
-				Detail:  map[string]any{"key": fmt.Sprint(cur.ID), "uptime_seconds": cur.UptimeSeconds}}); err != nil {
+				Detail:  map[string]any{"key": cur.Key(), "uptime_seconds": cur.UptimeSeconds}}); err != nil {
 				return nil, err
 			}
 		case !rebooted && cur.Kernel != prev.Kernel && cur.Kernel != "" && prev.Kernel != "":
@@ -96,7 +100,11 @@ func (e *Engine) OnSnapshot(ctx context.Context, host store.IngestHost) ([]store
 		}
 	}
 
-	// Package changes.
+	// Package changes. An unchanged report (heartbeat) shares its snapshot's
+	// packages, so there is nothing to compare.
+	if prev.ID == cur.ID {
+		return raised, nil
+	}
 	a, err := e.Store.SnapshotPackages(ctx, host.ID, prev.ID)
 	if err != nil {
 		return nil, err
@@ -171,14 +179,7 @@ func (e *Engine) CheckSilence(ctx context.Context, staleAfter time.Duration) (in
 	}
 	n := 0
 	for _, h := range hosts {
-		facts, err := e.Store.RecentSnapshotFacts(ctx, h.ID, 1)
-		if err != nil || len(facts) == 0 {
-			continue
-		}
-		ok, err := e.Store.AddAnomaly(ctx, h.ID, 0, store.Anomaly{Rule: "silence", Severity: "medium",
-			Summary: fmt.Sprintf("No check-in since %s", facts[0].ReceivedAt.UTC().Format(time.RFC3339)),
-			// Keyed by the last snapshot, so each silence is raised once.
-			Detail: map[string]any{"key": fmt.Sprint(facts[0].ID)}}, e.Now())
+		ok, err := e.raiseSilence(ctx, h)
 		if err != nil {
 			return n, err
 		}
@@ -187,6 +188,101 @@ func (e *Engine) CheckSilence(ctx context.Context, staleAfter time.Duration) (in
 		}
 	}
 	return n, nil
+}
+
+// raiseSilence records a host's silence. It's keyed by the last report's
+// time, so each silence episode is raised once, whether the fast check
+// (hosts.alert_after) or the stale check (hosts.stale_after) sees it first.
+func (e *Engine) raiseSilence(ctx context.Context, h store.SilentHost) (bool, error) {
+	return e.Store.AddAnomaly(ctx, h.ID, 0, store.Anomaly{Rule: "silence", Severity: "medium",
+		Summary: fmt.Sprintf("No check-in since %s", h.LastSeenAt.UTC().Format(time.RFC3339)),
+		Detail:  map[string]any{"key": store.SilenceKey(h.LastSeenAt)}}, e.Now())
+}
+
+// SilenceAlerts is what the fast silence check found: hosts to alert on
+// now, and hosts that reported again after an alert.
+type SilenceAlerts struct {
+	Silent []store.SilentHost
+	Back   []store.SilentHost
+}
+
+// CheckFastSilence is the dead man's switch: hosts that reported before
+// and have been quiet for longer than alertAfter get a silence anomaly and
+// are returned for an immediate notification, once per silence episode.
+// Hosts in a maintenance window, or with the silence rule suppressed, are
+// skipped. The caller sends the notices, then calls MarkSilenceAlerts.
+func (e *Engine) CheckFastSilence(ctx context.Context, alertAfter time.Duration) (SilenceAlerts, error) {
+	var out SilenceAlerts
+	if alertAfter <= 0 {
+		return out, nil
+	}
+	now := e.Now()
+	back, err := e.Store.SilenceAlertsOutstanding(ctx)
+	if err != nil {
+		return out, err
+	}
+	for _, h := range back {
+		if h.LastSeenAt.After(h.AlertedFor) {
+			if err := e.Store.NoteSilenceEnded(ctx, h.ID, h.AlertedFor, h.LastSeenAt); err != nil {
+				return out, err
+			}
+			out.Back = append(out.Back, h)
+		}
+	}
+	silent, err := e.Store.SilentHosts(ctx, now.Add(-alertAfter))
+	if err != nil {
+		return out, err
+	}
+	for _, h := range silent {
+		if h.AlertedFor.Equal(h.LastSeenAt) {
+			continue // already alerted for this episode
+		}
+		// Only hosts that report more often than alertAfter: a collector
+		// still on a daily timer would otherwise alert every day (the stale
+		// check covers it). Going quiet always leaves the last gap short, so
+		// this can't be gamed without first raising this alert.
+		facts, err := e.Store.RecentSnapshotFacts(ctx, h.ID, 2)
+		if err != nil {
+			return out, err
+		}
+		if len(facts) < 2 || facts[0].ReceivedAt.Sub(facts[1].ReceivedAt) > alertAfter {
+			continue
+		}
+		if muted, err := e.Store.Suppressed(ctx, h.ID, "silence", now); err != nil || muted {
+			if err != nil {
+				return out, err
+			}
+			continue
+		}
+		windows, err := e.Store.WindowsFor(ctx, h.ID)
+		if err != nil {
+			return out, err
+		}
+		if slices.ContainsFunc(windows, func(w store.Window) bool { return w.Overlaps(now, now) }) {
+			continue // planned downtime; alerts once the window is over if still quiet
+		}
+		if _, err := e.raiseSilence(ctx, h); err != nil {
+			return out, err
+		}
+		out.Silent = append(out.Silent, h)
+	}
+	return out, nil
+}
+
+// MarkSilenceAlerts records that the notices for a check went out, so the
+// same episode isn't alerted again and a "back" notice is sent only once.
+func (e *Engine) MarkSilenceAlerts(ctx context.Context, a SilenceAlerts) error {
+	for _, h := range a.Back {
+		if err := e.Store.ClearSilenceAlerted(ctx, h.ID); err != nil {
+			return err
+		}
+	}
+	for _, h := range a.Silent {
+		if err := e.Store.SetSilenceAlerted(ctx, h.ID, h.LastSeenAt); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func changeNames(cs []history.Change, max int) string {
