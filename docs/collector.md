@@ -58,7 +58,7 @@ Start-ScheduledTask -TaskName 'Heimdall collector'    # first push now
 
 The installer sets up two scheduled tasks running as **`NT AUTHORITY\LocalService`**, a built-in low-privilege account, with the least privilege (see [When it reports](#when-windows-reports)). The token goes in `C:\ProgramData\Heimdall\token`, with permissions limited to LocalService (read), SYSTEM and Administrators. It never appears on a command line.
 
-**Upgrading:** download the new release's `install-windows.ps1`, `collect.ps1` and `SHA256SUMS` and run the installer again, the same way. It replaces `collect.ps1` and both tasks (an install from before v0.4.13 has its daily task replaced by the hourly one) and keeps the hub URL; press Enter at the token prompt to keep the current token. There's no `heimdall-collect upgrade` on Windows yet. When the hub runs a newer release, `collect.ps1 -Push` says so on stderr.
+**Upgrading:** download the new release's `install-windows.ps1`, `collect.ps1` and `SHA256SUMS` and run the installer again, the same way. It replaces `collect.ps1` and both tasks (an install from before v0.4.14 has its daily task replaced by the hourly one) and keeps the hub URL; press Enter at the token prompt to keep the current token. There's no `heimdall-collect upgrade` on Windows yet. When the hub runs a newer release, `collect.ps1 -Push` says so on stderr.
 
 **Try it without installing:** `powershell -File collect.ps1 -Print` shows exactly what would be sent.
 
