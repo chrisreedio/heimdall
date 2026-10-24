@@ -186,8 +186,22 @@ func (s *Syncer) syncOSV(ctx context.Context) error {
 		resolved += r.Resolved
 	}
 	s.Log.Info("findings updated", "hosts", len(results), "new", added, "resolved", resolved)
+	if err != nil {
+		return err
+	}
+	// Every installed package's query result was refreshed just now, so
+	// results older than this are for versions no host has any more.
+	keep := max(advisoryKeep, 2*s.Engine.MaxAge)
+	n, err := s.Store.PruneAdvisories(ctx, s.Now().Add(-keep))
+	if n > 0 {
+		s.Log.Info("findings: pruned advisories nothing refers to", "count", n)
+	}
 	return err
 }
+
+// advisoryKeep is how long a query result (and the advisories only it
+// refers to) outlives the last host that had the package version.
+const advisoryKeep = 30 * 24 * time.Hour
 
 // HostRuntimes derives language runtimes from a host's packages. The
 // runtime names match endoflife.date product slugs (php, nodejs, python).

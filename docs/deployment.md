@@ -64,6 +64,16 @@ Follow the [quick start](../README.md#quick-start), then:
 
 (`hd` = `sudo heimdall`: on an installed hub it runs as `heimdall-hub` with `/etc/heimdall/heimdall.toml`)
 
+## Database size
+
+The hub doesn't download whole advisory databases. For each package version a host reports, it asks OSV's batch query API which advisories apply (`api.osv.dev/v1/querybatch`, sending only ecosystem, package name and version). It then fetches just those advisories. A new host on a new release or ecosystem (say the first Debian 13 server, or a site's first `package-lock.json`) is queried when it first reports, so its findings appear within seconds, without waiting for the next sync.
+
+Each advisory is stored as its summary, severity, CVSS score, aliases and affected ranges for every ecosystem the record lists, so a host on another release still matches. A compressed copy of the record is kept as well. Bulk the matcher never reads is dropped: the explicit lists of affected versions, the package URLs, and Ubuntu's per-binary lists, which make a single kernel CVE record up to 2 MB. Advisories that no finding and no recent query refers to are pruned after each sync. Query results for package versions no host has had for 30 days are pruned too.
+
+Expect **tens of megabytes**. A demo hub with 12 hosts (Debian, Ubuntu, Rocky, Alpine, Arch, Windows) and 4,745 open findings is 17 MB. Before v0.4.16, hubs kept every record verbatim, which came to 1.7 GB for that demo hub and 3.8 GB for three Ubuntu 24.04 servers.
+
+Check the size with `ls -lh /var/lib/heimdall/` (or wherever `database` points). Backups (`hd backup`) are compact copies.
+
 ## Backups
 
 ```sh
@@ -93,6 +103,16 @@ The installer verifies the release, then:
 4. Trusts the release's collector checksum, so servers that update don't raise "collector changed" anomalies.
 
 Your config, data, Tailscale and Caddy settings and the unit's `LoadCredential` lines are kept. If the new version doesn't come up, its log is printed before the rollback.
+
+Only the most recent `heimdall.db.pre-upgrade` is kept: each upgrade replaces it. It's a full copy, so the disk needs room for the database twice. Delete it once you're happy with the new version.
+
+**Upgrading to v0.4.16 or later from an earlier release** shrinks the database once. `heimdall migrate`, which the installer runs while the hub is stopped, converts every stored advisory to the slim, compressed form (see [Database size](#database-size)). It then reclaims the space with SQLite's `VACUUM`:
+- **Time:** about two seconds per 500 MB of database on a fast disk. On a t3.micro with a gp3 volume, a 3.8 GB database should take a minute or two (not measured on one). The installer's `cp` of the pre-upgrade copy takes about as long.
+- **Disk:** the pre-upgrade copy (the full old size) plus about twice the *new* size (tens of MB) for the `VACUUM`. The database file itself only shrinks.
+- **Memory:** about 130 MB peak. The conversion reads one advisory at a time and commits every 16 MB, so the WAL stays at a few tens of MB.
+- **Interrupted?** It's safe. Each batch and the `VACUUM` are transactions, so a crash or `kill -9` leaves a consistent database. Run `sudo heimdall migrate` again to finish (the installer rolls back to the pre-upgrade copy if migrate fails). If the disk is too full to compact, migrate says so and leaves the file as it is. Free some space and run it again.
+
+Every later `heimdall migrate` compacts again if at least a quarter of the file (and at least 64 MB) is free pages, so the file stays small.
 
 **Upgrade servers** after the hub, with one command on each:
 ```sh

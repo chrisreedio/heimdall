@@ -317,6 +317,11 @@ func (e *Engine) fetchAdvisory(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
+	// Ranges and ratings come from the full record; only the stored copy
+	// is slimmed. Vuln has parsed raw, so Slim can't fail on it.
+	if slim, err := osv.Slim(raw); err == nil {
+		raw = slim
+	}
 	return e.Store.PutAdvisory(ctx, toAdvisory(v, raw))
 }
 

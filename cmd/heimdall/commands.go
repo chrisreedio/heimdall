@@ -111,7 +111,7 @@ func cmdMigrate(a *app, args []string) error {
 		return err
 	}
 	fmt.Fprintf(a.stderr, "schema at version %d\n", v)
-	return nil
+	return tidyDatabase(a, s, cfg.Database)
 }
 
 func cmdOrgCreate(a *app, args []string) error {

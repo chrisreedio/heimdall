@@ -156,7 +156,7 @@ type Advisory struct {
 	Summary   string
 	Severity  string // critical, high, medium, low, unknown
 	CVSS      float64
-	Raw       []byte
+	Raw       []byte // the OSV record as stored (see osv.Slim); compressed at rest
 	Aliases   []string
 	Ranges    []AffectedRange
 }
@@ -180,17 +180,31 @@ func (s *Store) PutAdvisory(ctx context.Context, a Advisory) error {
 	if a.Severity == "" {
 		a.Severity = "unknown"
 	}
+	record, err := compressRecord(a.Raw)
+	if err != nil {
+		return err
+	}
 	return s.tx(ctx, func(tx *sql.Tx) error {
-		// ON DELETE CASCADE clears old aliases and ranges.
-		if _, err := tx.ExecContext(ctx, `DELETE FROM advisories WHERE id = ?`, a.ID); err != nil {
+		// An upsert, not delete-and-insert: deleting would cascade to every
+		// host's findings for the advisory (and their first-seen times).
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO advisories (id, modified, published, withdrawn, summary, severity, cvss_score, raw, record)
+			VALUES (?, ?, ?, ?, ?, ?, ?, '', ?)
+			ON CONFLICT (id) DO UPDATE SET
+				modified = excluded.modified, published = excluded.published, withdrawn = excluded.withdrawn,
+				summary = excluded.summary, severity = excluded.severity, cvss_score = excluded.cvss_score,
+				raw = '', record = excluded.record`,
+			a.ID, a.Modified.UTC().Format(time.RFC3339Nano), nullTime(a.Published), withdrawn,
+			a.Summary, a.Severity, cvss, record); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO advisories (id, modified, published, withdrawn, summary, severity, cvss_score, raw)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-			a.ID, a.Modified.UTC().Format(time.RFC3339Nano), nullTime(a.Published), withdrawn,
-			a.Summary, a.Severity, cvss, string(a.Raw)); err != nil {
-			return err
+		for _, q := range []string{
+			`DELETE FROM advisory_aliases WHERE advisory_id = ?`,
+			`DELETE FROM affected_ranges WHERE advisory_id = ?`,
+		} {
+			if _, err := tx.ExecContext(ctx, q, a.ID); err != nil {
+				return err
+			}
 		}
 		for _, alias := range a.Aliases {
 			if _, err := tx.ExecContext(ctx,
