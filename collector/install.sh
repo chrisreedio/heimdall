@@ -112,7 +112,7 @@ fetch() { # fetch NAME into $work
 }
 
 say "Fetching Heimdall collector $version"
-units='heimdall-collect.service heimdall-collect.timer heimdall-collect-soon.timer heimdall-collect-changes.service heimdall-collect-changes.path'
+units='heimdall-collect.service heimdall-collect.timer heimdall-collect-boot.timer heimdall-collect-soon.timer heimdall-collect-changes.service heimdall-collect-changes.path'
 for f in SHA256SUMS collect.sh $units privilege-watch.sh privilege-hook; do fetch "$f"; done
 if fetch_sig=$(fetch SHA256SUMS.sigstore.json 2>/dev/null && echo ok) && [ "$fetch_sig" = ok ] && have cosign; then
 	say "Verifying the Sigstore signature on SHA256SUMS"
@@ -167,7 +167,7 @@ apt_hook=/etc/apt/apt.conf.d/80heimdall-collect
 apk_hook=/etc/apk/commit_hooks.d/heimdall-collect
 if [ -d /run/systemd/system ] && have systemctl; then
 	sed "s#/etc/heimdall/collect.env#$conf/collect.env#" "$work/heimdall-collect.service" >/etc/systemd/system/heimdall-collect.service
-	for f in heimdall-collect.timer heimdall-collect-soon.timer heimdall-collect-changes.service; do
+	for f in heimdall-collect.timer heimdall-collect-boot.timer heimdall-collect-soon.timer heimdall-collect-changes.service; do
 		install -m 0644 "$work/$f" /etc/systemd/system/
 	done
 	# Report after package changes: watch only the databases this box has.
@@ -196,6 +196,8 @@ if [ -d /run/systemd/system ] && have systemctl; then
 		/etc/periodic/hourly/heimdall-collect /etc/cron.hourly/heimdall-collect
 	systemctl daemon-reload
 	systemctl enable --now heimdall-collect.timer >/dev/null 2>&1
+	# Enabled for the next boot only: started now it would fire at once.
+	systemctl enable heimdall-collect-boot.timer >/dev/null 2>&1
 	scheduler="systemd timer (hourly, and 3 minutes after boot)"
 	if [ "$watching" = 1 ]; then
 		systemctl enable heimdall-collect-changes.path >/dev/null 2>&1

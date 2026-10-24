@@ -1,0 +1,16 @@
+# Heimdall collector: one report 3 minutes after boot, so the hub sees the
+# reboot and clears "reboot required". Its own timer because systemd applies
+# RandomizedDelaySec to every trigger on a timer: on the hourly timer, the
+# boot report would land anywhere from 3 to 18 minutes after boot.
+
+[Unit]
+Description=Heimdall inventory push after boot
+Documentation=https://github.com/chrisreedio/heimdall/blob/main/docs/collector.md
+
+[Timer]
+OnBootSec=3min
+AccuracySec=10s
+Unit=heimdall-collect.service
+
+[Install]
+WantedBy=timers.target

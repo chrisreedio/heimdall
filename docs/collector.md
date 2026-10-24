@@ -137,18 +137,19 @@ sudo install -m 0400 -o heimdall /dev/stdin /etc/heimdall/token   # paste the to
 
 # 4. Point it at the hub and schedule it
 sudo install -m 0644 collect.env.example /etc/heimdall/collect.env   # set HEIMDALL_URL
-sudo install -m 0644 heimdall-collect.service heimdall-collect.timer heimdall-collect-soon.timer \
+sudo install -m 0644 heimdall-collect.service heimdall-collect.timer heimdall-collect-boot.timer heimdall-collect-soon.timer \
   heimdall-collect-changes.service heimdall-collect-changes.path /etc/systemd/system/
 #    (optional) delete the PathChanged= lines in heimdall-collect-changes.path for package
 #    managers this box doesn't have; install.sh does that for you
 sudo systemctl enable --now heimdall-collect.timer heimdall-collect-changes.path
+sudo systemctl enable heimdall-collect-boot.timer   # next boot on; started now it would fire at once
 
 # 5. Push once now and check the result
 sudo systemctl start heimdall-collect.service
 journalctl -u heimdall-collect -n 5
 ```
 
-The service runs as `heimdall` under systemd sandboxing (`systemd-analyze security` rates it 1.6), with the filesystem read-only, no capabilities and a restricted set of system calls. The timer fires hourly, at a fixed random offset of up to 15 minutes per host, and 3 minutes after boot.
+The service runs as `heimdall` under systemd sandboxing (`systemd-analyze security` rates it 1.6), with the filesystem read-only, no capabilities and a restricted set of system calls. The timer fires hourly, at a fixed random offset of up to 15 minutes per host. A separate `heimdall-collect-boot.timer` reports 3 minutes after boot, with no random delay.
 
 **Collecting on the hub's own box?** The hub owns `/etc/heimdall`, so give the collector its own directory, e.g. `/etc/heimdall-collect`. Set `HEIMDALL_TOKEN_FILE` in its env file and `EnvironmentFile=` in the unit.
 
@@ -159,7 +160,7 @@ The service runs as `heimdall` under systemd sandboxing (`systemd-analyze securi
 | When | systemd | Without systemd | Windows |
 |---|---|---|---|
 | Hourly | `heimdall-collect.timer`: a fixed random offset of up to 15 minutes past each hour | cron (`/etc/periodic/hourly` or `/etc/cron.hourly`), after a random delay of up to 15 minutes | The `Heimdall collector` task, with a random delay of up to 15 minutes |
-| After boot | 3 minutes after boot (`OnBootSec=3min`), so the hub sees the reboot and clears "reboot required" | Not yet | 3 minutes after boot, the same task |
+| After boot | `heimdall-collect-boot.timer`, 3 minutes after boot (`OnBootSec=3min`, no random delay), so the hub sees the reboot and clears "reboot required" | Not yet | 3 minutes after boot, the same task |
 | After package changes | About a minute after the last change: `heimdall-collect-changes.path` | About a minute after the last change: an apk commit hook or an apt `DPkg::Post-Invoke` hook | About a minute after the last Windows Installer install or removal, or Windows Update install: the `Heimdall collector (changes)` task, see [Windows](#when-windows-reports) |
 | After a deploy | One line in your deploy script, see [below](#report-after-deploys) | The same, with `soon.sh` | `Start-ScheduledTask -TaskName 'Heimdall collector'` (as Administrator) |
 
