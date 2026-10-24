@@ -199,6 +199,24 @@ type Notify struct {
 	SMTPUsername  string   `toml:"smtp_username"`
 	Webhook       bool     `toml:"webhook"`        // URL from credential "heimdall-webhook"
 	WebhookFormat string   `toml:"webhook_format"` // "slack" or "json"
+	// Destinations are chat and webhook destinations, "slack:<name>",
+	// "discord:<name>" or "webhook:<name>" (JSON). Their URLs are
+	// credentials, stored by `heimdall notify set-webhook`, never here.
+	Destinations []string `toml:"destinations"`
+	// AlertAnomalies sends high-signal anomalies (watches disabled,
+	// privileged access outside a window, high severity) right away.
+	AlertAnomalies bool `toml:"alert_anomalies"`
+}
+
+var notifyDestRe = regexp.MustCompile(`^(slack|discord|webhook):([a-z0-9][a-z0-9-]{0,31})$`)
+
+// NotifyDestination splits "slack:ops" into its kind and name.
+func NotifyDestination(s string) (kind, name string, ok bool) {
+	m := notifyDestRe.FindStringSubmatch(s)
+	if m == nil {
+		return "", "", false
+	}
+	return m[1], m[2], true
 }
 
 type UI struct {
@@ -282,7 +300,7 @@ func Default() Config {
 			EndOfLife:    true,
 		},
 		Hosts:   Hosts{StaleAfter: Duration{72 * time.Hour}, AlertAfter: Duration{3 * time.Hour}, KeepFor: Duration{180 * 24 * time.Hour}, KeepMin: 30},
-		Notify:  Notify{SMTPPort: 587, WebhookFormat: "slack"},
+		Notify:  Notify{SMTPPort: 587, WebhookFormat: "slack", AlertAnomalies: true},
 		MCP:     MCP{Listen: "127.0.0.1:8090", BaseURL: "http://127.0.0.1:8090"},
 		Updates: Updates{Check: true},
 		News:    News{Sources: []string{DefaultNewsSource}, Interval: Duration{time.Hour}},
@@ -412,9 +430,16 @@ func (c Config) Validate() error {
 			add("mcp.base_url: must be https (plain http only for loopback)")
 		}
 	}
+	for i, d := range c.Notify.Destinations {
+		if _, _, ok := NotifyDestination(d); !ok {
+			add("notify.destinations: %q must be slack:<name>, discord:<name> or webhook:<name> (name: a-z, 0-9, -)", d)
+		} else if slices.Contains(c.Notify.Destinations[:i], d) {
+			add("notify.destinations: %q is listed twice", d)
+		}
+	}
 	if n := c.Notify; n.Every.Duration > 0 {
-		if len(n.EmailTo) == 0 && !n.Webhook {
-			add("notify: every is set but neither email_to nor webhook is configured")
+		if len(n.EmailTo) == 0 && !n.Webhook && len(n.Destinations) == 0 {
+			add("notify: every is set but no destination is configured (email_to, webhook or destinations)")
 		}
 		if len(n.EmailTo) > 0 && (n.SMTPHost == "" || n.EmailFrom == "") {
 			add("notify: email needs smtp_host and email_from")

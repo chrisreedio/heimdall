@@ -25,6 +25,10 @@ ExecStart=/usr/local/bin/heimdall -c /etc/heimdall/heimdall.toml serve
 # Optional AI analysis ([ai]): the Azure API key, likewise. `sudo heimdall
 # ai set-key` stores it and uncomments this line.
 #LoadCredential=heimdall-ai:/etc/heimdall/ai-key
+# Slack, Discord and webhook notify destinations ([notify] destinations):
+# `sudo heimdall notify set-webhook <kind> <name>` stores each URL in
+# /etc/heimdall/notify-<kind>-<name> and adds its line here, e.g.
+#LoadCredential=heimdall-notify-slack-ops:/etc/heimdall/notify-slack-ops
 Restart=on-failure
 RestartSec=5s
 

@@ -344,7 +344,7 @@ func TestWebhookRejects(t *testing.T) {
 		}
 	}
 	// Transport errors don't echo the URL (Slack URLs embed a secret).
-	w := &Webhook{URL: "https://127.0.0.1:1/secret-token", Format: "json", Client: &http.Client{Timeout: time.Second}}
+	w := &Webhook{URL: "https://127.0.0.1:1/secret-token", Format: "json", Client: &http.Client{Timeout: time.Second}, Retry: Retry{Attempts: 1}}
 	if err := w.Send(t.Context(), sample()); err == nil || strings.Contains(err.Error(), "secret-token") {
 		t.Errorf("transport error = %v", err)
 	}

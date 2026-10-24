@@ -81,16 +81,25 @@ check = true
 
 [notify]
 # Counts-only digest (no hostnames, packages or CVEs), e.g. every = "24h".
-# The same channels get immediate silence alerts (hosts.alert_after), which
-# name the quiet hosts and nothing else.
+# The same destinations get immediate alerts: hosts gone silent
+# (hosts.alert_after) or back, and new high-signal anomalies (change or
+# privilege watch disabled, privileged access outside a window, anything
+# high severity). Alerts name org/host and a fixed label, nothing else.
 every          = "0"
+# Slack and Discord (and named JSON webhooks): each one's URL is a secret,
+# stored with `sudo heimdall notify set-webhook <slack|discord|webhook> <name>`
+# (never echoed, never in this file), which also adds it here. Several at once
+# is fine. Check with `sudo heimdall notify test`.
+# destinations = ["slack:ops", "discord:alerts"]
+alert_anomalies = true               # false = only silence alerts and the digest
 # email_to     = ["ops@example.com"]
 # email_from   = "heimdall@example.com"
 # smtp_host    = "smtp.example.com"
 smtp_port      = 587                 # STARTTLS required; 465 = implicit TLS
 # smtp_username = "heimdall"         # password: systemd credential "heimdall-smtp"
+# The original generic webhook (still supported; prefer destinations above):
 webhook        = false               # URL: systemd credential "heimdall-webhook"
-webhook_format = "slack"
+webhook_format = "slack"             # "slack" = {"text": …}; "json" = the raw digest/alert
 
 [ai]
 # Optional server-side analysis with YOUR OWN Azure AI Foundry / Azure

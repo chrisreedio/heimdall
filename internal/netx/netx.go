@@ -39,6 +39,14 @@ var UpgradeHosts = []string{"api.github.com", "github.com", "release-assets.gith
 // from FeedHosts so feed sync can never reach the identity provider.
 var EntraHosts = []string{"login.microsoftonline.com"}
 
+// SlackHosts and DiscordHosts are the only hosts the Slack and Discord
+// notify destinations may reach (each destination gets its own client).
+// A generic [notify] webhook may reach its own URL's host only.
+var (
+	SlackHosts   = []string{"hooks.slack.com"}
+	DiscordHosts = []string{"discord.com"}
+)
+
 // ErrNotAllowed is returned for any request outside the allowlist.
 var ErrNotAllowed = errors.New("outbound request not allowed")
 

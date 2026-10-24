@@ -41,7 +41,7 @@ func TestAlertWebhook(t *testing.T) {
 	var slack map[string]string
 	json.Unmarshal(got, &slack)
 	if !strings.HasPrefix(slack["text"], "Heimdall: 2 hosts stopped reporting") || !strings.Contains(slack["text"], "  acme/web-01\n") ||
-		!strings.Contains(slack["text"], "more than 3h0m0s") {
+		!strings.Contains(slack["text"], "more than 3h,") {
 		t.Errorf("slack payload = %s", got)
 	}
 
