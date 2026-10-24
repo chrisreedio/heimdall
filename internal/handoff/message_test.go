@@ -82,7 +82,8 @@ func TestBuildPayload(t *testing.T) {
 			{Ecosystem: "composer", Name: "guzzlehttp/guzzle", Installed: "7.9.2", Fixed: "7.9.3", Advisories: []string{"GHSA-1111-2222-3333"}},
 			// The highest fix of the package's advisories.
 			{Ecosystem: "composer", Name: "laravel/framework", Installed: "11.31.0", Fixed: "11.44.1",
-				Advisories: []string{"GHSA-aaaa-bbbb-cccc", "GHSA-dddd-eeee-ffff"}},
+				Advisories: []string{"GHSA-aaaa-bbbb-cccc", "GHSA-dddd-eeee-ffff"},
+				Fixes:      []Fix{{"GHSA-aaaa-bbbb-cccc", "11.44.1"}, {"GHSA-dddd-eeee-ffff", "11.36.0"}}},
 			{Ecosystem: "npm", Name: "@babel/core", Installed: "7.24.0", Fixed: "7.26.10", Advisories: []string{"GHSA-4444-5555-6666"},
 				Lockfile: "/home/forge/example.com/package-lock.json"},
 		},
@@ -198,5 +199,26 @@ func TestBuildFitsDiscordLimit(t *testing.T) {
 	}
 	if strings.Count(d.Command, "/") != len(d.Packages) {
 		t.Errorf("command names %q, not the listed packages", d.Command)
+	}
+}
+
+// A fix only on the next major is flagged, and the instruction asks the bot
+// not to make the major upgrade silently.
+func TestMajorUpgrade(t *testing.T) {
+	pkgs := Packages([]Finding{
+		{Ecosystem: "composer", Package: "laravel/framework", Installed: "11.31.0", Fixed: "11.44.1", Advisory: "GHSA-aaaa-bbbb-cccc"},
+		{Ecosystem: "composer", Package: "laravel/framework", Installed: "11.31.0", Fixed: "12.69.0", Advisory: "GHSA-dddd-eeee-ffff"},
+		{Ecosystem: "composer", Package: "guzzlehttp/guzzle", Installed: "7.9.2", Fixed: "7.9.3", Advisory: "GHSA-1111-2222-3333"},
+	})
+	if len(pkgs) != 2 || pkgs[0].MajorUpgrade || pkgs[0].Fixes != nil {
+		t.Fatalf("guzzle: %+v", pkgs)
+	}
+	l := pkgs[1]
+	if !l.MajorUpgrade || l.Fixed != "12.69.0" || len(l.Fixes) != 2 || l.Fixes[0].Fixed != "11.44.1" {
+		t.Errorf("laravel: %+v", l)
+	}
+	if !strings.Contains(prose("123456789012345678", true, true, false, true, 0), "Major upgrade") ||
+		strings.Contains(prose("123456789012345678", true, true, false, false, 0), "Major upgrade") {
+		t.Error("the major-upgrade note should appear only when needed")
 	}
 }

@@ -241,7 +241,7 @@ One Discord message, under Discord's 2,000-character limit. It starts with a men
 ```
 ````
 
-- `packages` lists each fixable package once, with the highest fixed version among its advisories (so one update fixes them all) and up to 5 advisory IDs. npm packages carry `"ecosystem": "npm"` and their `lockfile`. If the list doesn't fit, the last packages are left out, `omitted_packages` says how many, and the text says so.
+- `packages` lists each fixable package once, with the highest fixed version among its advisories (so one update fixes them all) and up to 5 advisory IDs. When the advisories' fixes differ, `fixes` lists each advisory's own fixed version, so a bot can see what a smaller update already fixes. `major_upgrade: true` marks a package whose `fixed` is a newer major version than `installed` (for example Laravel 11 to 12, when one advisory is only fixed on 12); the text then asks the bot not to make that upgrade silently and to say so at the top of the PR. npm packages carry `"ecosystem": "npm"` and their `lockfile`. If the list doesn't fit, the last packages are left out, `omitted_packages` says how many, and the text says so.
 - `command` is the same `composer update … --with-dependencies` the site page offers, for the Composer packages listed. There's no npm command.
 - `repo` is `null` when unknown. `requested_by` is the operator's display name, never their email.
 - In the JSON, `@` and `` ` `` are written as `\u0040` and `\u0060` (as well as Go's usual escaping of `<`, `>` and `&`), so no value can form a mention or close the code block. Any JSON parser reads them back unchanged.
