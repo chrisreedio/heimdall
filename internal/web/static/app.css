@@ -785,4 +785,39 @@ table.host-list .ver { font-size: 12px; }
   table.cards-sm td.zero { display: none; }
   table.cards-sm td[data-label]::before { content: attr(data-label) " "; color: var(--muted); font-size: 12px; font-weight: 400; }
   .list-bar { gap: 8px; }
+
+/* AI assistants page (/account/assistants): personal MCP tokens and
+   per-client setup. The "AI assistants" link sits beside the email. */
+.who .who-link { color: var(--text); padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
+.who .who-link[aria-current="page"] { background: var(--code-bg); font-weight: 600; }
+.assistants { max-width: 960px; }
+.assistants .card h2 { margin: 0 0 8px; font-size: 17px; }
+.assistants .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.token-new { border-left: 4px solid var(--ok-fg); }
+.token-new p { margin: 0 0 10px; }
+.token-new .hint { margin: 10px 0 0; }
+.token-new .codebox code { font-size: 14px; }
+table.tokens td { vertical-align: middle; }
+table.tokens .token-name { font-weight: 600; overflow-wrap: anywhere; }
+table.tokens .token-act { text-align: right; width: 1%; white-space: nowrap; }
+table.tokens .token-act form.inline { margin: 0; }
+.token-form { margin-top: 16px; }
+#cl-desktop:checked ~ #panel-desktop, #cl-code:checked ~ #panel-code, #cl-other:checked ~ #panel-other { display: block; }
+.assistants .panel > p:first-child { margin-top: 0; }
+.setup-steps { margin: 12px 0; padding-left: 22px; max-width: 72ch; }
+.setup-steps li { margin: 6px 0; }
+.assistants details { margin-top: 14px; }
+.assistants details summary { cursor: pointer; font-weight: 600; }
+.assistants details .codebox { margin-top: 10px; }
+.assistants .panel .codebox + details, .assistants .panel .codebox + .hint { margin-top: 10px; }
+dl.conn { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 10px 16px; align-items: center; margin: 0; }
+dl.conn dt { font-weight: 600; }
+dl.conn dd { margin: 0; min-width: 0; }
+.assistants .why { margin-top: 18px; max-width: 80ch; }
+@media (max-width: 560px) {
+  dl.conn { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  dl.conn dd { margin-bottom: 8px; }
+  .token-form label, .token-form input { width: 100%; }
+  table.tokens .created { display: none; }
+  .card form.row.token-form input:not([type=checkbox]) { min-width: 0; }
 }

@@ -1,0 +1,256 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package web
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/chrisreedio/heimdall/internal/auth"
+	"github.com/chrisreedio/heimdall/internal/mcpb"
+	"github.com/chrisreedio/heimdall/internal/store"
+)
+
+// MCPSetup is what the UI needs to know about the [mcp] endpoint.
+type MCPSetup struct {
+	Enabled bool
+	BaseURL string // mcp.base_url, the address clients use
+}
+
+const (
+	maxMCPTokens     = 10               // active tokens per user
+	tokenCreateLimit = 5                // creations per user...
+	tokenCreateEvery = 10 * time.Minute // ...per this window
+)
+
+// tokenLimiter caps how fast one user can mint tokens (in memory; a
+// restart resets it, which is fine for a speed bump on top of the cap).
+type tokenLimiter struct {
+	mu   sync.Mutex
+	seen map[int64][]time.Time
+}
+
+func (l *tokenLimiter) allow(userID int64, now time.Time) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.seen == nil {
+		l.seen = map[int64][]time.Time{}
+	}
+	var recent []time.Time
+	for _, t := range l.seen[userID] {
+		if now.Sub(t) < tokenCreateEvery {
+			recent = append(recent, t)
+		}
+	}
+	if len(recent) >= tokenCreateLimit {
+		l.seen[userID] = recent
+		return false
+	}
+	l.seen[userID] = append(recent, now)
+	return true
+}
+
+type tokenRow struct {
+	ID       int64
+	Name     string
+	Created  *time.Time
+	LastUsed *time.Time // nil = never
+}
+
+type assistantsBody struct {
+	Enabled  bool
+	Endpoint string // <base_url>/mcp
+	BaseURL  string
+	Tokens   []tokenRow
+	Max      int
+	Full     bool // at the cap
+	NewToken string
+	NewName  string
+	Notice   string
+	Error    string
+	Desktop  string // claude_desktop_config.json fallback
+	Code     string // Claude Code, POSIX shells
+	CodePS   string // Claude Code, PowerShell
+}
+
+var assistantNotices = map[string]string{
+	"revoked": "Token revoked. Anything using it stops working on its next request.",
+}
+
+func (s *server) mcpEndpoint() string {
+	return strings.TrimRight(s.cfg.MCP.BaseURL, "/") + "/mcp"
+}
+
+func (s *server) assistantsPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	if !s.cfg.MCP.Enabled && !v.IsAdmin {
+		s.notFound(w, r, v)
+		return
+	}
+	s.renderAssistants(w, r, v, http.StatusOK, assistantsBody{Notice: assistantNotices[r.URL.Query().Get("ok")]})
+}
+
+func (s *server) renderAssistants(w http.ResponseWriter, r *http.Request, v *auth.Viewer, status int, body assistantsBody) {
+	body.Enabled, body.Max = s.cfg.MCP.Enabled, maxMCPTokens
+	if !body.Enabled {
+		s.render(w, r, status, "assistants", v, "AI assistants", "assistants", body)
+		return
+	}
+	tokens, err := s.st.ListMCPTokens(r.Context(), v.UserID)
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	body.Tokens = activeTokens(tokens)
+	body.Full = len(body.Tokens) >= maxMCPTokens
+	body.BaseURL, body.Endpoint = s.cfg.MCP.BaseURL, s.mcpEndpoint()
+	body.Desktop = desktopConfig(body.Endpoint)
+	body.Code = "read -rs HMD_TOKEN   # paste your token, then press Enter\n" +
+		"claude mcp add --scope user --transport http heimdall " + body.Endpoint + " \\\n" +
+		"  --header \"Authorization: Bearer $HMD_TOKEN\"\n" +
+		"unset HMD_TOKEN"
+	body.CodePS = "$t = Read-Host \"Heimdall token\" -MaskInput\n" +
+		"claude mcp add --scope user --transport http heimdall " + body.Endpoint + " --header \"Authorization: Bearer $t\"\n" +
+		"Remove-Variable t"
+	s.render(w, r, status, "assistants", v, "AI assistants", "assistants", body)
+}
+
+func activeTokens(ts []store.MCPToken) []tokenRow {
+	var out []tokenRow
+	for _, t := range ts {
+		if !t.RevokedAt.IsZero() {
+			continue
+		}
+		row := tokenRow{ID: t.ID, Name: t.Name, Created: &t.CreatedAt}
+		if !t.LastUsedAt.IsZero() {
+			row.LastUsed = &t.LastUsedAt
+		}
+		out = append(out, row)
+	}
+	return out
+}
+
+// desktopConfig is the claude_desktop_config.json fallback through
+// mcp-remote. The header is "Authorization:${AUTH_HEADER}" with no space
+// because Claude Desktop on Windows splits arguments at spaces.
+func desktopConfig(endpoint string) string {
+	cfg := map[string]any{"mcpServers": map[string]any{"heimdall": map[string]any{
+		"command": "npx",
+		"args":    []string{"-y", "mcp-remote", endpoint, "--header", "Authorization:${AUTH_HEADER}"},
+		"env":     map[string]string{"AUTH_HEADER": "Bearer <your token>"},
+	}}}
+	b, _ := json.MarshalIndent(cfg, "", "  ")
+	return string(b)
+}
+
+// assistantCreate issues a token for the signed-in user and shows it once.
+// The page is rendered from the POST (never a redirect), so the token is
+// never in a URL or a cache (responses are no-store).
+func (s *server) assistantCreate(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	if !s.cfg.MCP.Enabled {
+		s.notFound(w, r, v)
+		return
+	}
+	ctx := r.Context()
+	name := strings.TrimSpace(r.PostForm.Get("name"))
+	fail := func(status int, msg string) {
+		s.renderAssistants(w, r, v, status, assistantsBody{Error: msg, NewName: name})
+	}
+	if name == "" {
+		fail(http.StatusBadRequest, "Give the token a name, like the device it's for.")
+		return
+	}
+	tokens, err := s.st.ListMCPTokens(ctx, v.UserID)
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if len(activeTokens(tokens)) >= maxMCPTokens {
+		fail(http.StatusConflict, fmt.Sprintf("You already have %d tokens, the most allowed. Revoke one you no longer use first.", maxMCPTokens))
+		return
+	}
+	if !s.tokenLimit.allow(v.UserID, s.now()) {
+		fail(http.StatusTooManyRequests, "That's a lot of new tokens at once. Try again in a few minutes.")
+		return
+	}
+	token, _, err := s.st.CreateMCPToken(ctx, fmt.Sprintf("user:%d", v.UserID), v.UserID, name)
+	if err != nil {
+		var ve *store.ValidationError
+		if errors.As(err, &ve) {
+			fail(http.StatusBadRequest, ve.Error())
+			return
+		}
+		s.fail(w, r, v, err)
+		return
+	}
+	s.renderAssistants(w, r, v, http.StatusOK, assistantsBody{NewToken: token, NewName: name})
+}
+
+// assistantRevoke revokes one of the signed-in user's own tokens. The
+// store matches on (token, user), so another user's token ID is not found.
+func (s *server) assistantRevoke(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	if !s.cfg.MCP.Enabled {
+		s.notFound(w, r, v)
+		return
+	}
+	id, err := strconv.ParseInt(r.PostForm.Get("id"), 10, 64)
+	if err == nil {
+		err = s.st.RevokeMCPToken(r.Context(), fmt.Sprintf("user:%d", v.UserID), v.UserID, id)
+	}
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) || id == 0 {
+			s.renderAssistants(w, r, v, http.StatusNotFound, assistantsBody{Error: "That token doesn't exist or is already revoked."})
+			return
+		}
+		s.fail(w, r, v, err)
+		return
+	}
+	http.Redirect(w, r, "/account/assistants?ok=revoked", http.StatusSeeOther)
+}
+
+// assistantBundle serves the Claude Desktop extension, built for this
+// hub's MCP address. It holds no token.
+func (s *server) assistantBundle(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	if !s.cfg.MCP.Enabled {
+		s.notFound(w, r, v)
+		return
+	}
+	b, err := mcpb.Build(s.cfg.MCP.BaseURL, s.cfg.Version)
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	h := w.Header()
+	h.Set("Content-Type", "application/zip")
+	h.Set("Content-Disposition", `attachment; filename="`+mcpb.FileName+`"`)
+	h.Set("Cache-Control", "no-store")
+	h.Set("Content-Length", strconv.Itoa(len(b)))
+	if r.Method != http.MethodHead {
+		w.Write(b)
+	}
+}
+
+// adminTokenRevoke lets an admin revoke any user's token from the Users
+// page; requireAdmin has checked the role.
+func (s *server) adminTokenRevoke(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	uid, err1 := strconv.ParseInt(r.PostForm.Get("user"), 10, 64)
+	id, err2 := strconv.ParseInt(r.PostForm.Get("id"), 10, 64)
+	err := errors.Join(err1, err2)
+	if err == nil {
+		err = s.st.RevokeMCPToken(r.Context(), fmt.Sprintf("user:%d", v.UserID), uid, id)
+	}
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) || err1 != nil || err2 != nil {
+			s.renderAdmin(w, r, v, http.StatusNotFound, "", "That token doesn't exist or is already revoked.")
+			return
+		}
+		s.fail(w, r, v, err)
+		return
+	}
+	http.Redirect(w, r, "/admin/users?ok=token-revoked", http.StatusSeeOther)
+}
