@@ -26,7 +26,11 @@ func TestFindingsView(t *testing.T) {
 		}
 	}
 	base := "/hosts/acme/web-01"
-	fv := buildFindingsView(base, "dpkg", url.Values{}, list, nil)
+	pkgs := report.Pkgs{}
+	for _, f := range list {
+		pkgs[f.Package] = true // every package has an update pending
+	}
+	fv := buildFindingsView(base, "dpkg", url.Values{}, list, pkgs, kernelInfo{})
 	if fv.View != "packages" || fv.Total != 240 || fv.Pages != 3 || len(fv.Groups) != findingsPerPage {
 		t.Fatalf("default view: %s total=%d pages=%d groups=%d", fv.View, fv.Total, fv.Pages, len(fv.Groups))
 	}
@@ -40,7 +44,7 @@ func TestFindingsView(t *testing.T) {
 		t.Errorf("paging links: next=%q prev=%q", fv.NextLink, fv.PrevLink)
 	}
 	// Filters combine, and changing one goes back to page 1.
-	fv = buildFindingsView(base, "dpkg", url.Values{"sev": {"critical"}, "fix": {"1"}, "page": {"9"}}, list, nil)
+	fv = buildFindingsView(base, "dpkg", url.Values{"sev": {"critical"}, "fix": {"1"}, "page": {"9"}}, list, pkgs, kernelInfo{})
 	// The patch command covers exactly the filtered, fixable packages.
 	if fv.FixCmd == nil || !strings.HasPrefix(fv.FixCmd.Text, "sudo apt-get update && sudo apt-get install --only-upgrade pkg-003 ") || strings.Contains(fv.FixCmd.Text, "pkg-000") {
 		t.Errorf("fix command = %+v", fv.FixCmd)
@@ -60,10 +64,25 @@ func TestFindingsView(t *testing.T) {
 		t.Errorf("another chip: %q", l)
 	}
 	// All findings, a page at a time; junk parameters are ignored.
-	fv = buildFindingsView(base, "dpkg", url.Values{"view": {"all"}, "page": {"2"}, "sev": {"<x>"}}, list, nil)
+	fv = buildFindingsView(base, "dpkg", url.Values{"view": {"all"}, "page": {"2"}, "sev": {"<x>"}}, list, pkgs, kernelInfo{})
 	if fv.View != "all" || len(fv.Rows) != findingsPerPage || fv.Page != 2 || fv.Sev != "" {
 		t.Errorf("all view: rows=%d page=%d sev=%q", len(fv.Rows), fv.Page, fv.Sev)
 	}
+}
+
+// planFix is the host page's patch command for findings on a host with
+// these packages.
+func planFix(pm string, list []report.Finding, pkgs report.Pkgs) (*command, int, int) {
+	return fixCommand(pm, report.PlanUpgrade(pm, list, pkgs))
+}
+
+// pending marks every named package installed with an update pending.
+func pending(names ...string) report.Pkgs {
+	m := report.Pkgs{}
+	for _, n := range names {
+		m[n] = true
+	}
+	return m
 }
 
 func TestFixCommandUsesBinaryNames(t *testing.T) {
@@ -73,23 +92,18 @@ func TestFixCommandUsesBinaryNames(t *testing.T) {
 		{Package: "perl", Fixed: ""}, // no fix: not included
 		{Package: "evil; rm -rf /", Fixed: "1"},
 	}
-	cmd, n, pending := fixCommand("dpkg", list, nil)
-	if cmd == nil || cmd.Text != "sudo apt-get update && sudo apt-get install --only-upgrade libc6 libssl3 openssl" || n != 3 || pending != 1 {
-		t.Errorf("cmd=%+v n=%d pending=%d", cmd, n, pending)
+	pkgs := pending("libssl3", "openssl", "libc6", "perl", "evil; rm -rf /")
+	cmd, n, fixPending := planFix("dpkg", list, pkgs)
+	if cmd == nil || cmd.Text != "sudo apt-get update && sudo apt-get install --only-upgrade libc6 libssl3 openssl" || n != 3 || fixPending != 1 {
+		t.Errorf("cmd=%+v n=%d pending=%d", cmd, n, fixPending)
 	}
-	if cmd, _, _ := fixCommand("pacman", list, nil); cmd != nil {
+	if cmd, _, _ := planFix("pacman", list, pkgs); cmd != nil {
 		t.Error("no command for package managers without one")
 	}
 }
 
 func TestFixCommandKernel(t *testing.T) {
-	set := func(names ...string) map[string]bool {
-		m := map[string]bool{}
-		for _, n := range names {
-			m[n] = true
-		}
-		return m
-	}
+	set := pending
 	awsKernel := report.Finding{Package: "linux-aws-6.17", Fixed: "6.17.0-1019.19~24.04.1",
 		Binaries: []string{"linux-aws-6.17-headers-6.17.0-1009", "linux-headers-6.17.0-1009-aws", "linux-modules-6.17.0-1009-aws", "linux-tools-6.17.0-1009-aws"}}
 	openssl := report.Finding{Package: "openssl", Fixed: "3.0.13-0ubuntu3.5", Binaries: []string{"libssl3", "openssl"}}
@@ -98,7 +112,7 @@ func TestFixCommandKernel(t *testing.T) {
 	for _, c := range []struct {
 		name, pm  string
 		list      []report.Finding
-		installed map[string]bool
+		installed report.Pkgs
 		want      string
 		note      string
 	}{
@@ -123,7 +137,7 @@ func TestFixCommandKernel(t *testing.T) {
 		{"alpine", "apk", []report.Finding{{Package: "linux-lts", Fixed: "6.6.58-r0", Binaries: []string{"linux-lts"}}},
 			set("linux-lts"), "sudo apk update && sudo apk upgrade linux-lts", "Reboot afterwards"},
 	} {
-		cmd, _, _ := fixCommand(c.pm, c.list, c.installed)
+		cmd, _, _ := planFix(c.pm, c.list, c.installed)
 		if cmd == nil || cmd.Text != c.want {
 			t.Errorf("%s: %+v, want %q", c.name, cmd, c.want)
 			continue

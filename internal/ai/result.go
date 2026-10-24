@@ -27,7 +27,18 @@ type Action struct {
 	Why     string `json:"why"`
 	Host    string `json:"host,omitempty"`
 	Command string `json:"command,omitempty"`
+	// Heimdall is set on a step Heimdall changed after the model answered
+	// (see Reconcile): HeimdallAdded or HeimdallEdited.
+	Heimdall string `json:"heimdall,omitempty"`
+
+	rejected string // the model's command for a known host, when the allowlist dropped it
 }
+
+// Action.Heimdall values.
+const (
+	HeimdallAdded  = "added"  // Heimdall wrote the whole step
+	HeimdallEdited = "edited" // Heimdall removed packages from the model's command
+)
 
 // Limits on what's kept from the model's answer.
 const (
@@ -77,19 +88,24 @@ func Schema() map[string]any {
 	}
 }
 
-// Allowed is what a suggested command may name: per host, its package
-// manager and installed package names (OS and Composer).
+// Allowed is, per host, what a suggested command may be and which steps a
+// plan must include.
 type Allowed struct {
 	Hosts map[string]HostAllowed
 }
 
 type HostAllowed struct {
-	PM       string          // dpkg, rpm, apk, or ""
-	Packages map[string]bool // OS package names (binary and source)
-	Composer map[string]bool // Composer package names in its sites
-	// OldKernels are installed kernel packages older than the running
-	// kernel: the only packages a purge suggestion may name.
-	OldKernels map[string]bool
+	PM string // dpkg, rpm, apk, or ""
+	// Commands are the commands Heimdall built for this host (its facts'
+	// suggested_commands). A step's command must be one of them, or one
+	// of them with fewer packages: never a package Heimdall didn't name,
+	// which also means never one without a pending update.
+	Commands []string
+	// Required are steps the plan must have (matched by host and
+	// command); Reconcile adds any that are missing, first when
+	// RequiredFirst.
+	Required      []Action
+	RequiredFirst bool
 }
 
 // Parse validates the model's text against the schema and the limits,
@@ -143,11 +159,94 @@ func Parse(text string, allowed Allowed) (*Result, error) {
 			}
 		}
 		if a.Command != nil && known {
-			act.Command = checkCommand(*a.Command, host)
+			if act.Command = checkCommand(*a.Command, host); act.Command == "" && strings.TrimSpace(*a.Command) != "" {
+				act.rejected = cleanLine(*a.Command, maxCommand)
+			}
 		}
 		res.Actions = append(res.Actions, act)
 	}
 	return res, nil
+}
+
+// Reconcile checks a parsed plan against the facts, deterministically:
+//   - a step whose command the allowlist rejected keeps the packages that
+//     one of Heimdall's commands for that host names (marked edited), or
+//     is dropped when none are left: a step built on a command Heimdall
+//     didn't suggest (such as upgrading a package with no pending update)
+//     isn't safe to show;
+//   - each host's Required steps (the reboot when a newer kernel is
+//     installed and findings are on the running one) are added when the
+//     plan lacks them, marked added.
+func Reconcile(res *Result, allowed Allowed) *Result {
+	kept := make([]Action, 0, len(res.Actions))
+	for _, a := range res.Actions {
+		if a.rejected != "" {
+			c := trimCommand(a.rejected, allowed.Hosts[a.Host])
+			if c == "" {
+				continue
+			}
+			a.Command, a.Heimdall, a.rejected = c, HeimdallEdited, ""
+		}
+		kept = append(kept, a)
+	}
+	hosts := make([]string, 0, len(allowed.Hosts))
+	for h := range allowed.Hosts {
+		hosts = append(hosts, h)
+	}
+	slices.Sort(hosts)
+	for _, h := range hosts {
+		ha := allowed.Hosts[h]
+		for _, req := range ha.Required {
+			if slices.ContainsFunc(kept, func(a Action) bool { return a.Host == h && a.Command == req.Command }) {
+				continue
+			}
+			req.Host, req.Heimdall = h, HeimdallAdded
+			if ha.RequiredFirst {
+				kept = append([]Action{req}, kept...)
+			} else {
+				kept = append(kept, req)
+			}
+		}
+	}
+	if len(kept) > MaxActions {
+		kept = kept[:MaxActions]
+	}
+	res.Actions = kept
+	return res
+}
+
+// trimCommand keeps, from a rejected command, the packages that the
+// closest of Heimdall's commands of the same kind names, or "".
+func trimCommand(cmd string, h HostAllowed) string {
+	cmd = strings.Join(strings.Fields(cmd), " ")
+	kind, prefix, pkgs, ok := splitCommand(cmd, h.PM)
+	if !ok {
+		return ""
+	}
+	var best []string
+	for _, c := range h.Commands {
+		k, _, cpkgs, ok := splitCommand(c, h.PM)
+		if !ok || k != kind {
+			continue
+		}
+		var keep []string
+		for _, p := range pkgs {
+			if slices.Contains(cpkgs, p) && !slices.Contains(keep, p) {
+				keep = append(keep, p)
+			}
+		}
+		if len(keep) > len(best) {
+			best = keep
+		}
+	}
+	if len(best) == 0 {
+		return ""
+	}
+	out := prefix + " " + strings.Join(best, " ")
+	if kind == "composer" && strings.HasSuffix(cmd, " --with-dependencies") {
+		out += " --with-dependencies"
+	}
+	return checkCommand(out, h)
 }
 
 // Decode reads a stored result for display, re-applying the text limits
@@ -165,6 +264,9 @@ func Decode(raw []byte) (*Result, bool) {
 	for i := range r.Actions {
 		a := &r.Actions[i]
 		a.Title, a.Why, a.Host = cleanLine(a.Title, maxTitle), cleanText(a.Why, maxWhy), cleanLine(a.Host, 253)
+		if a.Heimdall != HeimdallAdded && a.Heimdall != HeimdallEdited {
+			a.Heimdall = ""
+		}
 		if a.Command != "" && !commandShapeOK(a.Command) {
 			a.Command = ""
 		}
@@ -189,59 +291,62 @@ var commandPrefixes = map[string][]string{
 // RebootCommand is the one non-upgrade command allowed.
 const RebootCommand = "sudo reboot"
 
-// checkCommand returns the command (whitespace-normalized) if it has an
-// allowed shape and names only packages the host has, else "".
+// checkCommand returns the command (whitespace-normalized) if it's one
+// Heimdall built for the host (h.Commands), or one of those with fewer of
+// its packages (in any order, no duplicates), else "". The two prefixes of
+// one package manager (with and without the metadata refresh) count as the
+// same command.
 func checkCommand(cmd string, h HostAllowed) string {
 	cmd = strings.Join(strings.Fields(cmd), " ")
 	if cmd == "" || len(cmd) > maxCommand {
 		return ""
 	}
-	if cmd == RebootCommand {
+	if slices.Contains(h.Commands, cmd) && commandShapeOK(cmd) {
 		return cmd
 	}
-	// A Debian/Ubuntu kernel fix on a host with no kernel metapackage.
-	if h.PM == "dpkg" && cmd == kernel.DpkgFullUpgrade {
-		return cmd
-	}
-	if rest, ok := strings.CutPrefix(cmd, "composer update "); ok {
-		rest = strings.TrimSuffix(rest, " --with-dependencies")
-		if pkgs := strings.Fields(rest); len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && allIn(pkgs, composerName, h.Composer) {
-			return cmd
-		}
+	kind, _, pkgs, ok := splitCommand(cmd, h.PM)
+	if !ok || len(pkgs) == 0 || len(pkgs) > maxCommandPkgs {
 		return ""
 	}
-	// Removing kernels older than the running one, and nothing else.
-	if rest, ok := strings.CutPrefix(cmd, kernel.PurgePrefix+" "); ok {
-		if pkgs := strings.Fields(rest); h.PM == "dpkg" && len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && allIn(pkgs, safePackage, h.OldKernels) {
-			return cmd
-		}
-		return ""
-	}
-	for _, prefix := range commandPrefixes[h.PM] {
-		if rest, ok := strings.CutPrefix(cmd, prefix+" "); ok {
-			if pkgs := strings.Fields(rest); len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && allIn(pkgs, safePackage, h.Packages) &&
-				noABIKernel(h.PM, pkgs) {
-				return cmd
-			}
+	for i, p := range pkgs {
+		if slices.Contains(pkgs[:i], p) {
 			return ""
 		}
 	}
+	for _, c := range h.Commands {
+		k, _, cpkgs, ok := splitCommand(c, h.PM)
+		if ok && k == kind && !slices.ContainsFunc(pkgs, func(p string) bool { return !slices.Contains(cpkgs, p) }) {
+			return cmd
+		}
+	}
 	return ""
+}
+
+// splitCommand splits a command with a package list into its kind
+// ("upgrade", "purge" or "composer"), its prefix and its packages, for
+// the host's package manager. ok is false for any other shape.
+func splitCommand(cmd, pm string) (kind, prefix string, pkgs []string, ok bool) {
+	if rest, found := strings.CutPrefix(cmd, "composer update "); found {
+		pkgs = strings.Fields(strings.TrimSuffix(rest, " --with-dependencies"))
+		return "composer", "composer update", pkgs, len(pkgs) > 0 && all(pkgs, composerName)
+	}
+	if rest, found := strings.CutPrefix(cmd, kernel.PurgePrefix+" "); found {
+		pkgs = strings.Fields(rest)
+		return "purge", kernel.PurgePrefix, pkgs, pm == "dpkg" && len(pkgs) > 0 && all(pkgs, safePackage)
+	}
+	for _, p := range commandPrefixes[pm] {
+		if rest, found := strings.CutPrefix(cmd, p+" "); found {
+			pkgs = strings.Fields(rest)
+			return "upgrade", p, pkgs, len(pkgs) > 0 && all(pkgs, safePackage) && noABIKernel(pm, pkgs)
+		}
+	}
+	return "", "", nil, false
 }
 
 // noABIKernel rejects Debian/Ubuntu packages named for one kernel ABI:
 // upgrading them never installs a kernel fix (the metapackage does).
 func noABIKernel(pm string, pkgs []string) bool {
 	return !slices.ContainsFunc(pkgs, func(p string) bool { return kernel.ABIPackage(pm, p) })
-}
-
-func allIn(pkgs []string, shape *regexp.Regexp, known map[string]bool) bool {
-	for i, p := range pkgs {
-		if !shape.MatchString(p) || !known[p] || slices.Contains(pkgs[:i], p) {
-			return false
-		}
-	}
-	return true
 }
 
 // commandShapeOK checks a stored command's shape (not the package list).

@@ -8,10 +8,11 @@ import (
 	"testing"
 )
 
+// testAllowed is what Heimdall suggested for each host.
 var testAllowed = Allowed{Hosts: map[string]HostAllowed{
-	"web-01": {PM: "dpkg", Packages: map[string]bool{"openssl": true, "libssl3": true, "curl": true},
-		Composer: map[string]bool{"laravel/framework": true}},
-	"db-01": {PM: "rpm", Packages: map[string]bool{"openssl": true}},
+	"web-01": {PM: "dpkg", Commands: []string{"sudo apt-get update && sudo apt-get install --only-upgrade curl libssl3 openssl",
+		"composer update laravel/framework --with-dependencies", RebootCommand}},
+	"db-01": {PM: "rpm", Commands: []string{"sudo dnf upgrade --refresh openssl"}},
 }}
 
 func answer(actions ...map[string]any) string {
@@ -46,8 +47,11 @@ func TestParseCommands(t *testing.T) {
 		{"web-01", "sudo apt-get install --only-upgrade openssl\nrm -rf /", ""},
 		{"web-01", "composer update laravel/framework; id", ""},
 		{"web-01", "sudo reboot now", ""},
-		{"nope-01", "sudo reboot", ""}, // unknown host: no host, no command
-		{nil, "sudo reboot", ""},       // no host: no command
+		{"db-01", "sudo reboot", ""},                                          // Heimdall didn't suggest one there
+		{"web-01", "sudo apt-get install --only-upgrade openssl openssl", ""}, // duplicates
+		{"web-01", "sudo apt-get update && sudo apt-get upgrade", ""},         // not built for this host
+		{"nope-01", "sudo reboot", ""},                                        // unknown host: no host, no command
+		{nil, "sudo reboot", ""},                                              // no host: no command
 	} {
 		res, err := Parse(answer(act(c.host, c.cmd)), testAllowed)
 		if err != nil {

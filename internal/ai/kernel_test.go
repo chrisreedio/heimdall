@@ -53,19 +53,29 @@ var (
 	alpineFinding = report.Finding{Package: "linux-lts", Fixed: "6.6.58-r0", Severity: "high", Binaries: []string{"linux-lts"}}
 )
 
-func hostWith(pm string, sets ...[]string) HostAllowed {
-	a := HostAllowed{PM: pm, Packages: map[string]bool{}, Composer: map[string]bool{}}
+// testHost is a host's package manager and installed packages, every one
+// with an update pending.
+type testHost struct {
+	PM   string
+	Pkgs report.Pkgs
+}
+
+func hostWith(pm string, sets ...[]string) testHost {
+	h := testHost{PM: pm, Pkgs: report.Pkgs{}}
 	for _, s := range sets {
 		for _, p := range s {
-			a.Packages[p] = true
+			h.Pkgs[p] = true
 		}
 	}
-	return a
+	return h
 }
+
+// allowedFor is what Heimdall allows on a host where it suggested cmds.
+func allowedFor(pm string, cmds ...string) HostAllowed { return HostAllowed{PM: pm, Commands: cmds} }
 
 type kernelCase struct {
 	name     string
-	host     HostAllowed
+	host     testHost
 	findings []report.Finding
 	want     string
 	kernel   bool
@@ -95,7 +105,8 @@ var kernelCases = []kernelCase{
 func TestKernelFixCommand(t *testing.T) {
 	for _, c := range kernelCases {
 		t.Run(c.name, func(t *testing.T) {
-			cmd, label, isKernel := fixCommand(c.host.PM, c.findings, c.host)
+			cmd, label, u := fixCommand(c.host.PM, c.findings, c.host.Pkgs)
+			isKernel := u.Kernel
 			if cmd != c.want || isKernel != c.kernel {
 				t.Fatalf("got %q (kernel %v)\nwant %q (kernel %v)", cmd, isKernel, c.want, c.kernel)
 			}
@@ -107,7 +118,7 @@ func TestKernelFixCommand(t *testing.T) {
 			}
 			// The suggestion itself passes the output validator for that host,
 			// in both its checks.
-			allowed := Allowed{Hosts: map[string]HostAllowed{"h": c.host}}
+			allowed := Allowed{Hosts: map[string]HostAllowed{"h": allowedFor(c.host.PM, cmd)}}
 			res, err := Parse(answer(act("h", cmd)), allowed)
 			if err != nil || res.Actions[0].Command != cmd {
 				t.Errorf("validator dropped %q: %v", cmd, err)
@@ -120,10 +131,14 @@ func TestKernelFixCommand(t *testing.T) {
 }
 
 func TestKernelCommandVariantsRejected(t *testing.T) {
+	built := func(h testHost, fs ...report.Finding) HostAllowed {
+		cmd, _, _ := fixCommand(h.PM, fs, h.Pkgs)
+		return allowedFor(h.PM, cmd)
+	}
 	allowed := Allowed{Hosts: map[string]HostAllowed{
-		"aws": hostWith("dpkg", ubuntuAWSKernel, userland),
-		"el":  hostWith("rpm", rockyKernel),
-		"alp": hostWith("apk", alpineKernel),
+		"aws": built(hostWith("dpkg", ubuntuAWSKernel, userland), awsFinding, opensslFinding),
+		"el":  built(hostWith("rpm", rockyKernel), rockyFinding),
+		"alp": built(hostWith("apk", alpineKernel), alpineFinding),
 	}}
 	for _, c := range []struct{ host, cmd string }{
 		{"aws", "sudo apt-get update && sudo apt-get install --only-upgrade linux-image-6.17.0-1009-aws"},
@@ -193,7 +208,11 @@ func TestKernelFacts(t *testing.T) {
 			pkg("linux-tools-6.17.0-1009-aws", "6.17.0-1009.9~24.04.1", "linux-aws-6.17"),
 			pkg("openssl", "3.0.13-0ubuntu3.4", "openssl"),
 		},
-		"updates": []any{}, "unavailable": []any{},
+		"updates": []any{
+			map[string]any{"name": "linux-aws", "arch": "amd64", "version": "6.17.0.1019.19", "security": false},
+			map[string]any{"name": "linux-image-aws", "arch": "amd64", "version": "6.17.0.1019.19", "security": false},
+		},
+		"unavailable": []any{},
 	}
 	raw, _ := json.Marshal(snap)
 	acc := ingest.Accepter{Store: st, Now: func() time.Time { return now }}

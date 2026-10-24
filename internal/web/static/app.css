@@ -900,3 +900,11 @@ details.repo-pick form { flex-wrap: wrap; align-items: flex-end; max-width: 560p
   .handoff-msg { font-size: 12px; padding: 10px; }
   .handoff-send button, .handoff-send .button { flex: 1 1 auto; text-align: center; }
 }
+
+/* ── Kernel state and pending-update commands (partials.html osfindings,
+   chips, kernelbadge; ai.html aiheimdall). ── */
+.chip-muted { border-style: dashed; }
+.chip-muted strong { color: var(--muted); }
+.not-in-cache { max-width: 95ch; margin: 0 0 16px; }
+.not-in-cache code { font-size: 12px; }
+.ai-by-heimdall { font-size: 11px; vertical-align: 1px; margin-left: 4px; }

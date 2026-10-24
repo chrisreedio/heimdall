@@ -13,7 +13,7 @@
   <tbody>
   {{range .}}
   <tr>
-    <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}{{if or .KEV .InNews .NotRunning}}<div class="find-badges">{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}{{if .NotRunning}} <span class="badge muted" title="On an older kernel that's installed but not running: removing it clears this">not running</span>{{end}}</div>{{end}}</td>
+    <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}{{if or .KEV .InNews .KernelStatus}}<div class="find-badges">{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}{{template "kernelbadge" .KernelStatus}}</div>{{end}}</td>
     <td><span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</td>
     <td>{{.Package}}{{if gt (len .Binaries) 1}}<div class="muted small">{{join .Binaries ", "}}</div>{{end}}</td>
     <td class="ver">{{.Version}}</td>
@@ -48,11 +48,14 @@
   </nav>
   <span class="muted small">{{.Total}} finding{{if ne .Total 1}}s{{end}}{{if or .Sev .Fixable}} match{{if eq .Total 1}}es{{end}} the filter{{end}}{{if eq .View "packages"}}{{if .Groups}} · page {{.Page}} of {{.Pages}}{{end}}{{else if .Rows}} · page {{.Page}} of {{.Pages}}{{end}}</span>
 </div>
+{{if .RebootFirst}}{{template "rebootcmd" .}}{{end}}
 {{with .FixCmd}}<div class="cmd fix-cmd">
-  <div class="cmd-label">{{if eq $.PM "composer"}}Update {{$.FixPkgs}} Composer package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}} <span class="muted small">· run in the site root</span>{{else}}Patch {{$.FixPkgs}} package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}}{{end}}{{if $.FixPending}} <span class="muted small">· {{$.FixPending}} already have the update downloaded and pending</span>{{end}}</div>
+  <div class="cmd-label">{{if eq $.PM "composer"}}Update {{$.FixPkgs}} Composer package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}} <span class="muted small">· run in the site root</span>{{else}}Patch {{$.FixPkgs}} package{{if ne $.FixPkgs 1}}s{{end}} with updates for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}}{{end}}{{if $.FixPending}} <span class="muted small">· {{$.FixPending}} reach{{if eq $.FixPending 1}}es{{end}} the fixed version</span>{{end}}</div>
   <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
-  <p class="muted small">{{if .Note}}{{.Note}}{{else}}Upgrades only these packages. Filter by severity above to patch, say, just the critical ones first.{{end}} Heimdall never runs it for you.</p>
+  <p class="muted small">{{if .Note}}{{.Note}}{{else}}Upgrades only these packages.{{if ne $.PM "composer"}} It names only packages the host has a pending update for.{{end}} Filter by severity above to patch, say, just the critical ones first.{{end}} Heimdall never runs it for you.</p>
 </div>{{end}}
+{{if and .RebootCmd (not .RebootFirst)}}{{template "rebootcmd" .}}{{end}}
+{{if .NotInCache}}<p class="muted small not-in-cache"><strong>{{.NotInCache}} finding{{if ne .NotInCache 1}}s{{end}} fixed upstream, not yet in this host's package cache.</strong> A fix is published, but no pending update installs it, so {{if eq .NotInCache 1}}it isn't{{else}}they aren't{{end}} in the command{{if not .FixCmd}} (there's nothing to upgrade yet){{end}}. The collector reads the package manager's existing cache without refreshing it: either the host's package sources don't offer the fix yet, or the cache is old. Run {{if eq .PM "rpm"}}<code>sudo dnf makecache</code>{{else if eq .PM "apk"}}<code>sudo apk update</code>{{else}}<code>sudo apt-get update</code>{{end}} on the host first; its next report shows which.</p>{{end}}
 {{with .OldKernelCmd}}<div class="cmd fix-cmd">
   <div class="cmd-label">Remove old kernels that aren't running <span class="muted small">· clears {{$.OldKernelFindings}} finding{{if ne $.OldKernelFindings 1}}s{{end}} marked "not running"</span></div>
   <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
@@ -64,7 +67,7 @@
     <div class="pkg-grid pkg-head" role="row"><span>Package</span><span>Installed</span><span>Worst</span><span class="num">KEV</span><span class="num">Crit</span><span class="num">High</span><span class="num">Med</span><span class="num">Low</span><span class="num">Fixable</span></div>
     {{range .Groups}}<details class="pkg-row">
       <summary class="pkg-grid" role="row">
-        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span>{{if .NotRunning}} <span class="badge muted" title="An older kernel that's installed but not running: removing it clears these">not running</span>{{end}}{{if .News}} <span class="badge news" title="{{.News}} named by a live incident in the news">in the news</span>{{end}}</span>
+        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span>{{template "kernelbadge" .KernelStatus}}{{if .News}} <span class="badge news" title="{{.News}} named by a live incident in the news">in the news</span>{{end}}</span>
         <span class="ver">{{.Version}}</span>
         <span><span class="sev sev-{{sev .Worst}}">{{.Worst}}</span></span>
         <span class="num">{{if .KEV}}<span class="badge kev">{{.KEV}}</span>{{else}}<span class="muted">0</span>{{end}}</span>
@@ -89,6 +92,16 @@
 </nav>{{end}}
 {{end}}
 
+{{/* kernelbadge: a finding's (or package group's) kernel status, with a leading space. */}}
+{{define "kernelbadge"}}{{if eq . "not_running"}} <span class="badge muted" title="On an older kernel that's installed but not running: removing it clears this">not running</span>{{else if eq . "reboot_pending"}} <span class="badge warn" title="On the running kernel, while a newer kernel is already installed: rebooting clears this (the newer kernel may have findings of its own)">reboot pending</span>{{else if eq . "userland"}} <span class="badge muted" title="On a package built from the kernel source that isn't the kernel (tools, headers): not live kernel exposure, so it's left out of the known-exploited and fixable counts. Upgrading it still clears it">kernel userland</span>{{else if eq . "newer_kernel"}} <span class="badge muted" title="On the newer kernel that's installed but not booted yet: it runs after the reboot, so rebooting won't clear this">next kernel</span>{{end}}{{end}}
+
+{{/* rebootcmd: the "reboot to run the newer kernel" command (a findingsView). */}}
+{{define "rebootcmd"}}{{with .RebootCmd}}<div class="cmd fix-cmd">
+  <div class="cmd-label">{{.Label}} <span class="muted small">· clears {{$.RebootFindings}} finding{{if ne $.RebootFindings 1}}s{{end}} marked "reboot pending"</span></div>
+  <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
+  <p class="muted small">{{.Note}} Heimdall never runs it for you.</p>
+</div>{{end}}{{end}}
+
 {{/* icon: a small inline stroke icon by name. */}}
 {{define "icon"}}<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{if eq . "server"}}<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>{{else if eq . "clock"}}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>{{else if eq . "chip"}}<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>{{else if eq . "package"}}<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>{{else if eq . "power"}}<path d="M12 3v8"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/>{{else if eq . "layers"}}<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>{{else if eq . "calendar"}}<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>{{else if eq . "globe"}}<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>{{else if eq . "code"}}<path d="M8 6l-6 6 6 6M16 6l6 6-6 6"/>{{else if eq . "check"}}<circle cx="12" cy="12" r="9"/><path d="M8 12l3 3 5-6"/>{{end}}</svg>{{end}}
 
@@ -107,6 +120,8 @@
     <a class="chip{{if eq $.V.Sev "unknown"}} active{{end}}" href="{{index $.V.SevLinks "unknown"}}"><strong>{{.C.Unknown}}</strong> unrated</a>
     {{if $.V.Fixable}}<a class="chip chip-ok active" href="{{index $.V.FixLink "off"}}" title="{{.C.FixPending}} via updates already pending on the host"><strong>{{.C.Fixable}}</strong> fixable now</a>
     {{else}}<a class="chip chip-ok" href="{{index $.V.FixLink "on"}}" title="Show only findings an update fixes ({{.C.FixPending}} already pending on the host)"><strong>{{.C.Fixable}}</strong> fixable now</a>{{end}}
+    {{if .C.NotRunning}}<span class="chip chip-muted" title="On older kernels that are installed but not running: not live exposure, so they're left out of the known-exploited and fixable counts"><strong>{{.C.NotRunning}}</strong> on kernels not running</span>{{end}}
+    {{if .C.KernelUserland}}<span class="chip chip-muted" title="On packages built from the kernel source that aren't the kernel (linux-tools-common, linux-libc-dev): not live kernel exposure, so they're left out of the known-exploited and fixable counts"><strong>{{.C.KernelUserland}}</strong> on kernel userland</span>{{end}}
   </div>
 {{end}}
 {{/* whyPills: why a fleetHost needs attention, most urgent first. */}}
@@ -116,7 +131,7 @@
 {{- if .EOL}}<span class="pill bad" title="{{.EOLLabels "eol"}}">end of life</span>{{else if .EOLSoon}}<span class="pill warn" title="{{.EOLLabels "soon"}}">EoL soon</span>{{end}}
 {{- if .Stale}}<span class="pill warn">stale</span>{{end}}
 {{- if .Anomalies}}<a class="pill {{if eq .AnomalyWorst "high"}}bad{{else}}warn{{end}}" href="/anomalies">{{.Anomalies}} anomal{{if eq .Anomalies 1}}y{{else}}ies{{end}}</a>{{end}}
-{{- if .Reboot}}<span class="pill warn">reboot</span>{{end}}
+{{- if $c.RebootPending}}<span class="pill warn" title="{{$c.RebootPending}} finding{{if ne $c.RebootPending 1}}s{{end}} on the running kernel clear after a reboot: a newer kernel is already installed">reboot pending</span>{{else if .Reboot}}<span class="pill warn">reboot</span>{{end}}
 {{- if .PendingSecurity}}<span class="pill warn" title="{{.Pending}} updates pending in all">{{.PendingSecurity}} security update{{if ne .PendingSecurity 1}}s{{end}}</span>{{end}}
 {{- if .SitesAttention}}<span class="pill warn">{{.SitesAttention}} site{{if ne .SitesAttention 1}}s{{end}}</span>{{end}}
 {{- if .CollectorBehind}}<span class="pill muted" title="On the server: sudo heimdall-collect upgrade">collector behind</span>{{end}}

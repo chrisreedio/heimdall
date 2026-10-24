@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/chrisreedio/heimdall/internal/ai"
+	"github.com/chrisreedio/heimdall/internal/kernel"
 	"github.com/chrisreedio/heimdall/internal/report"
 )
 
@@ -40,12 +41,12 @@ func TestAIHandoffNamesItsSite(t *testing.T) {
 // Findings on an old kernel that isn't running stay out of the upgrade
 // command (upgrading never clears them); a removal command clears them.
 func TestOldKernelCommands(t *testing.T) {
-	installed := map[string]bool{"linux-aws": true, "linux-image-aws": true, "openssl": true}
+	installed := pending("linux-aws", "linux-image-aws", "openssl")
 	list := []report.Finding{
-		{Package: "linux-aws-6.17", Binaries: []string{"linux-image-6.17.0-1009-aws"}, Fixed: "6.17.0-1017.17", KEV: true, NotRunning: true},
+		{Package: "linux-aws-6.17", Binaries: []string{"linux-image-6.17.0-1009-aws"}, Fixed: "6.17.0-1017.17", KEV: true, NotRunning: true, KernelStatus: kernel.StatusNotRunning},
 		{Package: "openssl", Binaries: []string{"openssl"}, Fixed: "3.0.13-1"},
 	}
-	cmd, _, _ := fixCommand("dpkg", list, installed)
+	cmd, _, _ := planFix("dpkg", list, installed)
 	if cmd == nil || cmd.Text != "sudo apt-get update && sudo apt-get install --only-upgrade openssl" || strings.Contains(cmd.Note, "kernel") {
 		t.Errorf("upgrade command = %+v", cmd)
 	}

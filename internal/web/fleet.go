@@ -57,7 +57,7 @@ type lifeItem struct {
 func (h fleetHost) Attention() bool {
 	c := h.R.Counts
 	return h.Reported && (c.KEV > 0 || h.News > 0 || c.Fixable > 0 || h.EOL || h.EOLSoon || h.Stale ||
-		h.Anomalies > 0 || h.Reboot || h.PendingSecurity > 0 || h.SitesAttention > 0 || h.CollectorBehind ||
+		h.Anomalies > 0 || h.Reboot || c.RebootPending > 0 || h.PendingSecurity > 0 || h.SitesAttention > 0 || h.CollectorBehind ||
 		h.ChangeWatch == "off")
 }
 
@@ -276,6 +276,8 @@ type fleetSummary struct {
 	Behind, WatchOff  int
 	Version           string // this hub's release, when it is one
 	Open, NoFix       int    // findings
+	NotRunning        int    // ...on old kernels that aren't running
+	KernelUserland    int    // ...on kernel userland packages
 	Fixable           int
 }
 
@@ -317,6 +319,8 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		f.Reported++
 		f.Open += c.Total
 		f.NoFix += c.NoFix
+		f.NotRunning += c.NotRunning
+		f.KernelUserland += c.KernelUserland
 		f.Fixable += c.Fixable
 		t.kev += c.KEV
 		t.urgent += c.FixUrgent
