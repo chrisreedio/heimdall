@@ -174,3 +174,68 @@ func Newest(pm string, pkgs []Installed) string {
 	}
 	return best
 }
+
+// releaseRe finds a kernel release in a package name or uname -r:
+// "6.17.0-1009" in linux-aws-6.17-headers-6.17.0-1009 or 7.0.0-1014-aws.
+var releaseRe = regexp.MustCompile(`\d+\.\d+(?:\.\d+)?-\d+`)
+
+// PurgePrefix is the command that removes kernels that aren't running.
+const PurgePrefix = "sudo apt-get purge"
+
+// Release is the kernel release a Debian/Ubuntu ABI-named package belongs
+// to ("6.17.0-1009"), or "".
+func Release(pm, name string) string {
+	if !ABIPackage(pm, name) {
+		return ""
+	}
+	return releaseRe.FindString(name)
+}
+
+// runningRelease is uname -r without its flavour: 7.0.0-1014-aws is
+// "7.0.0-1014".
+func runningRelease(running string) string {
+	if m := releaseRe.FindStringIndex(running); m != nil && m[0] == 0 {
+		return running[:m[1]]
+	}
+	return ""
+}
+
+// older reports whether release is older than the running kernel's.
+func older(release, running string) bool {
+	r := runningRelease(running)
+	return release != "" && r != "" && version.CompareDpkg(release, r) < 0
+}
+
+// NotRunning reports whether a finding's packages all belong to a
+// Debian/Ubuntu kernel older than the one running: it's on disk (often
+// apt's previous kernel, kept as a boot fallback) but not in use, and
+// upgrading never removes it. A newer, not yet booted kernel isn't
+// counted: it runs after the next reboot.
+func NotRunning(pm, running string, binaries []string) bool {
+	if pm != "dpkg" || len(binaries) == 0 {
+		return false
+	}
+	for _, b := range binaries {
+		if !older(Release(pm, b), running) {
+			return false
+		}
+	}
+	return true
+}
+
+// Older returns the installed Debian/Ubuntu kernel packages for releases
+// older than the running kernel, sorted: what PurgePrefix removes. It
+// never includes the running kernel or a newer one waiting for a reboot.
+func Older(pm, running string, installed []string) []string {
+	if pm != "dpkg" {
+		return nil
+	}
+	var out []string
+	for _, n := range installed {
+		if older(Release(pm, n), running) && !slices.Contains(out, n) {
+			out = append(out, n)
+		}
+	}
+	slices.Sort(out)
+	return out
+}

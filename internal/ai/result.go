@@ -87,6 +87,9 @@ type HostAllowed struct {
 	PM       string          // dpkg, rpm, apk, or ""
 	Packages map[string]bool // OS package names (binary and source)
 	Composer map[string]bool // Composer package names in its sites
+	// OldKernels are installed kernel packages older than the running
+	// kernel: the only packages a purge suggestion may name.
+	OldKernels map[string]bool
 }
 
 // Parse validates the model's text against the schema and the limits,
@@ -207,6 +210,13 @@ func checkCommand(cmd string, h HostAllowed) string {
 		}
 		return ""
 	}
+	// Removing kernels older than the running one, and nothing else.
+	if rest, ok := strings.CutPrefix(cmd, kernel.PurgePrefix+" "); ok {
+		if pkgs := strings.Fields(rest); h.PM == "dpkg" && len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && allIn(pkgs, safePackage, h.OldKernels) {
+			return cmd
+		}
+		return ""
+	}
 	for _, prefix := range commandPrefixes[h.PM] {
 		if rest, ok := strings.CutPrefix(cmd, prefix+" "); ok {
 			if pkgs := strings.Fields(rest); len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && allIn(pkgs, safePackage, h.Packages) &&
@@ -242,6 +252,11 @@ func commandShapeOK(cmd string) bool {
 	if rest, ok := strings.CutPrefix(cmd, "composer update "); ok {
 		pkgs := strings.Fields(strings.TrimSuffix(rest, " --with-dependencies"))
 		return len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && all(pkgs, composerName)
+	}
+	if rest, ok := strings.CutPrefix(cmd, kernel.PurgePrefix+" "); ok {
+		pkgs := strings.Fields(rest)
+		return len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && all(pkgs, safePackage) && strings.Join(pkgs, " ") == rest &&
+			!slices.ContainsFunc(pkgs, func(p string) bool { return !kernel.ABIPackage("dpkg", p) })
 	}
 	for pm, prefixes := range commandPrefixes {
 		for _, prefix := range prefixes {

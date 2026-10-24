@@ -13,7 +13,7 @@
   <tbody>
   {{range .}}
   <tr>
-    <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}{{if or .KEV .InNews}}<div class="find-badges">{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}</div>{{end}}</td>
+    <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}{{if or .KEV .InNews .NotRunning}}<div class="find-badges">{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}{{if .NotRunning}} <span class="badge muted" title="On an older kernel that's installed but not running: removing it clears this">not running</span>{{end}}</div>{{end}}</td>
     <td><span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</td>
     <td>{{.Package}}{{if gt (len .Binaries) 1}}<div class="muted small">{{join .Binaries ", "}}</div>{{end}}</td>
     <td class="ver">{{.Version}}</td>
@@ -53,13 +53,18 @@
   <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
   <p class="muted small">{{if .Note}}{{.Note}}{{else}}Upgrades only these packages. Filter by severity above to patch, say, just the critical ones first.{{end}} Heimdall never runs it for you.</p>
 </div>{{end}}
+{{with .OldKernelCmd}}<div class="cmd fix-cmd">
+  <div class="cmd-label">Remove old kernels that aren't running <span class="muted small">· clears {{$.OldKernelFindings}} finding{{if ne $.OldKernelFindings 1}}s{{end}} marked "not running"</span></div>
+  <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
+  <p class="muted small">{{.Note}} Heimdall never runs it for you.</p>
+</div>{{end}}
 {{if eq .View "packages"}}
   {{if .Groups}}
   <div class="pkg-list" role="table" aria-label="Findings by package">
     <div class="pkg-grid pkg-head" role="row"><span>Package</span><span>Installed</span><span>Worst</span><span class="num">KEV</span><span class="num">Crit</span><span class="num">High</span><span class="num">Med</span><span class="num">Low</span><span class="num">Fixable</span></div>
     {{range .Groups}}<details class="pkg-row">
       <summary class="pkg-grid" role="row">
-        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span>{{if .News}} <span class="badge news" title="{{.News}} named by a live incident in the news">in the news</span>{{end}}</span>
+        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span>{{if .NotRunning}} <span class="badge muted" title="An older kernel that's installed but not running: removing it clears these">not running</span>{{end}}{{if .News}} <span class="badge news" title="{{.News}} named by a live incident in the news">in the news</span>{{end}}</span>
         <span class="ver">{{.Version}}</span>
         <span><span class="sev sev-{{sev .Worst}}">{{.Worst}}</span></span>
         <span class="num">{{if .KEV}}<span class="badge kev">{{.KEV}}</span>{{else}}<span class="muted">0</span>{{end}}</span>

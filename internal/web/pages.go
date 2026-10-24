@@ -282,6 +282,12 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	body.PackageMgr = packageManager(inv)
 	body.Commands = upgradeCommands(body.PackageMgr, body.Pending)
 	body.OSView = buildFindingsView("/hosts/"+url.PathEscape(host.OrgSlug)+"/"+url.PathEscape(host.Name), packageManager(inv), r.URL.Query(), body.OSFindings, installedNames(inv))
+	for _, f := range body.OSFindings {
+		if f.NotRunning {
+			body.OSView.OldKernelFindings++
+		}
+	}
+	body.OSView.OldKernelCmd = oldKernelCommand(body.Report.OldKernels, body.OSView.OldKernelFindings)
 	if v := strings.TrimSpace(sum.CollectorVersion); v != "" && releaseTag.MatchString(s.cfg.Version) {
 		body.CollectorKnown = true
 		body.CollectorBehind = updates.Newer(s.cfg.Version, "v"+strings.TrimPrefix(v, "v"))

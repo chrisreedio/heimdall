@@ -26,7 +26,8 @@ type pkgGroup struct {
 	Binaries         []string
 	Worst            string // highest severity
 	KEV              int
-	News             int // findings named by a live news incident
+	News             int  // findings named by a live news incident
+	NotRunning       bool // every finding is on an old kernel that isn't running
 	BySev            map[string]int
 	Total, Fixable   int
 	FixPending       bool // an update that fixes some of them is already pending
@@ -53,6 +54,27 @@ type findingsView struct {
 	FixCmd     *command
 	FixPkgs    int
 	FixPending int // of those, how many already have the update pending
+	// OldKernelCmd removes installed kernels older than the running one,
+	// which clears OldKernelFindings (upgrading never does).
+	OldKernelCmd      *command
+	OldKernelFindings int
+}
+
+// oldKernelCommand removes the installed kernel packages older than the
+// running kernel (report.Host.OldKernels), when findings are on them.
+func oldKernelCommand(pkgs []string, findings int) *command {
+	var names []string
+	for _, p := range pkgs {
+		if safePackage.MatchString(p) {
+			names = append(names, p)
+		}
+	}
+	if findings == 0 || len(names) == 0 {
+		return nil
+	}
+	return &command{ID: "cmd-old-kernels", Text: kernel.PurgePrefix + " " + strings.Join(names, " "),
+		Note: "These kernels are installed but not running (apt keeps the previous one as a boot fallback), so upgrading never clears their findings. " +
+			"Check that uname -r shows the kernel you expect first; afterwards there's no older kernel to fall back to at boot."}
 }
 
 // fixCommand builds an upgrade command for the packages that fix the
@@ -90,7 +112,7 @@ func fixCommand(pm string, list []report.Finding, installed map[string]bool) (*c
 	pendingPkgs := 0
 	kernelFix := false
 	for _, f := range list {
-		if f.Fixed == "" {
+		if f.Fixed == "" || f.NotRunning { // an old kernel: removing it is the fix
 			continue
 		}
 		bins, isKernel := kernel.Split(pm, f.Binaries, f.Package, has)
@@ -239,9 +261,11 @@ func groupByPackage(list []report.Finding) []pkgGroup {
 		if !ok {
 			i = len(groups)
 			idx[key] = i
-			groups = append(groups, pkgGroup{Package: f.Package, Version: f.Version, Binaries: f.Binaries, BySev: map[string]int{}})
+			groups = append(groups, pkgGroup{Package: f.Package, Version: f.Version, Binaries: f.Binaries, BySev: map[string]int{},
+				NotRunning: f.NotRunning})
 		}
 		g := &groups[i]
+		g.NotRunning = g.NotRunning && f.NotRunning
 		g.Total++
 		g.Findings = append(g.Findings, f)
 		if f.KEV {
@@ -264,8 +288,9 @@ func groupByPackage(list []report.Finding) []pkgGroup {
 		}
 	}
 	slices.SortStableFunc(groups, func(a, b pkgGroup) int {
+		running := map[bool]int{false: 1, true: 0} // old kernels that aren't running go last
 		for _, d := range [][2]int{
-			{a.KEV, b.KEV}, {a.News, b.News}, {severityRank[a.Worst], severityRank[b.Worst]},
+			{running[a.NotRunning], running[b.NotRunning]}, {a.KEV, b.KEV}, {a.News, b.News}, {severityRank[a.Worst], severityRank[b.Worst]},
 			{a.BySev["critical"], b.BySev["critical"]}, {a.BySev["high"], b.BySev["high"]}, {a.Total, b.Total},
 		} {
 			if d[0] != d[1] {
