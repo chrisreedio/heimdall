@@ -239,3 +239,132 @@ func Older(pm, running string, installed []string) []string {
 	slices.Sort(out)
 	return out
 }
+
+// Per-finding kernel statuses (State.Status). A finding that isn't on a
+// Debian/Ubuntu kernel ABI package has none ("").
+const (
+	// StatusRunning: on the running kernel, and no newer one is installed
+	// (or the packages span kernels).
+	StatusRunning = "running"
+	// StatusNotRunning: on an older kernel that's installed but not
+	// running. Removing that kernel clears it; upgrading never does.
+	StatusNotRunning = "not_running"
+	// StatusRebootPending: on the running kernel while a newer kernel is
+	// already installed. Rebooting puts the newer one in use, which clears
+	// it; the newer kernel may still have findings of its own.
+	StatusRebootPending = "reboot_pending"
+	// StatusNewerKernel: on a newer kernel that's installed but not yet
+	// booted. It's live after the reboot, so rebooting won't clear it.
+	StatusNewerKernel = "newer_kernel"
+)
+
+// Host kernel states (State.Name).
+const (
+	StateCurrent             = "current"        // running the newest installed kernel, nothing older installed
+	StateRebootPending       = "reboot_pending" // a newer kernel is installed than the one running
+	StateOldKernels          = "old_kernels"    // running the newest; older kernels are installed too
+	StateRebootAndOldKernels = "reboot_pending_and_old_kernels"
+)
+
+// State is what a Debian/Ubuntu host's installed kernels say about the
+// running one. For other package managers, or an unknown running kernel,
+// it knows nothing: Name and every Status are "".
+type State struct {
+	Running string // uname -r
+	// Newer is the newest installed kernel's release (as uname -r prints
+	// it) when it's newer than the running one: a reboot puts it in use.
+	Newer string
+	// Old are the installed ABI packages of releases older than the
+	// running one (what Older returns). Boot are the running release's ABI
+	// packages when Newer is set: their findings clear after a reboot.
+	Old, Boot []string
+
+	old, boot, newer map[string]bool
+}
+
+// HostState works out a host's kernel state from its installed packages.
+func HostState(pm, running string, pkgs []Installed) State {
+	r := runningRelease(running)
+	if pm != "dpkg" || r == "" {
+		return State{Running: running}
+	}
+	s := State{Running: running, old: map[string]bool{}, boot: map[string]bool{}, newer: map[string]bool{}}
+	if n := Newest(pm, pkgs); n != "" {
+		if nr := runningRelease(n); nr != "" && version.CompareDpkg(nr, r) > 0 {
+			s.Newer = n
+		}
+	}
+	for _, p := range pkgs {
+		rel := Release(pm, p.Name)
+		if rel == "" {
+			continue
+		}
+		switch c := version.CompareDpkg(rel, r); {
+		case c < 0:
+			s.old[p.Name] = true
+		case c == 0 && s.Newer != "":
+			s.boot[p.Name] = true
+		case c > 0:
+			s.newer[p.Name] = true
+		}
+	}
+	s.Old, s.Boot = sortedKeys(s.old), sortedKeys(s.boot)
+	return s
+}
+
+func sortedKeys(m map[string]bool) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	slices.Sort(out)
+	return out
+}
+
+// Name is the host's kernel state (StateCurrent and so on), or "" when it
+// can't be told.
+func (s State) Name() string {
+	switch {
+	case s.old == nil:
+		return ""
+	case s.Newer != "" && len(s.Old) > 0:
+		return StateRebootAndOldKernels
+	case s.Newer != "":
+		return StateRebootPending
+	case len(s.Old) > 0:
+		return StateOldKernels
+	}
+	return StateCurrent
+}
+
+// Status is a finding's kernel status from its binary packages, or ""
+// unless it's on Debian/Ubuntu kernel ABI packages. The store's
+// finding_counts recount mirrors the not_running and reboot_pending rules
+// with the Old and Boot sets, so keep the two in step.
+func (s State) Status(binaries []string) string {
+	if s.old == nil || len(binaries) == 0 {
+		return ""
+	}
+	all := func(set map[string]bool) bool {
+		for _, b := range binaries {
+			if !set[b] {
+				return false
+			}
+		}
+		return true
+	}
+	switch {
+	case all(s.old):
+		return StatusNotRunning
+	case all(s.boot):
+		return StatusRebootPending
+	case all(s.newer):
+		return StatusNewerKernel
+	}
+	for _, b := range binaries {
+		if ABIPackage("dpkg", b) {
+			return StatusRunning
+		}
+	}
+	return ""
+}

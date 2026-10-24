@@ -42,6 +42,12 @@ type Host struct {
 	// OldKernels are installed Debian/Ubuntu kernel packages for releases
 	// older than the running one: on disk, not in use (see kernel.Older).
 	OldKernels []string `json:"old_kernels,omitempty"`
+	// KernelState is kernel.State.Name: current, reboot_pending,
+	// old_kernels or reboot_pending_and_old_kernels ("" if unknown).
+	KernelState string `json:"kernel_state,omitempty"`
+	// NewerKernel is the newer kernel that's installed but not running
+	// yet, when a reboot is pending.
+	NewerKernel string `json:"newer_kernel,omitempty"`
 }
 
 type Container struct {
@@ -100,6 +106,13 @@ type Counts struct {
 	NoFix      int `json:"no_fix"`                // affected, but no fix released yet
 	FixUrgent  int `json:"fixable_critical_high"` // fixable, and critical or high
 	InNews     int `json:"in_news"`               // named by a live threat-news incident
+	// NotRunning are on old kernels that are installed but not running:
+	// not live exposure, so they're left out of KEV, FixPending, Fixable,
+	// FixUrgent and NoFix (Total = Fixable + NoFix + NotRunning).
+	NotRunning int `json:"not_running"`
+	// RebootPending are on the running kernel while a newer one is
+	// installed: still live, and counted everywhere, until the reboot.
+	RebootPending int `json:"reboot_pending"`
 }
 
 type Finding struct {
@@ -122,6 +135,9 @@ type Finding struct {
 	// NotRunning: every package is part of an older kernel that's
 	// installed but not running, so removing it (not upgrading) clears it.
 	NotRunning bool `json:"not_running,omitempty"`
+	// KernelStatus is kernel.State.Status: running, not_running,
+	// reboot_pending or newer_kernel, or "" when not on a kernel package.
+	KernelStatus string `json:"kernel_status,omitempty"`
 }
 
 // Filter narrows a report. Scope is required: hosts outside it are never
@@ -203,11 +219,8 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 		}
 		host.Kernel = sum.Kernel
 		pm := hostPM(inv)
-		names := make([]string, 0, len(inv.Packages))
-		for _, p := range inv.Packages {
-			names = append(names, p.Name)
-		}
-		host.OldKernels = kernel.Older(pm, host.Kernel, names)
+		ks := kernel.HostState(pm, host.Kernel, InstalledKernels(inv))
+		host.OldKernels, host.KernelState, host.NewerKernel = ks.Old, ks.Name(), ks.Newer
 
 		if info, ok := findings.HostEcosystem(inv); ok {
 			host.Ecosystem = info.OSV
@@ -239,16 +252,20 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 				return nil, err
 			}
 			for _, f := range fs {
+				status := ""
+				if f.SiteRoot == "" {
+					status = ks.Status(f.Binaries)
+				}
 				host.Findings = append(host.Findings, Finding{
 					Advisory: f.AdvisoryID, CVEs: nonNil(f.CVEs), Severity: f.Severity, CVSS: f.CVSS,
 					KEV: f.KEV, KEVRansomware: f.KEVRansomware, Package: f.Package, Version: f.Version,
 					Binaries: nonNil(f.Binaries), Fixed: f.FixedVersion, FixPending: f.FixPending,
 					Summary: f.Summary, FirstSeen: f.FirstSeen, Site: f.SiteRoot, EPSS: f.EPSS, InNews: f.InNews,
-					NotRunning: f.SiteRoot == "" && kernel.NotRunning(pm, host.Kernel, f.Binaries),
+					NotRunning: status == kernel.StatusNotRunning, KernelStatus: status,
 				})
-				host.Counts.add(f)
+				host.Counts.add(f, status)
 				c := siteCounts[f.SiteRoot]
-				c.add(f)
+				c.add(f, status)
 				siteCounts[f.SiteRoot] = c
 			}
 		}
@@ -262,6 +279,16 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 		r.Hosts = append(r.Hosts, host)
 	}
 	return r, nil
+}
+
+// InstalledKernels is the inventory's packages as internal/kernel takes
+// them.
+func InstalledKernels(inv store.HostInventory) []kernel.Installed {
+	out := make([]kernel.Installed, 0, len(inv.Packages))
+	for _, p := range inv.Packages {
+		out = append(out, kernel.Installed{Name: p.Name, Version: p.Version, Arch: p.Arch})
+	}
+	return out
 }
 
 // hostPM is the host's package manager (dpkg, rpm, apk), or "".
@@ -314,21 +341,31 @@ func buildSite(s store.InventorySite, counts Counts, lifecycle func(product, cyc
 	return site, nil
 }
 
-func (c *Counts) add(f store.ReportFinding) {
+// add counts one finding with its kernel status. The store's recount
+// (countsSQL in internal/store) counts the same way.
+func (c *Counts) add(f store.ReportFinding, kernelStatus string) {
 	c.Total++
-	if f.KEV {
-		c.KEV++
-	}
-	if f.FixPending {
-		c.FixPending++
-	}
-	if f.FixedVersion != "" {
+	switch {
+	case kernelStatus == kernel.StatusNotRunning:
+		c.NotRunning++
+	case f.FixedVersion != "":
 		c.Fixable++
 		if f.Severity == "critical" || f.Severity == "high" {
 			c.FixUrgent++
 		}
-	} else {
+	default:
 		c.NoFix++
+	}
+	if kernelStatus != kernel.StatusNotRunning {
+		if f.KEV {
+			c.KEV++
+		}
+		if f.FixPending {
+			c.FixPending++
+		}
+	}
+	if kernelStatus == kernel.StatusRebootPending {
+		c.RebootPending++
 	}
 	if f.InNews {
 		c.InNews++
@@ -351,7 +388,7 @@ func (c *Counts) add(f store.ReportFinding) {
 func countsFrom(c store.FindingCounts) Counts {
 	return Counts{Total: c.Total, KEV: c.KEV, Critical: c.Critical, High: c.High, Medium: c.Medium, Low: c.Low,
 		Unknown: c.Unknown, Fixable: c.Fixable, FixPending: c.FixPending, NoFix: c.NoFix, FixUrgent: c.FixUrgent,
-		InNews: c.InNews}
+		InNews: c.InNews, NotRunning: c.NotRunning, RebootPending: c.RebootPending}
 }
 
 func (c *Counts) merge(o Counts) {
@@ -367,6 +404,8 @@ func (c *Counts) merge(o Counts) {
 	c.NoFix += o.NoFix
 	c.FixUrgent += o.FixUrgent
 	c.InNews += o.InNews
+	c.NotRunning += o.NotRunning
+	c.RebootPending += o.RebootPending
 }
 
 func nonNil(s []string) []string {
@@ -406,6 +445,13 @@ func WriteText(w io.Writer, r *Report, limit int) {
 			c.Total, c.KEV, c.Critical, c.High, c.Medium, c.Low, c.Unknown)
 		fmt.Fprintf(w, "            %d fixable now (%d via updates already pending), %d with no fix released yet\n",
 			c.Fixable, c.FixPending, c.NoFix)
+		if c.NotRunning > 0 {
+			fmt.Fprintf(w, "            %d on old kernels that are installed but not running\n", c.NotRunning)
+		}
+		if h.NewerKernel != "" {
+			fmt.Fprintf(w, "  Kernel: %s installed but %s still running: reboot to run it (%d findings clear)\n",
+				h.NewerKernel, h.Kernel, c.RebootPending)
+		}
 		for _, s := range h.Sites {
 			fmt.Fprintf(w, "  Site: %s (%s)\n", s.Root, strings.Join(s.ServerNames, ", "))
 			if s.Framework != "" {

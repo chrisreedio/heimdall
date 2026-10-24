@@ -37,6 +37,7 @@
     <th class="num" title="Fixable findings rated critical or high">Crit/high fix</th>
     <th class="num" title="Findings an update fixes">Fixable</th>
     <th class="num" title="Affected, but no fix released yet">No fix yet</th>
+    <th class="num" title="On old kernels that are installed but not running: not live exposure">Not running</th>
     <th>Updates</th><th>Last report</th><th>Collector</th><th class="num">Anomalies</th>
   </tr></thead>
   <tbody>
@@ -53,12 +54,13 @@
     <td class="num{{if not $c.FixUrgent}} zero{{end}}" data-label="Crit/high fix">{{if $c.FixUrgent}}<strong class="sub-bad">{{num $c.FixUrgent}}</strong>{{else}}<span class="muted">0</span>{{end}}</td>
     <td class="num{{if not $c.Fixable}} zero{{end}}" data-label="Fixable">{{if $c.Fixable}}{{num $c.Fixable}}{{else}}<span class="muted">0</span>{{end}}</td>
     <td class="num muted{{if not $c.NoFix}} zero{{end}}" data-label="No fix yet">{{num $c.NoFix}}</td>
-    <td class="h-upd{{if not (or .Pending .Reboot)}} zero{{end}}" data-label="Updates">{{if .Pending}}{{.Pending}}{{else}}<span class="muted">0</span>{{end}}{{if .PendingSecurity}} <span class="pill bad">{{.PendingSecurity}} security</span>{{end}}{{if .Reboot}} <span class="pill warn">reboot</span>{{end}}</td>
+    <td class="num muted{{if not $c.NotRunning}} zero{{end}}" data-label="Not running">{{num $c.NotRunning}}</td>
+    <td class="h-upd{{if not (or .Pending .Reboot)}} zero{{end}}" data-label="Updates">{{if .Pending}}{{.Pending}}{{else}}<span class="muted">0</span>{{end}}{{if .PendingSecurity}} <span class="pill bad">{{.PendingSecurity}} security</span>{{end}}{{if $c.RebootPending}} <span class="pill warn" title="{{$c.RebootPending}} finding{{if ne $c.RebootPending 1}}s{{end}} on the running kernel clear after a reboot: a newer kernel is already installed">reboot pending</span>{{else if .Reboot}} <span class="pill warn">reboot</span>{{end}}</td>
     <td class="nowrap h-seen" data-label="Last report" title="{{time .R.LastSeen}}"><span{{if .Stale}} class="stale"{{end}}>{{ago .R.LastSeen}}</span>{{if .Stale}} <span class="pill warn">stale</span>{{end}}</td>
     <td class="h-coll" data-label="Collector"><span class="ver">{{.Collector}}</span>{{if .CollectorBehind}} <span class="pill muted" title="On the server: sudo heimdall-collect upgrade">behind</span>{{end}}{{if eq .ChangeWatch "off"}} <span class="pill warn" title="Changes are only reported on the schedule">watch off</span>{{end}}</td>
     <td class="num{{if not .Anomalies}} zero{{end}}" data-label="Anomalies">{{if .Anomalies}}<a class="pill {{if eq .AnomalyWorst "high"}}bad{{else}}warn{{end}}" href="/anomalies">{{.Anomalies}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
     {{else}}
-    <td colspan="10" class="muted h-wait full">waiting for first report{{if not .LastSeenAt.IsZero}} · checked in {{ago .LastSeenAt}}{{end}}</td>
+    <td colspan="11" class="muted h-wait full">waiting for first report{{if not .LastSeenAt.IsZero}} · checked in {{ago .LastSeenAt}}{{end}}</td>
     {{end}}
   </tr>
   {{end}}

@@ -112,7 +112,9 @@ func (s *Service) finish(ctx context.Context, id int64, actor, action string, or
 		resp, err = s.Provider.Complete(ctx, buildPrompt(task, facts))
 	}
 	if err == nil {
-		res, err = Parse(resp.Text, allowed)
+		if res, err = Parse(resp.Text, allowed); err == nil {
+			res = Reconcile(res, allowed)
+		}
 	}
 	status, msg, model, in, out := "ok", "", "", 0, 0
 	var latency time.Duration

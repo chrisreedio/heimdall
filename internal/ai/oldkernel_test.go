@@ -5,8 +5,7 @@ package ai
 import "testing"
 
 func TestPurgeOnlyOldKernels(t *testing.T) {
-	h := HostAllowed{PM: "dpkg", Packages: map[string]bool{"linux-image-6.17.0-1009-aws": true, "linux-image-7.0.0-1014-aws": true, "openssl": true},
-		OldKernels: map[string]bool{"linux-image-6.17.0-1009-aws": true, "linux-headers-6.17.0-1009-aws": true}}
+	h := HostAllowed{PM: "dpkg", Commands: []string{"sudo apt-get purge linux-headers-6.17.0-1009-aws linux-image-6.17.0-1009-aws"}}
 	for cmd, ok := range map[string]bool{
 		"sudo apt-get purge linux-image-6.17.0-1009-aws":                               true,
 		"sudo apt-get purge linux-headers-6.17.0-1009-aws linux-image-6.17.0-1009-aws": true,
@@ -19,7 +18,7 @@ func TestPurgeOnlyOldKernels(t *testing.T) {
 			t.Errorf("checkCommand(%q) = %v, want %v", cmd, got, ok)
 		}
 	}
-	if checkCommand("sudo apt-get purge linux-image-6.17.0-1009-aws", HostAllowed{PM: "rpm", OldKernels: h.OldKernels}) != "" {
+	if checkCommand("sudo apt-get purge linux-image-6.17.0-1009-aws", HostAllowed{PM: "rpm"}) != "" {
 		t.Error("purge is dpkg only")
 	}
 	if !commandShapeOK("sudo apt-get purge linux-image-6.17.0-1009-aws") || commandShapeOK("sudo apt-get purge openssl") {

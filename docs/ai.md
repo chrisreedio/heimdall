@@ -7,7 +7,7 @@ Heimdall can ask **your own** Azure AI Foundry / Azure OpenAI model deployment f
 - **Daily brief:** a short summary of each org's fleet on the dashboard: what changed, what's urgent, and what to do first. It's written on a schedule (default daily), and an operator or admin can regenerate it.
 - **Explain this host:** on-demand triage on a host page. It turns hundreds or thousands of findings into a short, prioritized plan, for example "patch these packages (copyable command), reboot, upgrade Laravel on this site, and these 55 kernel CVEs have no fix yet, so they can wait".
 
-The output is **advisory text only**. Heimdall never runs a command a model suggests, and it shows a suggested command only if it has exactly the shape of the upgrade commands the host page already builds and names packages the host really has.
+The output is **advisory text only**. Heimdall never runs a command a model suggests, and it shows a suggested command only if it's one Heimdall itself built for that host (or one of those with fewer packages). After the model answers, Heimdall checks the plan against the facts and fixes it where they disagree, marking those steps "added by Heimdall" or "edited by Heimdall".
 
 ## Set it up
 
@@ -86,12 +86,13 @@ Researched on Microsoft Learn in October 2026:
 This is **exactly** what leaves the hub, as one JSON document per run. It's built in [`internal/ai/facts.go`](../internal/ai/facts.go), and that file and this list are kept in sync. Free text is trimmed to one line and a fixed length. Nothing else is sent: no raw snapshots, full package lists, IP addresses, tokens, user names or emails, audit log, or config.
 
 **Explain this host** (one host):
-- **Host:** its name and environment; its OS name and OS lifecycle (product, cycle, end-of-life flag and date); when it last reported and whether it's stale; whether a reboot is required (or unknown); the running kernel release (`uname -r` from its latest report) and the newest kernel installed, when the package list shows it; its package manager; and its pending update and pending security update counts.
-- **Finding counts:** total, KEV, by severity, fixable, fix pending and no fix yet, plus how many findings are in the news.
+- **Host:** its name and environment; its OS name and OS lifecycle (product, cycle, end-of-life flag and date); when it last reported and whether it's stale; whether a reboot is required (or unknown); the running kernel release (`uname -r` from its latest report) and the newest kernel installed, when the package list shows it; on Debian and Ubuntu, its `kernel_state` (`current`, `reboot_pending`, `old_kernels` or `reboot_pending_and_old_kernels`), the newer installed kernel when a reboot is pending, how many findings that reboot clears, how many kernel packages older than the running one are installed and how many findings are only on them; its package manager; its pending update and pending security update counts; and how many OS findings are fixed upstream but not in the host's package cache (a fix is published, but no pending update installs it).
+- **Finding counts:** total, KEV, by severity, fixable, fix pending and no fix yet, plus how many findings are in the news, on kernels that aren't running (left out of the KEV, fixable and no-fix counts) and cleared by a pending reboot.
 - **Top findings:** up to 25, ranked like Patch first (KEV, in the news, fixable, severity, EPSS, CVSS). Each one has:
   - the package, installed version and fixed-in version, and whether the fix is already pending;
   - the advisory ID and up to 3 CVEs;
   - the severity, KEV flag, EPSS and in-the-news flag;
+  - for kernel findings on Debian and Ubuntu, the `kernel_status`: `running`, `not_running` (an older kernel that's installed but not running), `reboot_pending` (the running kernel, while a newer one is installed: rebooting clears it) or `newer_kernel` (the newer kernel that isn't booted yet: rebooting won't clear it);
   - the advisory summary, trimmed to 160 characters.
 - **No fix yet:** a count per package (up to 15) with its worst severity.
 - **Runtimes:** name, version and lifecycle.
@@ -103,7 +104,10 @@ This is **exactly** what leaves the hub, as one JSON document per run. It's buil
 - **Open anomalies:** up to 30, each with its rule, severity, summary and when it was detected.
 - **News:** the titles, severities and status of incidents that affect this host.
 - **Plans and windows:** whether the host is in an open patch plan, and its current maintenance windows, described in a line each.
-- **Suggested commands:** the commands Heimdall itself would offer for this host, built from the host's own package names. They cover the fixable OS findings, pending security updates, each site's fixable Composer packages, and a reboot if one is required or a kernel fix will need one. A kernel fix on Debian or Ubuntu upgrades the installed kernel metapackage (such as `linux-aws`, `linux-generic` or `linux-image-amd64`), never the ABI-named packages like `linux-image-6.17.0-1009-aws`, because the fix ships as a new package; with no metapackage installed it falls back to `sudo apt-get update && sudo apt-get upgrade` and says why. RPM (`kernel`, `kernel-core`…) and Alpine (`linux-lts`, `linux-virt`) kernels keep their names, so they upgrade by name.
+- **Suggested commands:** the commands Heimdall itself would offer for this host, built from the host's own package names, in the order to run them. They cover the fixable OS findings, pending security updates, each site's fixable Composer packages, removing old kernels that carry findings, and a reboot if one is required or a kernel fix will need one.
+  - Upgrade commands name **only packages that have a pending update**. The collector reads the package manager's existing cache (`apt-get -s dist-upgrade`, `dnf -C check-update`, `apk version`) and never refreshes it, so a fix that's published but not offered by the cache is counted as "fixed upstream, not in the package cache" instead of being suggested: either the host's sources don't have it yet, or the cache is old.
+  - A kernel fix on Debian or Ubuntu upgrades the installed kernel metapackage (such as `linux-aws`, `linux-generic` or `linux-image-amd64`) when it has an update pending, never the ABI-named packages like `linux-image-6.17.0-1009-aws`, because the fix ships as a new package; with no metapackage installed it falls back to `sudo apt-get update && sudo apt-get upgrade` and says why. RPM (`kernel`, `kernel-core`…) and Alpine (`linux-lts`, `linux-virt`) kernels keep their names, so they upgrade by name.
+  - When a newer kernel is already installed and findings are on the running one (`reboot_pending`), the fix is the reboot: "Reboot to run <newer>" comes first, and the metapackages aren't added (upgrading them does nothing). If the metapackages do have an update pending (a newer kernel still), the upgrade comes first and the reboot after it.
 
 **Daily brief** (one org):
 - **Org and totals:** the org's slug, the period length, and the fleet totals: hosts reporting, KEV and critical findings, hosts with fixes, hosts on end-of-life software, reboots, stale hosts, pending security updates, and findings that appeared or were resolved in the period.
@@ -125,15 +129,19 @@ When the input budget is tight, the less important parts go first: fewer finding
 - **Output is checked, not trusted.**
   - The answer must parse as the schema's JSON object (`summary`, up to 8 `actions` of `{title, why, host, command}`, and `notes`). Text is stripped of control and bidi characters and trimmed to fixed lengths.
   - An action's `host` must be a hostname from the data. Otherwise both the host and its command are dropped.
-  - A `command` is kept only if it's exactly one of these shapes, naming only packages that host has installed (or has in its sites' Composer lockfiles), with no duplicates and at most 60 packages:
+  - A `command` is kept only if it's one of that host's suggested commands, or one of them with fewer of its packages (no duplicates, at most 60). The two forms of one package manager's upgrade (with and without `apt-get update &&`, `--refresh` or `apk update &&`) count as the same command. So a step can never name a package Heimdall didn't suggest for that host, which also means never one without a pending update, and `sudo reboot` only when Heimdall suggested a reboot. The shapes Heimdall builds are:
     - `sudo apt-get [update && sudo apt-get] install --only-upgrade <pkgs>`, never naming an ABI-versioned kernel package (`linux-image-6.17.0-1009-aws` and the like)
     - `sudo apt-get update && sudo apt-get upgrade`, exactly, on dpkg hosts (the kernel fallback above)
+    - `sudo apt-get purge <old kernel packages>`, on dpkg hosts
     - `sudo dnf upgrade [--refresh] <pkgs>`
-    - `sudo apk [update && sudo apk] upgrade <pkgs>`, all matching the host's package manager
+    - `sudo apk [update && sudo apk] upgrade <pkgs>`
     - `composer update <vendor/pkg…> [--with-dependencies]`
     - `sudo reboot`
 
-    Anything else, such as pipes, `;`, `$(…)`, flags or unknown packages, is dropped. The prose stays.
+    Anything else, such as pipes, `;`, `$(…)`, flags or unknown packages, is dropped.
+  - **Consistency check.** Then the plan is checked against the facts, deterministically:
+    - a step whose command was rejected keeps the packages that the closest of Heimdall's commands of the same kind names, marked **edited by Heimdall**, or is dropped when none are left (for example the model's `install --only-upgrade linux-aws …` on a host where the metapackages have no update pending);
+    - when a host explained on its own is `reboot_pending` with findings on the running kernel, and the plan has no reboot step, Heimdall adds "Reboot to run <newer>" (first, unless an upgrade installs a newer kernel still), marked **added by Heimdall**, with its reason from the facts.
   - Results are rendered with `html/template` as escaped text (no `template.HTML`). Commands appear in the usual copy box. The shape check runs again at render time.
 - **Nothing is executed.** The hub has no `os/exec` path for this, and the UI says so.
 - **Hand off to agent.** With `[[agents]]` configured, a plan step whose command is a `composer update` for one of the host's sites gets a "Hand off to agent" button (operators and admins only). The message it posts is rebuilt from the site's own findings, never from the model's text. See [Hand off to an agent](deployment.md#hand-off-to-an-agent).

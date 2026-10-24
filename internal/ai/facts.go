@@ -42,7 +42,10 @@ type findingFact struct {
 	EPSS       float64  `json:"epss,omitempty"`
 	InNews     bool     `json:"in_news,omitempty"`
 	NotRunning bool     `json:"not_running,omitempty"`
-	Summary    string   `json:"summary,omitempty"`
+	// KernelStatus: running, not_running, reboot_pending or newer_kernel
+	// (see kernel.State.Status), on kernel findings only.
+	KernelStatus string `json:"kernel_status,omitempty"`
+	Summary      string `json:"summary,omitempty"`
 }
 
 type noFixFact struct {
@@ -96,9 +99,18 @@ type hostFact struct {
 	RunningKernel  string    `json:"running_kernel,omitempty"`
 	// OldKernels counts installed kernel packages older than the running
 	// one; NotRunning counts findings that are only on them.
-	OldKernels      int           `json:"old_kernel_packages,omitempty"`
-	NotRunning      int           `json:"findings_on_old_kernels,omitempty"`
-	NewestKernel    string        `json:"newest_installed_kernel,omitempty"`
+	OldKernels   int    `json:"old_kernel_packages,omitempty"`
+	NotRunning   int    `json:"findings_on_old_kernels,omitempty"`
+	NewestKernel string `json:"newest_installed_kernel,omitempty"`
+	// KernelState is kernel.State.Name; NewerKernel the newer kernel that
+	// a reboot puts in use, and RebootPending the findings that reboot
+	// clears (on the running kernel).
+	KernelState   string `json:"kernel_state,omitempty"`
+	NewerKernel   string `json:"newer_installed_kernel,omitempty"`
+	RebootPending int    `json:"findings_cleared_by_reboot,omitempty"`
+	// NotInCache counts OS findings with a published fix that no pending
+	// update installs (report.Upgrade.NotInCache).
+	NotInCache      int           `json:"fixed_upstream_not_in_package_cache,omitempty"`
 	PackageManager  string        `json:"package_manager,omitempty"`
 	PendingUpdates  int           `json:"pending_updates"`
 	PendingSecurity int           `json:"pending_security_updates"`
@@ -199,6 +211,7 @@ func rank(a, b report.Finding) int {
 		return 0
 	}
 	return cmp.Or(
+		bi(a.NotRunning)-bi(b.NotRunning), // old kernels that aren't running last
 		bi(b.KEV)-bi(a.KEV), bi(b.InNews)-bi(a.InNews), bi(b.Fixed != "")-bi(a.Fixed != ""),
 		sevRank[b.Severity]-sevRank[a.Severity], cmp.Compare(b.EPSS, a.EPSS), cmp.Compare(b.CVSS, a.CVSS),
 		strings.Compare(a.Package, b.Package))
@@ -218,7 +231,7 @@ func life(l *report.Lifecycle) *lifeFact {
 func finding(f report.Finding, summary bool) findingFact {
 	ff := findingFact{Package: clip(f.Package, 100), Installed: clip(f.Version, 80), FixedIn: clip(f.Fixed, 80),
 		FixPending: f.FixPending, Advisory: clip(f.Advisory, 60), Severity: f.Severity, KEV: f.KEV,
-		EPSS: float64(int(f.EPSS*1000)) / 1000, InNews: f.InNews, NotRunning: f.NotRunning}
+		EPSS: float64(int(f.EPSS*1000)) / 1000, InNews: f.InNews, NotRunning: f.NotRunning, KernelStatus: f.KernelStatus}
 	for i, c := range f.CVEs {
 		if i == 3 {
 			break
@@ -328,25 +341,116 @@ func packageManager(inv store.HostInventory) string {
 	return ""
 }
 
-func (d hostData) allowed() HostAllowed {
-	a := HostAllowed{PM: d.pm, Packages: map[string]bool{}, Composer: map[string]bool{}, OldKernels: map[string]bool{}}
-	for _, p := range d.rep.OldKernels {
-		a.OldKernels[p] = true
+// allowed is what a plan step for this host may suggest: the commands
+// its facts carry (full: the host facts', else the brief's), and for a
+// host run, the reboot step the plan must have when findings on the
+// running kernel clear only by rebooting into the newer one.
+func (d hostData) allowed(full bool) HostAllowed {
+	cmds, u := d.commands(full)
+	a := HostAllowed{PM: d.pm}
+	for _, c := range cmds {
+		a.Commands = append(a.Commands, c.Command)
 	}
-	for _, p := range d.inv.Packages {
-		a.Packages[p.Name] = true
-	}
-	for _, s := range d.inv.Sites {
-		for _, p := range s.Packages {
-			a.Composer[p.Name] = true
-		}
+	if full && u.RebootFindings > 0 && d.rep.NewerKernel != "" {
+		a.Required = []Action{{Title: clip("Reboot to run "+d.rep.NewerKernel, maxTitle), Command: RebootCommand,
+			Why: cleanText(rebootWhy(d, u.RebootFindings), maxWhy)}}
+		a.RequiredFirst = len(u.Metas) == 0
 	}
 	return a
+}
+
+func rebootWhy(d hostData, n int) string {
+	kev := 0
+	for _, f := range d.rep.Findings {
+		if f.KernelStatus == kernel.StatusRebootPending && f.KEV {
+			kev++
+		}
+	}
+	s := fmt.Sprintf("%d finding%s", n, map[bool]string{true: "", false: "s"}[n == 1])
+	if kev > 0 {
+		s += fmt.Sprintf(" (%d known-exploited)", kev)
+	}
+	return fmt.Sprintf("%s %s on the running kernel %s. Kernel %s is already installed, so no package upgrade fixes %s: rebooting puts the newer kernel in use. "+
+		"The newer kernel may still have findings of its own; check the host after it reports again.",
+		s, map[bool]string{true: "is", false: "are"}[n == 1], clip(d.rep.Kernel, 100), clip(d.rep.NewerKernel, 100),
+		map[bool]string{true: "it", false: "them"}[n == 1])
+}
+
+// osFindings are the host's OS findings (not its sites').
+func (d hostData) osFindings() []report.Finding {
+	var out []report.Finding
+	for _, f := range d.rep.Findings {
+		if f.Site == "" {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// commands are the host's suggested commands, in the order to run them,
+// and the upgrade they come from. full adds the pending security updates
+// and the sites' Composer updates (the brief leaves them out).
+func (d hostData) commands(full bool) ([]commandFact, report.Upgrade) {
+	reboot := d.sum.RebootRequired
+	cmd, label, u := fixCommand(d.pm, d.osFindings(), report.PackagesOf(d.inv))
+	var out []commandFact
+	rebootFirst := u.RebootFindings > 0 && d.rep.NewerKernel != "" && len(u.Metas) == 0
+	if rebootFirst {
+		out = append(out, commandFact{Command: RebootCommand, Label: clip(fmt.Sprintf(
+			"Reboot to run %s: it's already installed, and rebooting clears the %d findings with kernel_status reboot_pending on the running kernel %s (no upgrade does)",
+			d.rep.NewerKernel, u.RebootFindings, d.rep.Kernel), 300)})
+	}
+	if cmd != "" {
+		out = append(out, commandFact{Label: label, Command: cmd})
+	}
+	if full {
+		var sec []string
+		for _, p := range d.inv.Packages {
+			if p.PendingSecurity && safePackage.MatchString(p.Name) && !kernel.ABIPackage(d.pm, p.Name) && !slices.Contains(sec, p.Name) {
+				sec = append(sec, p.Name)
+			}
+		}
+		if prefix := commandPrefixes[d.pm]; len(prefix) > 0 && len(sec) > 0 && len(sec) <= maxCommandPkgs {
+			slices.Sort(sec)
+			out = append(out, commandFact{Label: "Install pending security updates", Command: prefix[len(prefix)-1] + " " + strings.Join(sec, " ")})
+		}
+		composer := map[string]bool{}
+		for _, s := range d.inv.Sites {
+			for _, p := range s.Packages {
+				composer[p.Name] = true
+			}
+		}
+		for _, s := range d.rep.Sites {
+			var names []string
+			for _, f := range d.rep.Findings {
+				if f.Site == s.Root && f.Fixed != "" && composerName.MatchString(f.Package) && composer[f.Package] && !slices.Contains(names, f.Package) {
+					names = append(names, f.Package)
+				}
+			}
+			if len(names) > 0 && len(names) <= maxCommandPkgs {
+				slices.Sort(names)
+				out = append(out, commandFact{Label: "In " + clip(s.Root, 200) + ": update the Composer packages with fixes",
+					Command: "composer update " + strings.Join(names, " ") + " --with-dependencies"})
+			}
+		}
+	}
+	notRunning := 0
+	for _, f := range d.rep.Findings {
+		if f.NotRunning {
+			notRunning++
+		}
+	}
+	out = append(out, oldKernelCommand(d.pm, d.rep.OldKernels, notRunning)...)
+	if !rebootFirst {
+		out = append(out, rebootCommand(reboot, u.Kernel && cmd != "", u.RebootFindings > 0 && d.rep.NewerKernel != "")...)
+	}
+	return out, u
 }
 
 // fact summarizes one host at the given detail level.
 func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 	reboot := d.sum.RebootRequired
+	cmds, u := d.commands(full)
 	hf := hostFact{
 		Name: clip(d.host.Name, 253), Env: clip(d.env, 63), OS: clip(d.rep.OS, 80), OSLife: life(d.rep.OSLife),
 		LastReport: d.sum.ReceivedAt.UTC().Format(time.RFC3339), RebootRequired: reboot, PackageManager: d.pm,
@@ -361,11 +465,14 @@ func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 	}
 	hf.NewestKernel = clip(kernel.Newest(d.pm, inst), 100)
 	hf.OldKernels = len(d.rep.OldKernels)
+	hf.KernelState, hf.NewerKernel = d.rep.KernelState, clip(d.rep.NewerKernel, 100)
+	hf.RebootPending, hf.NotInCache = u.RebootFindings, u.NotInCache
+	hf.Commands = cmds
 	if d.changes != nil {
 		n, r := d.changes.New, d.changes.Resolved
 		hf.NewFindings, hf.Resolved = &n, &r
 	}
-	var osf, fixable []report.Finding
+	var osf []report.Finding
 	noFix := map[string]*noFixFact{}
 	for _, f := range d.rep.Findings {
 		if f.InNews {
@@ -375,12 +482,11 @@ func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 			continue
 		}
 		osf = append(osf, f)
-		if f.NotRunning {
+		if f.NotRunning { // an old kernel's fix is removing it
 			hf.NotRunning++
+			continue
 		}
-		if f.Fixed != "" && !f.NotRunning { // an old kernel's fix is removing it
-			fixable = append(fixable, f)
-		} else {
+		if f.Fixed == "" {
 			nf := noFix[f.Package]
 			if nf == nil {
 				nf = &noFixFact{Package: clip(f.Package, 100), Worst: f.Severity}
@@ -400,12 +506,6 @@ func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 		hf.Top = append(hf.Top, finding(f, lv.summaries))
 	}
 	if !full {
-		cmd, label, kernelFix := fixCommand(d.pm, fixable, d.allowed())
-		if cmd != "" {
-			hf.Commands = append(hf.Commands, commandFact{Label: label, Command: cmd})
-		}
-		hf.Commands = append(hf.Commands, oldKernelCommand(d.pm, d.rep.OldKernels, hf.NotRunning)...)
-		hf.Commands = append(hf.Commands, rebootCommand(reboot, kernelFix && cmd != "")...)
 		return hf
 	}
 	for _, nf := range noFix {
@@ -434,100 +534,52 @@ func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 		}
 		hf.News = append(hf.News, newsFact{Title: clip(n.Title, 160), Severity: n.Severity, Status: n.Status})
 	}
-	allowed := d.allowed()
-	var sec []string
-	for _, p := range d.inv.Packages {
-		if p.PendingSecurity && safePackage.MatchString(p.Name) && !kernel.ABIPackage(d.pm, p.Name) && !slices.Contains(sec, p.Name) {
-			sec = append(sec, p.Name)
-		}
-	}
-	cmd, label, kernelFix := fixCommand(d.pm, fixable, allowed)
-	if cmd != "" {
-		hf.Commands = append(hf.Commands, commandFact{Label: label, Command: cmd})
-	}
-	if prefix := commandPrefixes[d.pm]; len(prefix) > 0 && len(sec) > 0 && len(sec) <= maxCommandPkgs {
-		slices.Sort(sec)
-		hf.Commands = append(hf.Commands, commandFact{Label: "Install pending security updates", Command: prefix[len(prefix)-1] + " " + strings.Join(sec, " ")})
-	}
-	for _, s := range d.rep.Sites {
-		var names []string
-		for _, f := range d.rep.Findings {
-			if f.Site == s.Root && f.Fixed != "" && composerName.MatchString(f.Package) && allowed.Composer[f.Package] && !slices.Contains(names, f.Package) {
-				names = append(names, f.Package)
-			}
-		}
-		if len(names) > 0 && len(names) <= maxCommandPkgs {
-			slices.Sort(names)
-			hf.Commands = append(hf.Commands, commandFact{Label: "In " + clip(s.Root, 200) + ": update the Composer packages with fixes",
-				Command: "composer update " + strings.Join(names, " ") + " --with-dependencies"})
-		}
-	}
-	hf.Commands = append(hf.Commands, oldKernelCommand(d.pm, d.rep.OldKernels, hf.NotRunning)...)
-	hf.Commands = append(hf.Commands, rebootCommand(reboot, kernelFix && cmd != "")...)
 	return hf
 }
 
 const fixLabel = "Upgrade the packages that fix its OS findings"
 
 // fixCommand is the host page's "upgrade the packages that fix these"
-// command, limited to packages the host has, with its label. Past
-// maxCommandPkgs it keeps the packages behind the highest-ranked findings.
-// A kernel fix (see internal/kernel) goes through the installed kernel
-// metapackages on Debian and Ubuntu, or a full upgrade when there are
-// none; isKernel says a reboot will be needed.
-func fixCommand(pm string, fixable []report.Finding, a HostAllowed) (cmd, label string, isKernel bool) {
+// command (see report.PlanUpgrade: only packages with a pending update),
+// with its label and the upgrade it comes from. Past maxCommandPkgs it
+// keeps the packages behind the highest-ranked findings. A kernel fix (see
+// internal/kernel) goes through the installed kernel metapackages on
+// Debian and Ubuntu when they have an update, or a full upgrade when
+// there are none; findings a reboot clears add nothing.
+func fixCommand(pm string, list []report.Finding, pkgs report.Pkgs) (cmd, label string, u report.Upgrade) {
 	prefix := commandPrefixes[pm]
 	if len(prefix) == 0 {
-		return "", "", false
+		return "", "", u
 	}
-	fixable = slices.Clone(fixable)
-	slices.SortFunc(fixable, rank)
-	has := func(n string) bool { return a.Packages[n] }
-	for _, f := range fixable {
-		if _, k := kernel.Split(pm, f.Binaries, f.Package, has); k {
-			isKernel = true
-			break
-		}
+	list = slices.Clone(list)
+	slices.SortFunc(list, rank)
+	u = report.PlanUpgrade(pm, list, pkgs)
+	if u.FullUpgrade {
+		return kernel.DpkgFullUpgrade, "Upgrade every package: its OS findings include a kernel fix, but no kernel metapackage " +
+			"is installed, so apt won't install the new kernel by itself (installing the kernel's metapackage fixes that). Reboot afterwards", u
 	}
-	var metas []string
-	if isKernel && pm == "dpkg" {
-		var all []string
-		for n := range a.Packages {
-			if safePackage.MatchString(n) {
-				all = append(all, n)
-			}
-		}
-		if metas = kernel.Metapackages(pm, all); len(metas) == 0 {
-			return kernel.DpkgFullUpgrade, "Upgrade every package: its OS findings include a kernel fix, but no kernel metapackage " +
-				"is installed, so apt won't install the new kernel by itself (installing the kernel's metapackage fixes that). Reboot afterwards", true
-		}
-		metas = metas[:min(len(metas), maxCommandPkgs)]
-	}
+	metas := u.Metas[:min(len(u.Metas), maxCommandPkgs)]
 	names := slices.Clone(metas)
-	for _, f := range fixable {
+	for _, n := range u.Names {
 		if len(names) >= maxCommandPkgs {
 			break
 		}
-		bins, _ := kernel.Split(pm, f.Binaries, f.Package, has)
-		for _, b := range bins {
-			if safePackage.MatchString(b) && a.Packages[b] && !slices.Contains(names, b) {
-				names = append(names, b)
-			}
+		if !slices.Contains(names, n) {
+			names = append(names, n)
 		}
 	}
 	if len(names) == 0 {
-		return "", "", isKernel
+		return "", "", u
 	}
-	names = names[:min(len(names), maxCommandPkgs)]
 	slices.Sort(names)
 	label = fixLabel
 	switch {
 	case len(metas) > 0:
 		label += ", including the kernel through its metapackage (" + strings.Join(metas, ", ") + "). Reboot afterwards to run the new kernel"
-	case isKernel:
+	case u.Kernel:
 		label += ", including the kernel. Reboot afterwards to run the new kernel"
 	}
-	return prefix[0] + " " + strings.Join(names, " "), label, isKernel
+	return prefix[0] + " " + strings.Join(names, " "), label + " (only packages with a pending update)", u
 }
 
 // oldKernelCommand removes the kernels older than the running one, when
@@ -547,12 +599,14 @@ func oldKernelCommand(pm string, pkgs []string, findings int) []commandFact {
 }
 
 // rebootCommand is the reboot suggestion, when one is or will be needed.
-func rebootCommand(reboot *bool, kernelFix bool) []commandFact {
+func rebootCommand(reboot *bool, kernelFix, rebootFindings bool) []commandFact {
 	switch {
-	case reboot != nil && *reboot:
-		return []commandFact{{Label: "Reboot (after updates)", Command: RebootCommand}}
+	case kernelFix && rebootFindings:
+		return []commandFact{{Label: "Reboot after the kernel update, to run the new kernel (this also clears the findings with kernel_status reboot_pending)", Command: RebootCommand}}
 	case kernelFix:
 		return []commandFact{{Label: "Reboot after the kernel update, to run the new kernel", Command: RebootCommand}}
+	case reboot != nil && *reboot:
+		return []commandFact{{Label: "Reboot (after updates)", Command: RebootCommand}}
 	}
 	return nil
 }
@@ -664,7 +718,7 @@ func (src Sources) BuildHost(ctx context.Context, org store.Org, host store.Inge
 	b, err := fit(budget, func(lv detail) any {
 		return HostFacts{Today: src.Now.Format("2006-01-02"), Host: src.fact(d, lv, lv.top, true), Windows: wins}
 	})
-	return b, Allowed{Hosts: map[string]HostAllowed{d.host.Name: d.allowed()}}, err
+	return b, Allowed{Hosts: map[string]HostAllowed{d.host.Name: d.allowed(true)}}, err
 }
 
 // BuildFleet gathers the facts for an org's brief, covering changes since
@@ -700,7 +754,7 @@ func (src Sources) BuildFleet(ctx context.Context, org store.Org, since time.Tim
 	var totals fleetTotals
 	allowed := Allowed{Hosts: map[string]HostAllowed{}}
 	for _, d := range data {
-		allowed.Hosts[d.host.Name] = d.allowed()
+		allowed.Hosts[d.host.Name] = d.allowed(false)
 		totals.Hosts++
 		totals.KEV += d.rep.Counts.KEV
 		totals.Critical += d.rep.Counts.Critical

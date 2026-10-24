@@ -26,8 +26,9 @@ type pkgGroup struct {
 	Binaries         []string
 	Worst            string // highest severity
 	KEV              int
-	News             int  // findings named by a live news incident
-	NotRunning       bool // every finding is on an old kernel that isn't running
+	News             int    // findings named by a live news incident
+	NotRunning       bool   // every finding is on an old kernel that isn't running
+	KernelStatus     string // the findings' common kernel status, or ""
 	BySev            map[string]int
 	Total, Fixable   int
 	FixPending       bool // an update that fixes some of them is already pending
@@ -50,10 +51,20 @@ type findingsView struct {
 	FixLink, ViewLink map[string]string
 	PrevLink          string
 	NextLink          string
-	// FixCmd upgrades just the packages that fix the findings shown.
+	// FixCmd upgrades just the packages that fix the findings shown, and
+	// have a pending update.
 	FixCmd     *command
 	FixPkgs    int
-	FixPending int // of those, how many already have the update pending
+	FixPending int // of those, how many have an update that reaches the fixed version
+	// RebootCmd puts the newer installed kernel in use, which clears the
+	// RebootFindings on the running kernel. It comes before FixCmd unless
+	// FixCmd installs a kernel itself.
+	RebootCmd      *command
+	RebootFindings int
+	RebootFirst    bool
+	// NotInCache counts findings shown with a published fix that no
+	// pending update installs yet.
+	NotInCache int
 	// OldKernelCmd removes installed kernels older than the running one,
 	// which clears OldKernelFindings (upgrading never does).
 	OldKernelCmd      *command
@@ -77,28 +88,64 @@ func oldKernelCommand(pkgs []string, findings int) *command {
 			"Check that uname -r shows the kernel you expect first; afterwards there's no older kernel to fall back to at boot."}
 }
 
-// fixCommand builds an upgrade command for the packages that fix the
-// given findings, using the binary package names the package manager
-// installs. nil when nothing shown can be fixed, or the package manager
-// isn't one we write commands for. Kernel fixes are special (see
-// internal/kernel): on Debian and Ubuntu they go through the installed
-// kernel metapackages, never the ABI-named packages, and all of them need
-// a reboot.
-func fixCommand(pm string, list []report.Finding, installed map[string]bool) (*command, int, int) {
-	if pm == "composer" {
-		var names []string
-		pending := 0
-		for _, f := range list {
-			if f.Fixed != "" && composerName.MatchString(f.Package) && !slices.Contains(names, f.Package) {
-				names = append(names, f.Package)
-			}
-		}
-		if len(names) == 0 {
-			return nil, 0, 0
-		}
-		slices.Sort(names)
-		return &command{ID: "cmd-fix", Text: "composer update " + strings.Join(names, " ") + " --with-dependencies"}, len(names), pending
+// kernelInfo is what the findings view needs about the host's kernels.
+type kernelInfo struct{ Running, Newer string }
+
+// fixCommands fills in the view's patch commands for the findings shown
+// (see fixCommand and rebootCommand).
+func (fv *findingsView) fixCommands(list []report.Finding, pkgs report.Pkgs, k kernelInfo) {
+	if fv.PM == "composer" {
+		fv.FixCmd, fv.FixPkgs, fv.FixPending = composerFixCommand(list)
+		return
 	}
+	u := report.PlanUpgrade(fv.PM, list, pkgs)
+	fv.FixCmd, fv.FixPkgs, fv.FixPending = fixCommand(fv.PM, u)
+	fv.NotInCache = u.NotInCache
+	fv.RebootFindings = u.RebootFindings
+	fv.RebootCmd = rebootCommand(u, k)
+	fv.RebootFirst = fv.RebootCmd != nil && len(u.Metas) == 0
+}
+
+// rebootCommand is "Reboot to run <newer>", when findings are on the
+// running kernel and a newer one is already installed.
+func rebootCommand(u report.Upgrade, k kernelInfo) *command {
+	if u.RebootFindings == 0 || k.Newer == "" {
+		return nil
+	}
+	c := &command{ID: "cmd-reboot", Label: "Reboot to run " + k.Newer, Text: "sudo reboot",
+		Note: "Kernel " + k.Newer + " is already installed, and " + k.Running + " is still running. Rebooting puts the newer kernel in use, " +
+			"which clears the findings marked \"reboot pending\": no package upgrade does. The newer kernel may still have findings of its own; " +
+			"they show here once the host reports after the reboot. " + k.Running + " then stays installed as a boot fallback, marked \"not running\"."}
+	if len(u.Metas) > 0 {
+		c.Label = "Then reboot to run the newest kernel"
+		c.Note = "The upgrade above installs a newer kernel still. Rebooting afterwards puts it in use, which also clears the findings marked " +
+			"\"reboot pending\" on the running kernel (" + k.Running + "). The new kernel may still have findings of its own."
+	}
+	return c
+}
+
+func composerFixCommand(list []report.Finding) (*command, int, int) {
+	var names []string
+	for _, f := range list {
+		if f.Fixed != "" && composerName.MatchString(f.Package) && !slices.Contains(names, f.Package) {
+			names = append(names, f.Package)
+		}
+	}
+	if len(names) == 0 {
+		return nil, 0, 0
+	}
+	slices.Sort(names)
+	return &command{ID: "cmd-fix", Text: "composer update " + strings.Join(names, " ") + " --with-dependencies"}, len(names), 0
+}
+
+// fixCommand builds an upgrade command from the planned upgrade (see
+// report.PlanUpgrade): only packages that have a pending update, using the
+// binary package names the package manager installs. nil when nothing
+// shown has an update, or the package manager isn't one we write commands
+// for. Kernel fixes are special (see internal/kernel): on Debian and
+// Ubuntu they go through the installed kernel metapackages, never the
+// ABI-named packages, and all of them need a reboot.
+func fixCommand(pm string, u report.Upgrade) (*command, int, int) {
 	prefix := map[string]string{
 		"dpkg": "sudo apt-get update && sudo apt-get install --only-upgrade",
 		"rpm":  "sudo dnf upgrade --refresh",
@@ -107,61 +154,31 @@ func fixCommand(pm string, list []report.Finding, installed map[string]bool) (*c
 	if prefix == "" {
 		return nil, 0, 0
 	}
-	has := func(n string) bool { return installed[n] }
-	var names []string
-	pendingPkgs := 0
-	kernelFix := false
-	for _, f := range list {
-		if f.Fixed == "" || f.NotRunning { // an old kernel: removing it is the fix
-			continue
-		}
-		bins, isKernel := kernel.Split(pm, f.Binaries, f.Package, has)
-		kernelFix = kernelFix || isKernel
-		for _, b := range bins {
-			if safePackage.MatchString(b) && !slices.Contains(names, b) {
-				names = append(names, b)
-				if f.FixPending {
-					pendingPkgs++
-				}
-			}
-		}
+	if u.FullUpgrade {
+		return &command{ID: "cmd-fix", Text: kernel.DpkgFullUpgrade, Note: noMetapackageNote}, len(u.Names) + 1, u.NamesFixPending
 	}
-	note := ""
-	if kernelFix {
-		note = "Includes a kernel update. Reboot afterwards to run the new kernel."
-		if pm == "dpkg" {
-			var all []string
-			for n := range installed {
-				if safePackage.MatchString(n) {
-					all = append(all, n)
-				}
-			}
-			metas := kernel.Metapackages(pm, all)
-			if len(metas) == 0 {
-				return &command{ID: "cmd-fix", Text: kernel.DpkgFullUpgrade, Note: noMetapackageNote}, len(names) + 1, pendingPkgs
-			}
-			for _, m := range metas {
-				if !slices.Contains(names, m) {
-					names = append(names, m)
-				}
-			}
-			note = "Includes a kernel update through the kernel metapackage (" + strings.Join(metas, ", ") +
-				"), which installs the new kernel beside the running one. Reboot afterwards to run it."
-		}
-	}
-	if len(names) == 0 {
+	if len(u.Names) == 0 {
 		return nil, 0, 0
 	}
+	note := ""
+	switch {
+	case len(u.Metas) > 0:
+		note = "Includes a kernel update through the kernel metapackage (" + strings.Join(u.Metas, ", ") +
+			"), which installs the new kernel beside the running one. Reboot afterwards to run it."
+	case u.Kernel:
+		note = "Includes a kernel update. Reboot afterwards to run the new kernel."
+	}
+	names := slices.Clone(u.Names)
 	slices.Sort(names)
-	return &command{ID: "cmd-fix", Text: prefix + " " + strings.Join(names, " "), Note: note}, len(names), pendingPkgs
+	return &command{ID: "cmd-fix", Text: prefix + " " + strings.Join(names, " "), Note: note}, len(names), u.NamesFixPending
 }
 
 const noMetapackageNote = "Includes a kernel fix, but no kernel metapackage (such as linux-generic, linux-aws or linux-image-amd64) " +
 	"is installed, so apt won't install a newer kernel by itself. This upgrades every package instead; install your kernel's " +
 	"metapackage to get kernel fixes, then reboot."
 
-// installed is the host's installed package names (nil for Composer).
-func buildFindingsView(base, pm string, q url.Values, list []report.Finding, installed map[string]bool) findingsView {
+// pkgs is the host's installed packages (nil for Composer), k its kernels.
+func buildFindingsView(base, pm string, q url.Values, list []report.Finding, pkgs report.Pkgs, k kernelInfo) findingsView {
 	fv := findingsView{View: "packages", PM: pm, Sev: q.Get("sev"), Fixable: q.Get("fix") == "1"}
 	if q.Get("view") == "all" {
 		fv.View = "all"
@@ -194,7 +211,7 @@ func buildFindingsView(base, pm string, q url.Values, list []report.Finding, ins
 		kept = append(kept, f)
 	}
 	fv.Total = len(kept)
-	fv.FixCmd, fv.FixPkgs, fv.FixPending = fixCommand(pm, kept, installed)
+	fv.fixCommands(kept, pkgs, k)
 
 	n := len(kept)
 	if fv.View == "packages" {
@@ -262,10 +279,13 @@ func groupByPackage(list []report.Finding) []pkgGroup {
 			i = len(groups)
 			idx[key] = i
 			groups = append(groups, pkgGroup{Package: f.Package, Version: f.Version, Binaries: f.Binaries, BySev: map[string]int{},
-				NotRunning: f.NotRunning})
+				NotRunning: f.NotRunning, KernelStatus: f.KernelStatus})
 		}
 		g := &groups[i]
 		g.NotRunning = g.NotRunning && f.NotRunning
+		if g.KernelStatus != f.KernelStatus {
+			g.KernelStatus = ""
+		}
 		g.Total++
 		g.Findings = append(g.Findings, f)
 		if f.KEV {
