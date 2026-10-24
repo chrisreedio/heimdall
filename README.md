@@ -517,7 +517,7 @@ Right after the MVP, since most apps are Laravel. Adds `sites[]` to the snapshot
 - [x] EPSS scores, with risk ranking by KEV, then severity, then EPSS
 - [x] Patch plans: batch hosts and tick them off, and verify on the next check-in
 - [x] Reports in HTML, CSV and JSON
-- [x] Notifications: email or webhook digest containing counts only
+- [x] Notifications: Slack, Discord, webhook or email; a counts-only digest and immediate alerts that name only `org/host`
 
 ### M7 · History & drift
 - [x] Snapshot diffs: what changed on a host between check-ins
