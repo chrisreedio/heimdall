@@ -6,8 +6,16 @@
   - copies collect.ps1 to C:\Program Files\Heimdall
   - stores the ingest token in C:\ProgramData\Heimdall\token, readable only
     by LocalService (and Administrators/SYSTEM, who could read it anyway)
-  - registers a daily scheduled task "Heimdall collector" that runs the
-    collector as NT AUTHORITY\LocalService, a built-in low-privilege account
+  - registers two scheduled tasks that run the collector as
+    NT AUTHORITY\LocalService, a built-in low-privilege account:
+      "Heimdall collector"            hourly (random delay of up to 15
+                                      minutes) and 3 minutes after boot
+      "Heimdall collector (changes)"  about a minute after programs or
+                                      Windows updates are installed or removed
+
+  Re-run it to upgrade: it replaces collect.ps1 and both tasks (including
+  the daily task older versions registered) and keeps the hub URL; press
+  Enter at the token prompt to keep the current token.
 
   Verify collect.ps1 against the release's SHA256SUMS before installing.
 
@@ -21,9 +29,10 @@
 param(
     [Parameter(Mandatory)][string]$HubUrl,
     [string]$Source = (Join-Path $PSScriptRoot 'collect.ps1'),
-    [string]$At = '04:00'
+    [string]$At = '' # ignored: older versions reported daily at this time
 )
 $ErrorActionPreference = 'Stop'
+if ($At) { Write-Warning '-At is ignored: the collector now reports hourly, after boot and after software changes.' }
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
         [Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -41,13 +50,20 @@ if (-not $want -or $want -ne $got) { throw 'collect.ps1 does not match SHA256SUM
 $programDir = Join-Path $env:ProgramFiles 'Heimdall'
 $dataDir = Join-Path $env:ProgramData 'Heimdall'
 New-Item -ItemType Directory -Force -Path $programDir, $dataDir | Out-Null
-Copy-Item -LiteralPath $Source -Destination (Join-Path $programDir 'collect.ps1') -Force
+$collector = Join-Path $programDir 'collect.ps1'
+Copy-Item -LiteralPath $Source -Destination $collector -Force
 
-# Token: paste it; it never appears on the command line or in history.
-$secure = Read-Host -AsSecureString 'Ingest token from `heimdall host add`'
-$token = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
-if ($token -notmatch '^hmd_ingest_[A-Za-z0-9_-]{43}$') { throw 'That does not look like an ingest token.' }
+# Token: paste it; it never appears on the command line or in history. On
+# an upgrade, Enter keeps the current one.
 $tokenFile = Join-Path $dataDir 'token'
+$prompt = 'Ingest token from `heimdall host add`'
+if (Test-Path -LiteralPath $tokenFile) { $prompt += ' (Enter keeps the current token)' }
+$secure = Read-Host -AsSecureString $prompt
+$token = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
+if (-not $token -and (Test-Path -LiteralPath $tokenFile)) {
+    $token = (Get-Content -LiteralPath $tokenFile -Raw).Trim()
+}
+if ($token -notmatch '^hmd_ingest_[A-Za-z0-9_-]{43}$') { throw 'That does not look like an ingest token.' }
 Set-Content -LiteralPath $tokenFile -Value $token -NoNewline -Encoding ASCII
 
 # Lock the token down: no inheritance; SYSTEM and Administrators full,
@@ -55,19 +71,24 @@ Set-Content -LiteralPath $tokenFile -Value $token -NoNewline -Encoding ASCII
 & icacls.exe $tokenFile /inheritance:r /grant:r 'SYSTEM:(F)' 'Administrators:(F)' 'LOCAL SERVICE:(R)' | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Could not set permissions on the token file.' }
 
-# Daily task as LocalService, with a random delay so hosts don't all report at once.
-$exe = (Get-Command powershell.exe).Source
-$taskArgs = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$(Join-Path $programDir 'collect.ps1')`" -Push"
-$action = New-ScheduledTaskAction -Execute $exe -Argument $taskArgs
-$trigger = New-ScheduledTaskTrigger -Daily -At $At -RandomDelay (New-TimeSpan -Hours 1)
-$principal = New-ScheduledTaskPrincipal -UserId 'NT AUTHORITY\LOCALSERVICE' -LogonType ServiceAccount
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
-Register-ScheduledTask -TaskName 'Heimdall collector' -Action $action -Trigger $trigger -Principal $principal `
-    -Settings $settings -Force | Out-Null
-
 # The hub URL lives in a file (a new machine environment variable isn't
 # seen by the Task Scheduler until a reboot).
 Set-Content -LiteralPath (Join-Path $dataDir 'hub-url') -Value $HubUrl -NoNewline -Encoding ASCII
+
+# The two tasks, from the task definitions in the collect.ps1 just verified
+# and installed (loaded in a child scope, functions only). Registering by
+# name with -Force replaces an existing task whole, triggers included, so a
+# re-run also turns the old daily task into the hourly one.
+$exe = (Get-Command powershell.exe).Source
+$tasks = & {
+    $env:HEIMDALL_COLLECT_LIBRARY = '1'
+    try { . $collector } finally { Remove-Item Env:HEIMDALL_COLLECT_LIBRARY }
+    @{ Name = $script:TaskName; Xml = (Get-HeimdallTaskXml -Kind schedule -PowerShell $exe -Script $collector) },
+    @{ Name = $script:ChangesTaskName; Xml = (Get-HeimdallTaskXml -Kind changes -PowerShell $exe -Script $collector) }
+}
+foreach ($t in $tasks) {
+    Register-ScheduledTask -TaskName $t.Name -Xml $t.Xml -Force | Out-Null
+}
 
 Write-Host 'Installed. Run a first push now with:'
 Write-Host "  Start-ScheduledTask -TaskName 'Heimdall collector'"

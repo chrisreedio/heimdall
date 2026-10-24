@@ -188,6 +188,7 @@ Supported platforms: **Ubuntu 22.04/24.04, Debian 12, Rocky 9, AlmaLinux 9 and A
 - Ignores the response body completely, so the hub can't send instructions back
 - Token is read from a `0400` file owned by the `heimdall` user, never passed on the command line
 - Reports hourly, 3 minutes after boot and about a minute after packages change (a systemd path unit, or apk/apt hooks without systemd), so the hub's tripwires see changes within minutes. A sudoers-limited one-liner reports after deploys. See [When it reports](docs/collector.md#when-it-reports).
+- **Windows** (`collect.ps1`, Windows PowerShell 5.1 or PowerShell 7) runs as the built-in LocalService account and reports the same way: hourly, 3 minutes after boot, and about a minute after Windows Installer installs or removals and Windows Update installs, from two scheduled tasks. See [Windows](docs/collector.md#windows).
 
 ---
 
