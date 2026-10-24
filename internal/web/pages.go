@@ -92,29 +92,6 @@ func (s *server) logout(w http.ResponseWriter, r *http.Request, v *auth.Viewer) 
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
-// ── Dashboard ──────────────────────────────────────────────────────────────
-
-type hostRow struct {
-	report.Host
-	Stale  bool
-	EOL    bool
-	Reboot bool
-}
-
-type dashBody struct {
-	Org      string
-	Orgs     []store.Org
-	ShowOrgs bool
-	Tiles    tiles
-	Rows     []hostRow
-	Waiting  []store.Host
-	News     int // incidents in the news affecting a visible host
-}
-
-type tiles struct {
-	Hosts, KEV, Critical, Fixable, EOL, Reboot, Stale, Sites int
-}
-
 // orgFilter returns the requested org if the viewer can see it, plus the
 // orgs they can see.
 func (s *server) orgFilter(r *http.Request, v *auth.Viewer) (string, []store.Org, error) {
@@ -135,164 +112,6 @@ func (s *server) orgFilter(r *http.Request, v *auth.Viewer) (string, []store.Org
 		}
 	}
 	return "", orgs, nil
-}
-
-// rows builds per-host rows with stale, EOL and reboot flags.
-func (s *server) rows(r *http.Request, v *auth.Viewer, org string) ([]hostRow, error) {
-	ctx := r.Context()
-	rep, err := report.Build(ctx, s.st, report.Filter{Org: org, Scope: v.Scope}, s.now())
-	if err != nil {
-		return nil, err
-	}
-	ids := map[string]int64{}
-	reported, err := s.st.HostsWithSnapshots(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for _, h := range reported {
-		ids[h.OrgSlug+"/"+h.Name] = h.ID
-	}
-	now := s.now()
-	rows := make([]hostRow, 0, len(rep.Hosts))
-	for _, h := range rep.Hosts {
-		row := hostRow{Host: h, Stale: s.cfg.StaleAfter > 0 && now.Sub(h.LastSeen) > s.cfg.StaleAfter}
-		if h.OSLife != nil && h.OSLife.EOL {
-			row.EOL = true
-		}
-		for _, rt := range h.Runtimes {
-			if rt.Life != nil && rt.Life.EOL {
-				row.EOL = true
-			}
-		}
-		if id, ok := ids[h.Org+"/"+h.Name]; ok {
-			sum, err := s.st.LatestSnapshot(ctx, id)
-			if err != nil && !errors.Is(err, store.ErrNotFound) {
-				return nil, err
-			}
-			row.Reboot = sum.RebootRequired != nil && *sum.RebootRequired
-		}
-		rows = append(rows, row)
-	}
-	return rows, nil
-}
-
-func (s *server) dashboard(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
-	org, orgs, err := s.orgFilter(r, v)
-	if err != nil {
-		s.fail(w, r, v, err)
-		return
-	}
-	rows, err := s.rows(r, v, org)
-	if err != nil {
-		s.fail(w, r, v, err)
-		return
-	}
-	body := dashBody{Org: org, Orgs: orgs, ShowOrgs: len(orgs) > 1, Rows: rows}
-	for _, row := range rows {
-		body.Tiles.Hosts++
-		body.Tiles.KEV += row.Counts.KEV
-		body.Tiles.Critical += row.Counts.Critical
-		if row.Counts.Fixable > 0 {
-			body.Tiles.Fixable++
-		}
-		if row.EOL {
-			body.Tiles.EOL++
-		}
-		if row.Reboot {
-			body.Tiles.Reboot++
-		}
-		if row.Stale {
-			body.Tiles.Stale++
-		}
-		for _, site := range row.Sites {
-			if needsAttention(site) {
-				body.Tiles.Sites++
-			}
-		}
-	}
-	slices.SortStableFunc(body.Rows, func(a, b hostRow) int {
-		for _, d := range [][2]int{
-			{a.Counts.KEV, b.Counts.KEV}, {a.Counts.Critical, b.Counts.Critical},
-			{a.Counts.High, b.Counts.High}, {a.Counts.Fixable, b.Counts.Fixable},
-		} {
-			if d[0] != d[1] {
-				return d[1] - d[0]
-			}
-		}
-		return strings.Compare(a.Org+"/"+a.Name, b.Org+"/"+b.Name)
-	})
-
-	all, err := s.visibleHosts(r, v, "")
-	if err != nil {
-		s.fail(w, r, v, err)
-		return
-	}
-	for _, h := range all {
-		if h.LastSeenAt.IsZero() && (org == "" || h.OrgSlug == org) {
-			body.Waiting = append(body.Waiting, h)
-		}
-	}
-	if body.News, err = s.newsAffecting(r, v, org); err != nil {
-		s.fail(w, r, v, err)
-		return
-	}
-	s.render(w, r, http.StatusOK, "dashboard", v, "Dashboard", "dashboard", body)
-}
-
-// ── Hosts ──────────────────────────────────────────────────────────────────
-
-type hostsBody struct {
-	Org      string
-	Orgs     []store.Org
-	ShowOrgs bool
-	Hosts    []hostsRow
-	Env      string         // filter
-	Envs     []string       // environments that have hosts
-	EnvCount map[string]int // hosts per environment, before filtering
-	Total    int
-}
-
-type hostsRow struct {
-	store.Host
-	Reported bool
-	Row      hostRow
-}
-
-func (s *server) hostsPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
-	org, orgs, err := s.orgFilter(r, v)
-	if err != nil {
-		s.fail(w, r, v, err)
-		return
-	}
-	rows, err := s.rows(r, v, org)
-	if err != nil {
-		s.fail(w, r, v, err)
-		return
-	}
-	byName := map[string]hostRow{}
-	for _, row := range rows {
-		byName[row.Org+"/"+row.Name] = row
-	}
-	all, err := s.visibleHosts(r, v, org)
-	if err != nil {
-		s.fail(w, r, v, err)
-		return
-	}
-	body := hostsBody{Org: org, Orgs: orgs, ShowOrgs: len(orgs) > 1, EnvCount: map[string]int{}, Total: len(all)}
-	body.Env = r.URL.Query().Get("env")
-	for _, h := range all {
-		if body.EnvCount[h.EnvSlug] == 0 {
-			body.Envs = append(body.Envs, h.EnvSlug)
-		}
-		body.EnvCount[h.EnvSlug]++
-		if body.Env != "" && h.EnvSlug != body.Env {
-			continue
-		}
-		row, ok := byName[h.OrgSlug+"/"+h.Name]
-		body.Hosts = append(body.Hosts, hostsRow{Host: h, Reported: ok, Row: row})
-	}
-	slices.Sort(body.Envs)
-	s.render(w, r, http.StatusOK, "hosts", v, "Hosts", "hosts", body)
 }
 
 // ── Host page ──────────────────────────────────────────────────────────────
@@ -389,7 +208,7 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	}
 	body.Stale = s.cfg.StaleAfter > 0 && s.now().Sub(sum.ReceivedAt) > s.cfg.StaleAfter
 
-	rep, err := report.Build(ctx, s.st, report.Filter{Org: host.OrgSlug, Scope: v.Scope}, s.now())
+	rep, err := report.Build(ctx, s.st, report.Filter{Org: host.OrgSlug, Host: host.Name, Scope: v.Scope}, s.now())
 	if err != nil {
 		s.fail(w, r, v, err)
 		return
@@ -646,7 +465,7 @@ func (s *server) sitesPage(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		s.fail(w, r, v, err)
 		return
 	}
-	rep, err := report.Build(r.Context(), s.st, report.Filter{Org: org, Scope: v.Scope}, s.now())
+	rep, err := report.Build(r.Context(), s.st, report.Filter{Org: org, Scope: v.Scope, CountsOnly: true}, s.now())
 	if err != nil {
 		s.fail(w, r, v, err)
 		return
@@ -929,7 +748,7 @@ func (s *server) sitePage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		return
 	}
 	root := r.URL.Query().Get("root")
-	rep, err := report.Build(ctx, s.st, report.Filter{Org: host.OrgSlug, Scope: v.Scope}, s.now())
+	rep, err := report.Build(ctx, s.st, report.Filter{Org: host.OrgSlug, Host: host.Name, Scope: v.Scope}, s.now())
 	if err != nil {
 		s.fail(w, r, v, err)
 		return

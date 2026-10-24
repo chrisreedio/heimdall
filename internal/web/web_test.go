@@ -345,7 +345,7 @@ func TestDashboard(t *testing.T) {
 		t.Fatalf("status %d", w.Code)
 	}
 	body := w.Body.String()
-	for _, want := range []string{`<a href="/hosts/acme/web-01">web-01</a>`, "critical findings", "Waiting for first report", "db-01", "admin@example.com", auth.CSRFToken(goodToken)} {
+	for _, want := range []string{`<a href="/hosts/acme/web-01">web-01</a>`, "critical &amp; high with a fix", "Waiting for first report", "db-01", "admin@example.com", auth.CSRFToken(goodToken)} {
 		if !strings.Contains(body, want) {
 			t.Errorf("dashboard missing %q", want)
 		}

@@ -104,3 +104,16 @@
     {{else}}<a class="chip chip-ok" href="{{index $.V.FixLink "on"}}" title="Show only findings an update fixes ({{.C.FixPending}} already pending on the host)"><strong>{{.C.Fixable}}</strong> fixable now</a>{{end}}
   </div>
 {{end}}
+{{/* whyPills: why a fleetHost needs attention, most urgent first. */}}
+{{define "whyPills"}}{{$c := .R.Counts}}<span class="pills">
+{{- if $c.KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerabilities">{{num $c.KEV}} KEV</span>{{end}}
+{{- if .News}}<a class="badge news" href="/news?affects=me" title="{{.News}} incident{{if ne .News 1}}s{{end}} in the news match open findings here">in the news{{if gt .News 1}} ×{{.News}}{{end}}</a>{{end}}
+{{- if .EOL}}<span class="pill bad" title="{{.EOLLabels "eol"}}">end of life</span>{{else if .EOLSoon}}<span class="pill warn" title="{{.EOLLabels "soon"}}">EoL soon</span>{{end}}
+{{- if .Stale}}<span class="pill warn">stale</span>{{end}}
+{{- if .Anomalies}}<a class="pill {{if eq .AnomalyWorst "high"}}bad{{else}}warn{{end}}" href="/anomalies">{{.Anomalies}} anomal{{if eq .Anomalies 1}}y{{else}}ies{{end}}</a>{{end}}
+{{- if .Reboot}}<span class="pill warn">reboot</span>{{end}}
+{{- if .PendingSecurity}}<span class="pill warn" title="{{.Pending}} updates pending in all">{{.PendingSecurity}} security update{{if ne .PendingSecurity 1}}s{{end}}</span>{{end}}
+{{- if .SitesAttention}}<span class="pill warn">{{.SitesAttention}} site{{if ne .SitesAttention 1}}s{{end}}</span>{{end}}
+{{- if .CollectorBehind}}<span class="pill muted" title="On the server: sudo heimdall-collect upgrade">collector behind</span>{{end}}
+{{- if eq .ChangeWatch "off"}}<span class="pill warn" title="Changes are only reported on the schedule">change watch off</span>{{end}}
+</span>{{end}}

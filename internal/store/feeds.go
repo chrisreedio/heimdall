@@ -315,7 +315,7 @@ func (s *Store) ReplaceKEV(ctx context.Context, entries []KEVEntry) error {
 				return err
 			}
 		}
-		return nil
+		return refreshFindingCounts(ctx, tx, 0)
 	})
 }
 
@@ -653,8 +653,10 @@ func (s *Store) SetFindings(ctx context.Context, hostID int64, fs []Finding, at 
 		}
 		n, _ := res.RowsAffected()
 		resolved = int(n)
-		_, err = tx.ExecContext(ctx, `DELETE FROM temp.current_findings_v2`)
-		return err
+		if _, err = tx.ExecContext(ctx, `DELETE FROM temp.current_findings_v2`); err != nil {
+			return err
+		}
+		return refreshFindingCounts(ctx, tx, hostID)
 	})
 	return added, resolved, err
 }

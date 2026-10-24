@@ -706,6 +706,86 @@ a.badge.news:hover { text-decoration: none; filter: brightness(1.1); }
 /* The severity and its score stay on one line in findings tables. */
 table.findings td:first-child { white-space: nowrap; }
 
+/* Dashboard and host list: what needs action first, counts that matter. */
+.head-sub { font-size: 14px; }
+.tile .s { color: var(--muted); font-size: 11.5px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile .l { color: var(--text); font-weight: 600; }
+.tile:not(.bad):not(.warn) .n { color: var(--muted); }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.section-head h2 { margin-bottom: 10px; }
+.card .section-head h2 { margin: 0 0 10px; }
+.env-chip {
+  display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 11px; font-weight: 600; line-height: 1.6;
+  background: var(--code-bg); border: 1px solid var(--border); color: var(--muted); vertical-align: 1px;
+}
+.sub-bad { color: var(--crit-fg); }
+.ok-text { color: var(--ok-fg); }
+table.attn td { vertical-align: middle; }
+table.attn .attn-host { white-space: nowrap; }
+table.attn .attn-host a { font-weight: 600; }
+table.attn .why { width: 100%; }
+table.attn .why .pills { margin: 0; gap: 4px; }
+.pills a.pill:hover, a.pill:hover { text-decoration: none; filter: brightness(1.08); }
+.dash-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 24px; align-items: start; }
+.dash-cards .card { margin-top: 0; min-width: 0; }
+.dash-card .empty { padding: 4px 0 0; margin: 0; }
+.dash-list { list-style: none; margin: 0; padding: 0; }
+.dash-list li { padding: 7px 0; border-top: 1px solid var(--border); min-width: 0; }
+.dash-list li:first-child { border-top: 0; padding-top: 0; }
+.dl-main { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; }
+.dl-main > a { overflow-wrap: anywhere; }
+.dl-right { margin-left: auto; white-space: nowrap; }
+.clamp1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
+.plan-progress { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.plan-progress progress {
+  flex: 1; max-width: 220px; height: 8px; border: 0; border-radius: 999px; overflow: hidden;
+  background: var(--code-bg); -webkit-appearance: none; appearance: none;
+}
+.plan-progress progress::-webkit-progress-bar { background: var(--code-bg); border-radius: 999px; }
+.plan-progress progress::-webkit-progress-value { background: var(--ok-fg); border-radius: 999px; }
+.plan-progress progress::-moz-progress-bar { background: var(--ok-fg); border-radius: 999px; }
+.dash-facts { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; }
+.dash-facts div { min-width: 0; }
+.dash-facts .wide { grid-column: 1 / -1; }
+.dash-facts dt { font-size: 12px; color: var(--muted); }
+.dash-facts dd { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.dash-card p.waiting { margin: 10px 0 0; overflow-wrap: anywhere; }
+@media (max-width: 760px) {
+  .dash-cards { grid-template-columns: minmax(0, 1fr); }
+  table.attn .attn-host { white-space: normal; }
+}
+
+/* Host list: quick filters and sort on one bar. */
+.list-bar { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 16px; margin: 0 0 10px; }
+.list-bar .filter-chips { margin: 0; }
+.list-bar .seg { flex: none; }
+.seg-label { padding: 6px 10px; font-size: 12px; color: var(--muted); border-right: 1px solid var(--border); }
+.filter-chips.quick a { padding: 3px 10px; font-size: 12.5px; }
+.filter-chips.quick a.only-kev:not([aria-current]) { border-color: var(--kev-bg); }
+table.host-list td { vertical-align: middle; }
+table.host-list .h-name { font-weight: 600; overflow-wrap: anywhere; }
+.h-meta { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 3px; }
+.h-meta .tag { font-size: 11px; line-height: 1.6; }
+a.tag { color: var(--unk-fg); text-decoration: none; }
+a.tag:hover { filter: brightness(1.1); text-decoration: none; }
+table.host-list .h-host { min-width: 150px; max-width: 240px; }
+table.host-list .h-os { min-width: 140px; }
+table.host-list .h-os .pill { margin-top: 2px; }
+table.host-list .h-upd, table.host-list .h-coll { white-space: nowrap; }
+table.host-list .ver { font-size: 12px; }
+/* Phones: each host is a compact card; zero counts drop out. */
+@media (max-width: 760px) {
+  table.cards-sm thead { display: none; }
+  table.cards-sm, table.cards-sm tbody { display: block; }
+  table.cards-sm tr { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  table.cards-sm tbody tr:last-child { border-bottom: 0; }
+  table.cards-sm td { display: block; padding: 0; border: 0; text-align: left; }
+  table.cards-sm tbody tr:hover td { background: none; }
+  table.cards-sm .full { flex-basis: 100%; max-width: none; min-width: 0; }
+  table.cards-sm td.zero { display: none; }
+  table.cards-sm td[data-label]::before { content: attr(data-label) " "; color: var(--muted); font-size: 12px; font-weight: 400; }
+  .list-bar { gap: 8px; }
+
 /* AI assistants page (/account/assistants): personal MCP tokens and
    per-client setup. The "AI assistants" link sits beside the email. */
 .who .who-link { color: var(--text); padding: 4px 10px; border-radius: 6px; white-space: nowrap; }
