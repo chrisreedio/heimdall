@@ -1,0 +1,40 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/sites">Sites</a> <span aria-hidden="true">/</span> <a href="{{hostURL .Org .Host}}">{{.Host}}</a> <span aria-hidden="true">/</span> <a href="{{.SiteURL}}">{{with .Site}}{{.}}{{else}}{{$.Body.Root}}{{end}}</a> <span aria-hidden="true">/</span> Hand off</nav>
+<div class="head">
+  <h1>Hand off to agent</h1>
+</div>
+<p class="muted handoff-lead">Ask a coding agent to open a pull request that updates this site's vulnerable packages. Check the message below: it's exactly what will be posted.</p>
+{{with .Notice}}<p class="notice notice-bad" role="alert">{{.}}</p>{{end}}
+
+<section class="card handoff-card">
+  <dl class="handoff-facts">
+    <div><dt>Agent</dt><dd>{{if gt (len .Agents) 1}}<form method="get" action="" class="handoff-agent">
+      <input type="hidden" name="root" value="{{.Root}}">
+      <select name="agent" aria-label="Agent" data-autosubmit>{{range .Agents}}<option value="{{.}}"{{if eq . $.Body.Agent}} selected{{end}}>{{.}}</option>{{end}}</select>
+      <button type="submit" class="secondary" data-autosubmit-hide>Show message</button>
+    </form>{{else}}<strong>{{.Agent}}</strong>{{end}}</dd></div>
+    <div><dt>Site</dt><dd><a href="{{.SiteURL}}">{{with .Site}}{{.}}{{else}}{{$.Body.Root}}{{end}}</a> <span class="muted small">on {{.Host}}</span><br><code class="path">{{pathBreak .Root}}</code></dd></div>
+    <div><dt>Repository</dt><dd>{{with .Repo}}{{with $.Body.RepoWeb}}<a href="{{.}}" rel="noopener noreferrer"><code class="path">{{$.Body.Repo}}</code></a>{{else}}<code class="path">{{.}}</code>{{end}} <span class="muted small">{{if $.Body.RepoManual}}set by an operator{{else}}found by the collector{{end}}</span>{{else}}<span class="pill warn">repo unknown</span> <span class="small">The agent will be told the repository is unknown. <a href="{{$.Body.SiteURL}}#repo">Set it on the site page</a> first if you can.</span>{{end}}</dd></div>
+    <div><dt>Packages</dt><dd>{{.Packages}} to update{{if .Omitted}} <span class="muted small">({{.Omitted}} more didn't fit Discord's 2,000-character limit; the agent is told so)</span>{{end}}</dd></div>
+  </dl>
+
+  <h2 class="handoff-h">The message</h2>
+  <pre class="handoff-msg" id="handoff-msg">{{.Content}}</pre>
+
+  <div class="handoff-note small">
+    <p><strong>What this shares:</strong> the package names, installed and fixed versions and advisory IDs above, plus the host and site names, the site's path and repository, and your display name. That's more than Heimdall's alerts, which carry counts only. Everyone and every bot in that Discord channel can read it.</p>
+    <p><strong>Who it pings:</strong> only {{.Agent}}. The message allows no other mentions.</p>
+    <p><strong>The agent acts on it.</strong> The wording is fixed and every value comes from Heimdall's own data, never from the AI triage text.</p>
+  </div>
+
+  <form method="post" action="" class="actions handoff-send">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <input type="hidden" name="root" value="{{.Root}}">
+    <input type="hidden" name="agent" value="{{.Agent}}">
+    <input type="hidden" name="request_id" value="{{.RequestID}}">
+    <input type="hidden" name="digest" value="{{.Digest}}">
+    <button type="submit">Post to Discord</button>
+    <a class="button secondary" href="{{.SiteURL}}">Cancel</a>
+  </form>
+</section>
+{{end}}{{end}}

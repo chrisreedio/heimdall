@@ -41,6 +41,9 @@ type aiView struct {
 	Action      string // the regenerate form's path
 	Notice      string
 	CSRF        string
+	// Handoffs are "Hand off to agent" buttons per action index, on
+	// Composer steps only (see aiHandoffs).
+	Handoffs map[int][]handoffLink
 }
 
 // aiBriefs is the dashboard's brief card: one brief per visible org.

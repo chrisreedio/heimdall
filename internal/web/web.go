@@ -25,6 +25,7 @@ import (
 
 	"github.com/chrisreedio/heimdall/internal/auth"
 	"github.com/chrisreedio/heimdall/internal/auth/entra"
+	"github.com/chrisreedio/heimdall/internal/handoff"
 	"github.com/chrisreedio/heimdall/internal/report"
 	"github.com/chrisreedio/heimdall/internal/search"
 	"github.com/chrisreedio/heimdall/internal/store"
@@ -67,6 +68,10 @@ type Config struct {
 	MCP MCPSetup // [mcp]: the AI assistants page and Desktop extension; zero = off
 
 	AI AIService // optional AI analysis (internal/ai); nil = off
+
+	// Agents are the coding agents "Hand off to agent" can ask for a pull
+	// request ([[agents]]); none hides the button. See handoff.go.
+	Agents []handoff.Agent
 }
 
 // CSP is the Content-Security-Policy sent with every response.
@@ -107,6 +112,8 @@ type server struct {
 	cookieName string
 	pages      map[string]*template.Template
 	tokenLimit tokenLimiter // MCP token creation, per user
+	// handoffLimit: one hand-off per site and agent every few minutes.
+	handoffLimit handoffLimiter
 }
 
 // New returns the UI handler.
@@ -150,6 +157,9 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /drift/tag", s.requireAuth(s.driftTag))
 	mux.HandleFunc("POST /hosts/{org}/{host}/env", s.requireAuth(s.hostEnv))
 	mux.HandleFunc("POST /sites/label", s.requireAuth(s.siteLabel))
+	mux.HandleFunc("POST /sites/repo", s.requireAuth(s.siteRepo))
+	mux.HandleFunc("GET /hosts/{org}/{host}/handoff", s.requireAuth(s.handoffPage))
+	mux.HandleFunc("POST /hosts/{org}/{host}/handoff", s.requireAuth(s.handoffSend))
 	mux.HandleFunc("GET /hosts/{org}/{host}/changes", s.requireAuth(s.changesPage))
 	mux.HandleFunc("GET /anomalies", s.requireAuth(s.anomaliesPage))
 	mux.HandleFunc("POST /anomalies/{id}/{action}", s.requireAuth(s.anomalyAction))
@@ -451,7 +461,7 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, v *auth.Viewer, er
 
 func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
-		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "site", "news"}
+		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "site", "news", "handoff"}
 	names = append(names, "assistants") // AI assistants (MCP tokens)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
@@ -552,9 +562,10 @@ var funcs = template.FuncMap{
 		return map[string]any{"C": c, "V": v}
 	},
 	// siteURL is a site's page: sites are a host plus a web root.
-	"siteURL": func(org, host, root string) string {
-		return "/hosts/" + url.PathEscape(org) + "/" + url.PathEscape(host) + "/site?root=" + url.QueryEscape(root)
-	},
+	"siteURL": siteURL,
+	"repoWeb": handoff.WebURL, // a GitHub or GitLab link for a repository, or ""
+	// repoShort shows a web link without its scheme: github.com/owner/repo.
+	"repoShort": func(u string) string { return strings.TrimPrefix(u, "https://") },
 	// pathBreak renders a path that may wrap only after a "/".
 	"pathBreak": func(p string) template.HTML {
 		parts := strings.Split(p, "/")
@@ -583,6 +594,11 @@ var funcs = template.FuncMap{
 		}
 		return s[0]
 	},
+}
+
+// siteURL is a site's page: sites are a host plus a web root.
+func siteURL(org, host, root string) string {
+	return "/hosts/" + url.PathEscape(org) + "/" + url.PathEscape(host) + "/site?root=" + url.QueryEscape(root)
 }
 
 func ago(t time.Time) string { return agoAt(t, time.Now()) }

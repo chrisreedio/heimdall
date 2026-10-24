@@ -78,7 +78,10 @@ func TestCollectorSites(t *testing.T) {
 		"/var/www/html": {"/var/www/html", "nginx", "", "", "", "", []string{"_"}, true, 0},
 		// The collector can't enter /home/locked, so the root stays the docroot.
 		"/home/locked/app/public": {"/home/locked/app/public", "nginx", "", "", "", "", []string{"locked.example.com"}, false, 0},
-		"/var/www/alp":            {"/var/www/alp/public", "nginx", "8.3", "laravel", "11.31.0", "^8.3", []string{"alp.example.com"}, true, 4},
+		// Forge zero-downtime: current is a symlink to releases/<n>.
+		"/home/forge/zdt.example.com/current": {"/home/forge/zdt.example.com/current/public", "nginx", "8.3", "laravel", "11.31.0", "^8.2",
+			[]string{"zdt.example.com"}, true, 4},
+		"/var/www/alp": {"/var/www/alp/public", "nginx", "8.3", "laravel", "11.31.0", "^8.3", []string{"alp.example.com"}, true, 4},
 		// Unreadable composer.lock: no composer data at all.
 		"/var/www/legacy":  {"/var/www/legacy/public", "apache", "8.1", "", "", "", []string{"legacy.example.com", "old.example.com"}, false, 0},
 		"/srv/worker":      {"/srv/worker", "", "", "laravel", "11.31.0", "^8.2", nil, true, 4},
@@ -119,6 +122,61 @@ func TestCollectorSites(t *testing.T) {
 				}
 				if w.version != "" && site.DeployedAt == nil {
 					t.Errorf("%s: deployed_at missing", root)
+				}
+			}
+		})
+	}
+}
+
+// TestCollectorSiteRepos checks the site repositories the collector would
+// send (X-Heimdall-Site-Repos) for the fixture's .git/config files: a
+// token stripped, a zero-downtime release found through current, an
+// ssh:// password and odd user dropped, a file:// remote and an
+// unreadable config skipped. run-containers.sh writes the value to stderr.
+func TestCollectorSiteRepos(t *testing.T) {
+	dir := os.Getenv("HEIMDALL_COLLECTOR_OUT")
+	if dir == "" {
+		t.Skip("HEIMDALL_COLLECTOR_OUT not set; run collector/test/run-containers.sh")
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "*-sites.err"))
+	if len(files) == 0 {
+		t.Fatalf("no *-sites.err in %s", dir)
+	}
+	want := map[string]string{
+		"/home/forge/example.com":             "https://github.com/acme/example.com",
+		"/home/forge/zdt.example.com/current": "git@github.com:acme/zdt",
+		"/var/www/alp":                        "ssh://git.example.com:2222/team/alp",
+	}
+	for _, f := range files {
+		t.Run(filepath.Base(f), func(t *testing.T) {
+			b, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var value string
+			for line := range strings.SplitSeq(string(b), "\n") {
+				if v, ok := strings.CutPrefix(line, "site-repos: "); ok {
+					value = v
+				}
+			}
+			list, ok := strings.CutPrefix(value, "v1 ")
+			if !ok {
+				t.Fatalf("no site-repos line in %s: %q", f, b)
+			}
+			got := map[string]string{}
+			for entry := range strings.SplitSeq(list, ",") {
+				root, u, _ := strings.Cut(entry, " ")
+				got[root] = u
+			}
+			if strings.Contains(value, "FAKEtoken") || strings.Contains(value, "hunter2") || strings.Contains(value, "deploy") {
+				t.Errorf("a credential was sent: %q", value)
+			}
+			if len(got) != len(want) {
+				t.Errorf("got %v, want %v", got, want)
+			}
+			for root, u := range want {
+				if got[root] != u {
+					t.Errorf("%s: got %q, want %q", root, got[root], u)
 				}
 			}
 		})

@@ -195,6 +195,34 @@ EOF
 # 6. A queue worker with no vhost, listed in HEIMDALL_SITES.
 laravel_app /srv/worker 'v11.31.0' '^8.2'
 
+# 8. Git remotes for "Hand off to agent" (asserted by TestCollectorSiteRepos).
+gitconfig() { # $1 = dir holding .git, $2 = [remote "origin"] url
+	mkdir -p "$1/.git"
+	printf '[core]\n\tbare = false\n[remote "upstream"]\n\turl = https://upstream.example.com/wrong/repo.git\n[remote "origin"]\n\turl = %s\n\tfetch = +refs/heads/*:refs/remotes/origin/*\n' "$2" >"$1/.git/config"
+}
+# A plain Forge checkout whose remote has a token in it: stripped.
+gitconfig /home/forge/example.com 'https://forge:ghp_FAKEtoken0123456789@GitHub.com/acme/example.com.git'
+# A Forge zero-downtime site: nginx serves current/public, current links
+# to releases/<n>, and the release kept its .git.
+mkdir -p /home/forge/zdt.example.com/releases
+laravel_app /home/forge/zdt.example.com/releases/20261020120000 'v11.31.0' '^8.2'
+ln -s /home/forge/zdt.example.com/releases/20261020120000 /home/forge/zdt.example.com/current
+gitconfig /home/forge/zdt.example.com/releases/20261020120000 'git@github.com:acme/zdt.git'
+cat >/etc/nginx/sites-enabled/zdt.example.com <<'EOF'
+server {
+    server_name zdt.example.com;
+    root /home/forge/zdt.example.com/current/public;
+    location ~ \.php$ { fastcgi_pass unix:/var/run/php/php8.3-fpm.sock; }
+}
+EOF
+# ssh:// with a password and an unknown user: both dropped.
+gitconfig /var/www/alp 'ssh://deploy:hunter2@Git.Example.com:2222/team/alp.git/'
+# Not an accepted form: nothing is sent.
+gitconfig /var/www/api 'file:///srv/git/api.git'
+# Unreadable by the collector: skipped.
+gitconfig /var/www/legacy 'https://github.com/acme/legacy.git'
+chmod 600 /var/www/legacy/.git/config
+
 chmod 755 /home/forge
 
 # Collector settings, read by run-containers.sh. The "../" entry must be

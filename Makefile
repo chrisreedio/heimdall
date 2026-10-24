@@ -43,7 +43,7 @@ shellcheck:
 test-collector: shellcheck
 	rm -rf "$(COLLECTOR_OUT)"
 	collector/test/run-containers.sh "$(COLLECTOR_OUT)"
-	HEIMDALL_COLLECTOR_OUT="$(COLLECTOR_OUT)" go test -mod=vendor -count=1 -run 'TestCollectorOutput|TestCollectorSites' -v ./internal/snapshot
+	HEIMDALL_COLLECTOR_OUT="$(COLLECTOR_OUT)" go test -mod=vendor -count=1 -run 'TestCollectorOutput|TestCollectorSites|TestCollectorSiteRepos' -v ./internal/snapshot
 
 # Run after changing dependencies; review the vendor/ diff before committing.
 vendor:

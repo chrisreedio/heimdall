@@ -136,6 +136,7 @@ When the input budget is tight, the less important parts go first: fewer finding
     Anything else, such as pipes, `;`, `$(…)`, flags or unknown packages, is dropped. The prose stays.
   - Results are rendered with `html/template` as escaped text (no `template.HTML`). Commands appear in the usual copy box. The shape check runs again at render time.
 - **Nothing is executed.** The hub has no `os/exec` path for this, and the UI says so.
+- **Hand off to agent.** With `[[agents]]` configured, a plan step whose command is a `composer update` for one of the host's sites gets a "Hand off to agent" button (operators and admins only). The message it posts is rebuilt from the site's own findings, never from the model's text. See [Hand off to an agent](deployment.md#hand-off-to-an-agent).
 - **Access:**
   - Briefs are one per org and shown only for orgs the viewer can see. Host explanations follow the host page's access rules.
   - Generating or regenerating needs the operator or admin role in that org. The form is a POST with the CSRF token and Origin check every form uses.

@@ -373,7 +373,14 @@ func cmdNotifyTest(a *app, args []string) error {
 		return err
 	}
 	dests, derr := destinations(cfg, isRoot())
-	if len(rest) == 1 {
+	if len(rest) == 1 && cfg.AgentUsesDestination(rest[0]) && !slices.Contains(cfg.Notify.Destinations, rest[0]) {
+		// An [[agents]] channel: a plain test message, which pings no one.
+		d, err := buildDestination(rest[0], isRoot())
+		if err != nil {
+			return err
+		}
+		dests, derr = []notify.Destination{d}, nil
+	} else if len(rest) == 1 {
 		want := rest[0]
 		dests = slices.DeleteFunc(dests, func(x notify.Destination) bool {
 			n := x.Name()
@@ -414,10 +421,11 @@ func cmdNotifyTest(a *app, args []string) error {
 // the hub as a systemd credential. The URL is a credential and never goes
 // in heimdall.toml; the config only lists the destination as on.
 func cmdNotifySetWebhook(a *app, args []string) error {
-	fs := a.flags("notify set-webhook", "<slack|discord|webhook> <name> [--stdin] [--file path] [--unit path]")
+	fs := a.flags("notify set-webhook", "<slack|discord|webhook> <name> [--stdin] [--file path] [--unit path] [--handoff-only]")
 	path := fs.String("file", "", "where to store the URL (default /etc/heimdall/notify-<kind>-<name>)")
 	fromStdin := fs.Bool("stdin", false, "read the URL from stdin instead of a terminal prompt")
 	unitFile := fs.String("unit", hubUnitFile, "the hub's systemd unit (gets the LoadCredential line)")
+	handoffOnly := fs.Bool("handoff-only", false, "for an [[agents]] channel: don't add it to [notify] destinations (alerts and digests)")
 	rest, err := parse(fs, args, 2)
 	if err != nil {
 		return err
@@ -492,6 +500,9 @@ func cmdNotifySetWebhook(a *app, args []string) error {
 	case err != nil:
 		fmt.Fprintf(a.stderr, "Couldn't read %s (%v).\nAdd %q to destinations under [notify] yourself.\n", cfgPath, err, spec)
 	case slices.Contains(cfg.Notify.Destinations, spec):
+	case *handoffOnly || cfg.AgentUsesDestination(spec):
+		// An agent's channel gets hand-offs only, not alerts and digests.
+		fmt.Fprintf(a.stderr, "Not adding %s to [notify] destinations: it's for agent hand-offs only.\n", spec)
 	default:
 		list := append(slices.Clone(cfg.Notify.Destinations), spec)
 		quoted := make([]string, len(list))

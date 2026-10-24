@@ -45,11 +45,17 @@ func (d *Discord) PreviewAlert(a Alert) any   { return discordPayload(alertMessa
 func (d *Discord) Target() string             { return RedactURL(d.URL) }
 
 func (d *Discord) post(ctx context.Context, m message) error {
+	return d.PostPayload(ctx, discordPayload(m))
+}
+
+// PostPayload sends a ready-made webhook body (the agent hand-off builds
+// its own, see internal/handoff), with the same URL check and retries.
+func (d *Discord) PostPayload(ctx context.Context, payload any) error {
 	u, err := DiscordURL(d.URL)
 	if err != nil {
 		return fmt.Errorf("notify: %s: %w", d.Label, err)
 	}
-	return postJSON(ctx, d.Client, d.Retry, u, d.Label, discordPayload(m))
+	return postJSON(ctx, d.Client, d.Retry, u, d.Label, payload)
 }
 
 // DiscordHost is the one host Discord webhooks are sent to.

@@ -43,6 +43,7 @@ for copying, never run. */}}
       <div class="ai-title"><strong>{{.Title}}</strong></div>
       {{with .Why}}<div class="muted small ai-why">{{.}}</div>{{end}}
       {{with .Command}}<div class="codebox ai-cmd"><pre id="ai-host-{{$i}}">{{.}}</pre><button type="button" class="copy" data-copy="ai-host-{{$i}}" hidden>Copy</button></div>{{end}}
+      {{with index $v.Handoffs $i}}<div class="ai-handoff">{{if gt (len .) 1}}<span class="muted small">Hand off to agent:</span>{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}">{{.Site}}</a>{{end}}{{else}}{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}">Hand off to agent</a>{{end}}{{end}}</div>{{end}}
     </li>{{end}}</ol>
     {{with .Notes}}<p class="muted small ai-notes">{{.}}</p>{{end}}
   </details>{{else}}{{with .Notes}}<p class="muted small ai-notes">{{.}}</p>{{end}}{{end}}

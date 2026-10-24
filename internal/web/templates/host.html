@@ -101,7 +101,9 @@
       {{if .Framework}}<li><span class="k cap">{{.Framework}}</span><span class="v">{{.FrameworkVersion}}{{with .FrameworkLife}} {{template "lifepill" .}}{{end}}</span></li>{{end}}
       {{with .DeployedAt}}<li><span class="k">Last deploy</span><span class="v" title="{{fullDate .}}">{{dayAgo .}}</span></li>{{end}}
       {{if .Readable}}<li><span class="k">Composer packages</span><span class="v">{{.Packages}}</span></li>{{end}}
+      {{with .Repo}}<li class="repo-fact"><span class="k">Repository</span><span class="v">{{with repoWeb .}}<a href="{{.}}" rel="noopener noreferrer"><code class="path">{{repoShort .}}</code></a>{{else}}<code class="path">{{.}}</code>{{end}}</span></li>{{end}}
     </ul>
+    {{with .HandoffURL}}<p class="site-handoff"><a class="button secondary handoff-btn" href="{{.}}">Hand off to agent</a></p>{{end}}
     {{if .Findings}}
     {{with .Command}}
     <div class="cmd">

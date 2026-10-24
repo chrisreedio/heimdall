@@ -860,3 +860,43 @@ dl.conn dd { margin: 0; min-width: 0; }
   .ai-run { margin-left: 0; flex-basis: 100%; }
   .ai-actions { padding-left: 18px; }
 }
+
+/* ── Hand off to agent (templates/handoff.html, site and host pages, AI
+   plan steps): the button, the site's repository and the confirm step. ── */
+.section-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.section-head h2 { margin-right: auto; }
+a.button.handoff-btn { padding: 5px 12px; font-size: 13px; }
+.site-handoff { margin: 0 0 12px; }
+.ai-handoff { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.repo-row { gap: 6px 10px; }
+.repo-row code.path { overflow-wrap: anywhere; }
+.repo-link { text-decoration: none; }
+details.repo-pick form { flex-wrap: wrap; align-items: flex-end; max-width: 560px; }
+.repo-label { display: grid; gap: 4px; flex: 1 1 280px; font-size: 13px; color: var(--muted); }
+.repo-label input { width: 100%; min-width: 0; font-family: var(--mono, monospace); font-size: 13px; }
+.repo-help { flex-basis: 100%; margin: 2px 0 0; }
+.repo-ok { color: var(--ok-fg); }
+.repo-error { color: var(--med-fg); }
+.notice.notice-bad { background: var(--med-bg); color: var(--med-fg); }
+.handoff-lead { max-width: 80ch; margin-top: 0; }
+.handoff-card { display: grid; gap: 14px; max-width: 980px; }
+.handoff-facts { margin: 0; display: grid; gap: 10px 28px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.handoff-facts div { min-width: 0; }
+.handoff-facts dt { font-size: 12px; color: var(--muted); }
+.handoff-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+.handoff-agent { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.handoff-agent select { padding: 4px 6px; }
+.handoff-agent button { padding: 4px 10px; font-size: 13px; }
+.handoff-h { margin: 4px 0 0; font-size: 15px; }
+.handoff-msg {
+  margin: 0; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--code-bg); font-size: 12.5px; line-height: 1.5;
+  white-space: pre-wrap; overflow-wrap: anywhere; max-height: 60vh; overflow: auto;
+}
+.handoff-note { display: grid; gap: 6px; padding: 10px 12px; border-radius: 8px; border-left: 4px solid var(--accent); background: var(--code-bg); }
+.handoff-note p { margin: 0; max-width: 95ch; }
+.handoff-send { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0; }
+@media (max-width: 560px) {
+  .handoff-msg { font-size: 12px; padding: 10px; }
+  .handoff-send button, .handoff-send .button { flex: 1 1 auto; text-align: center; }
+}
