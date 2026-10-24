@@ -40,7 +40,8 @@ Usage:
 
 Commands:
   init                         Create config and database
-  migrate                      Apply database migrations
+  migrate                      Apply database migrations (and config update)
+  config update [--dry-run]    Add config sections for new features, off (backs up the file)
   serve                        Run the web UI, ingest listener and scheduled feed sync
   org  create|list             Manage organizations
   env  create|list --org       Manage environments within an org
@@ -94,6 +95,7 @@ type command func(a *app, args []string) error
 var commands = map[string]command{
 	"init":    cmdInit,
 	"migrate": cmdMigrate,
+	"config":  group("config", map[string]command{"update": cmdConfigUpdate}),
 	"org":     group("org", map[string]command{"create": cmdOrgCreate, "list": cmdOrgList}),
 	"env":     group("env", map[string]command{"create": cmdEnvCreate, "list": cmdEnvList}),
 	"host": group("host", map[string]command{

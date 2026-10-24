@@ -105,6 +105,8 @@ The installer verifies the release, then:
 
 Your config, data, Tailscale and Caddy settings and the unit's `LoadCredential` lines are kept. If the new version doesn't come up, its log is printed before the rollback.
 
+**New config sections.** Features added since your hub was installed (for example `[news]` or `[ai]` on a hub from v0.4.10) get their section appended to `heimdall.toml`, **off**, under a `# Added by heimdall vX.Y.Z` comment, so you can see them and turn them on. Nothing you wrote is changed or reordered, and missing keys inside your existing sections aren't added (their defaults apply). The previous file is kept as `heimdall.toml.pre-upgrade`, and the new one must load before it replaces the old. `heimdall migrate` does this (the installer runs it, and restores the old config on a rollback); when it can't write the file it says so and prints `run: sudo heimdall config update`, and the upgrade goes on. Preview with `heimdall config update --dry-run`.
+
 Only the most recent `heimdall.db.pre-upgrade` is kept: each upgrade replaces it. It's a full copy, so the disk needs room for the database twice. Delete it once you're happy with the new version.
 
 **Upgrading to v0.4.16 or later from an earlier release** shrinks the database once. `heimdall migrate`, which the installer runs while the hub is stopped, converts every stored advisory to the slim, compressed form (see [Database size](#database-size)). It then reclaims the space with SQLite's `VACUUM`:
