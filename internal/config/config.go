@@ -36,6 +36,59 @@ type Config struct {
 	Updates  Updates `toml:"updates"`
 	News     News    `toml:"news"`
 	AI       AI      `toml:"ai"`
+	// Agents are coding agents (Discord bots) that "Hand off to agent"
+	// can ask for a pull request. None by default, which hides the button.
+	Agents []Agent `toml:"agents"`
+}
+
+// Agent is one coding agent: a Discord bot that reads a channel and can
+// open pull requests. Heimdall posts a fix request to the channel's
+// webhook and @mentions only this bot. The webhook URL is a credential,
+// stored with `heimdall notify set-webhook discord <name>`, never here.
+type Agent struct {
+	Name          string `toml:"name"`            // shown in the confirm step, e.g. "pr-bot"
+	DiscordUserID string `toml:"discord_user_id"` // the bot's user ID (17-20 digits)
+	Destination   string `toml:"destination"`     // "discord:<name>", a stored webhook
+}
+
+var (
+	agentNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,31}$`)
+	discordIDRe = regexp.MustCompile(`^[0-9]{17,20}$`)
+)
+
+// MaxAgents caps [[agents]].
+const MaxAgents = 10
+
+// AgentUsesDestination reports whether an agent posts to spec
+// ("discord:agents"), so `notify set-webhook` keeps it out of alerts.
+func (c Config) AgentUsesDestination(spec string) bool {
+	for _, a := range c.Agents {
+		if a.Destination == spec {
+			return true
+		}
+	}
+	return false
+}
+
+func validateAgents(agents []Agent, add func(string, ...any)) {
+	if len(agents) > MaxAgents {
+		add("agents: at most %d", MaxAgents)
+	}
+	seen := map[string]bool{}
+	for i, a := range agents {
+		if !agentNameRe.MatchString(a.Name) {
+			add("agents[%d].name: must be 1-32 lowercase letters, digits or '-', e.g. \"pr-bot\"", i)
+		} else if seen[a.Name] {
+			add("agents[%d].name: %q is listed twice", i, a.Name)
+		}
+		seen[a.Name] = true
+		if !discordIDRe.MatchString(a.DiscordUserID) {
+			add("agents[%d].discord_user_id: must be the bot's Discord user ID, 17-20 digits", i)
+		}
+		if kind, _, ok := NotifyDestination(a.Destination); !ok || kind != "discord" {
+			add("agents[%d].destination: must be discord:<name>, a webhook stored with `heimdall notify set-webhook discord <name>`", i)
+		}
+	}
 }
 
 // AI configures optional server-side analysis with the operator's own
@@ -472,6 +525,7 @@ func (c Config) Validate() error {
 		}
 	}
 	c.AI.validate(add)
+	validateAgents(c.Agents, add)
 	return errors.Join(errs...)
 }
 

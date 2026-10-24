@@ -124,6 +124,7 @@ This keeps "the collector couldn't check" separate from "nothing to report". A c
 ## Changing the format
 
 - **Adding an optional field** still needs a new format version, because the hub rejects unknown fields. Strictness is the point.
+- **Or a request header,** for optional extras an older hub can do without. Any hub ignores a header it doesn't know, so these never need a new format: `X-Heimdall-Hostname`, `X-Heimdall-Triggers`, the privilege watch's `X-Heimdall-Privilege` and `X-Heimdall-Privilege-Watch`, and each site's git remote, `X-Heimdall-Site-Repos` (see [collector.md](collector.md#site-repositories)).
 - **New version:** `heimdall.snapshot/v2` added `sites`. The hub accepts v1 and v2, so collectors can be upgraded gradually. A future v3 would follow the same pattern.
 
 ## Version 3 additions

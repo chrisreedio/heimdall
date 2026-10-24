@@ -230,6 +230,7 @@ On the hub's own box the collector's settings are in `/etc/heimdall-collect/coll
 |---|---|
 | `heimdall-collect --print` | Write a snapshot to stdout, to review or to save for `heimdall import` |
 | `heimdall-collect --push` | Send a snapshot to the hub |
+| `heimdall-collect --site-repos` | Print the site repositories a push would send (see [Site repositories](#site-repositories)) |
 | `heimdall-collect --version` | Print the collector version |
 
 **Push mode settings** (environment variables, usually from a systemd `EnvironmentFile`):
@@ -241,6 +242,7 @@ On the hub's own box the collector's settings are in `/etc/heimdall-collect/coll
 | `HEIMDALL_CA_FILE` | none | CA bundle to pin the hub's certificate |
 | `HEIMDALL_SITES` | none | Extra app roots to inventory, space-separated (e.g. queue workers with no vhost) |
 | `HEIMDALL_DISCOVER_SITES` | `1` | Set to `0` to skip reading nginx/Apache vhost files |
+| `HEIMDALL_DETECT_REPOS` | `1` | Set to `0` to stop reading sites' `.git/config` (see [Site repositories](#site-repositories)) |
 
 **Without installing anything** (import mode), from your own machine:
 
@@ -307,6 +309,28 @@ sudo setfacl -m u:heimdall:r /home/forge/example.com/composer.json /home/forge/e
 ```
 
 A site the collector can't read is still reported, with its hostnames and PHP version, but `readable: false` and no Composer data. That makes missing permissions visible instead of silent.
+
+### Site repositories
+
+For the hub's [Hand off to an agent](deployment.md#hand-off-to-an-agent), the collector reports each site's git remote: the `url` of `[remote "origin"]` in a git config file. It reads the file directly. **git is never run**, so nothing touches the network and no privileges are needed: a file the `heimdall` user can't read is skipped. It looks in, first match wins:
+
+1. `<app root>/.git/config`: a plain checkout (Forge's standard deployments, Ploi, a hand-made `git pull` setup), or a release that kept its `.git`.
+2. For a release layout, where the app root is `<base>/current` or `<base>/releases/<n>`: `<base>/.git/config`, then the repository caches `<base>/repo/config` (Capistrano-style mirrors) and `<base>/.dep/repo/config` (Deployer).
+
+**Laravel Forge zero-downtime deployments** serve `/home/forge/<site>/current/public`, where `current` is a symlink to `releases/<n>`; `$CREATE_RELEASE()` clones the site into each new release, and `.env` and `storage` are shared from `/home/forge/<site>`. The app root is then `/home/forge/<site>/current`, and its `.git/config` is read through the symlink. Forge's documentation doesn't say whether a release keeps its `.git`. If yours doesn't (check with `ls /home/forge/<site>/current/.git`), set the repository on the site page instead.
+
+**Credentials are stripped on the server,** before anything is sent. A remote like `https://forge:ghp_…@github.com/acme/app.git` is sent as `https://github.com/acme/app`. Only `https://`, `ssh://` and `user@host:path` forms are accepted, a query or fragment is dropped, an SSH user name is kept only if it's `git` (or `gitea`, `forgejo`, `gogs`, `gitlab`) with no password, and the result is at most 200 characters. The hub normalizes it again with the same rules.
+
+**Permissions:** like the composer files, the collector needs to enter `.git` and read `config`, nothing else in it:
+
+```sh
+sudo setfacl -m u:heimdall:x /home/forge/example.com/.git
+sudo setfacl -m u:heimdall:r /home/forge/example.com/.git/config
+# zero-downtime: new releases are new folders, so give a default ACL on releases/
+sudo setfacl -d -m u:heimdall:rX /home/forge/example.com/releases
+```
+
+**How it's sent:** in a request header, `X-Heimdall-Site-Repos: v1 <root> <url>,<root> <url>` (just `v1` when none are known), at most about 4 KB. It's a header, not a snapshot field, for the same reason as the privilege watch's: the hub rejects snapshots with unknown fields, so a new field would make an older hub refuse a newer collector's push, while every hub ignores a header it doesn't know. A push without the header (an older collector) leaves the hub's stored repositories alone. `heimdall-collect --site-repos` prints the value; `HEIMDALL_DETECT_REPOS=0` sends `v1` (none).
 
 **Known limitations**
 - `include` lines aren't followed, so `server_name`/`root`/`fastcgi_pass` must be in the vhost file itself. That's true for Forge, Ploi and most hand-written configs.

@@ -532,6 +532,115 @@ sites_json() {
 		}
 }
 
+# ── Site repositories (sent as X-Heimdall-Site-Repos) ──────────────────────
+# Each site's git remote "origin", for the hub's "Hand off to agent". Read
+# straight from .git/config: git is never run, so no network and no
+# privileges, and a file this user can't read is skipped. Credentials in
+# the URL (https://user:token@host/...) are stripped here, before anything
+# leaves the host. A header, not a snapshot field, so hubs of every
+# version accept the push. HEIMDALL_DETECT_REPOS=0 turns it off.
+
+# The URL of [remote "origin"] in a git config file.
+git_origin_url() {
+	awk '
+		/^[ \t]*\[/ { sec = $0; gsub(/[ \t]/, "", sec); origin = (sec == "[remote\"origin\"]"); next }
+		origin && /^[ \t]*url[ \t]*=/ {
+			v = $0; sub(/^[^=]*=[ \t]*/, "", v); sub(/[ \t\r]+$/, "", v); print v; exit
+		}' "$1" 2>/dev/null
+}
+
+# normalize_repo: a remote URL on stdin, printed in canonical form with
+# credentials removed, or nothing. Accepts https://, ssh:// and
+# user@host:path only; mirrors the hub's handoff.NormalizeRepo, which
+# checks it again.
+normalize_repo() {
+	awk '
+		function okhost(h) { return length(h) <= 253 && h ~ /^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$/ }
+		function okpath(p,   n, parts, i) {
+			sub(/^\/+/, "", p); sub(/\/+$/, "", p); sub(/\.git$/, "", p); sub(/\/+$/, "", p)
+			if (p == "" || p !~ /^[A-Za-z0-9._~-]+(\/[A-Za-z0-9._~-]+)*$/) return ""
+			n = split(p, parts, "/")
+			for (i = 1; i <= n; i++) if (parts[i] == "." || parts[i] == "..") return ""
+			return p
+		}
+		function okuser(u) { return u == "git" || u == "gitea" || u == "forgejo" || u == "gogs" || u == "gitlab" }
+		NR > 1 { exit }
+		{
+			u = $0; out = ""
+			if (u == "" || length(u) > 1024 || u ~ /[^A-Za-z0-9._~:\/?#@!$&()*+,;=%\[\]-]/) next
+			if (u ~ /^(https|ssh):\/\//) {
+				scheme = substr(u, 1, index(u, ":") - 1); rest = substr(u, length(scheme) + 4)
+				sub(/[?#].*$/, "", rest)
+				slash = index(rest, "/"); if (slash == 0) next
+				hp = substr(rest, 1, slash - 1); path = substr(rest, slash); user = ""
+				if (index(hp, "@")) {
+					ui = hp; sub(/@[^@]*$/, "", ui); hp = substr(hp, length(ui) + 2)
+					if (ui !~ /:/ && okuser(ui)) user = ui "@"  # never a password or token
+				}
+				port = ""
+				if (match(hp, /:[0-9][0-9]*$/)) { port = substr(hp, RSTART); hp = substr(hp, 1, RSTART - 1) }
+				hp = tolower(hp); if (!okhost(hp) || length(port) > 6) next
+				p = okpath(path); if (p == "") next
+				out = (scheme == "https") ? "https://" hp port "/" p : "ssh://" user hp port "/" p
+			} else if (u ~ /^[A-Za-z0-9_.-]+@[A-Za-z0-9.-]+:/) {
+				user = substr(u, 1, index(u, "@") - 1); rest = substr(u, index(u, "@") + 1)
+				hp = tolower(substr(rest, 1, index(rest, ":") - 1)); path = substr(rest, index(rest, ":") + 1)
+				if (!okhost(hp) || path ~ /^\/\//) next
+				lead = (substr(path, 1, 1) == "/") ? "/" : ""
+				p = okpath(path); if (p == "") next
+				out = okuser(user) ? user "@" hp ":" lead p : "ssh://" hp "/" p
+			}
+			if (out != "" && length(out) <= 200) print out
+		}'
+}
+
+# site_repo ROOT: the site's normalized origin URL, or nothing. Looks in
+# the app root's .git/config (a plain checkout, or a release that kept its
+# .git), then, for a release layout (<base>/current or
+# <base>/releases/<n>, as Forge's zero-downtime deployments, Envoyer and
+# Deployer use), in <base>/.git/config and the repository caches
+# <base>/repo/config (Capistrano-style) and <base>/.dep/repo/config
+# (Deployer).
+site_repo() {
+	base=
+	case $1 in
+	*/current) base=${1%/current} ;;
+	*/releases/*) base=${1%/releases/*} ;;
+	esac
+	set -- "$1/.git/config"
+	[ -z "$base" ] || set -- "$@" "$base/.git/config" "$base/repo/config" "$base/.dep/repo/config"
+	for f in "$@"; do
+		if [ ! -f "$f" ] || [ ! -r "$f" ]; then continue; fi
+		[ "$(wc -c <"$f" 2>/dev/null || echo 99999)" -le 65536 ] || continue
+		u=$(git_origin_url "$f" | normalize_repo)
+		if [ -n "$u" ]; then
+			printf '%s' "$u"
+			return 0
+		fi
+	done
+	return 1
+}
+
+# site_repos: the X-Heimdall-Site-Repos value for the sites in a snapshot
+# on stdin, "v1 <root> <url>,..." (just "v1" when none are known), at most
+# about 4 KB so it fits next to the other headers on any hub.
+site_repos() {
+	out=v1
+	if [ "${HEIMDALL_DETECT_REPOS:-1}" = 0 ]; then
+		printf '%s' "$out"
+		return
+	fi
+	sed -n 's/^ *{"root": "\([^"]*\)", "document_root".*/\1/p' | {
+		while IFS= read -r root; do
+			repo=$(site_repo "$root") || continue
+			entry="$root $repo"
+			[ $((${#out} + ${#entry} + 1)) -le 4000 ] || break
+			if [ "$out" = v1 ]; then out="v1 $entry"; else out="$out,$entry"; fi
+		done
+		printf '%s' "$out"
+	}
+}
+
 # ── Snapshot ────────────────────────────────────────────────────────────────
 
 self_sha256() {
@@ -740,13 +849,16 @@ push() {
 	triggers_header=
 	tr_state=$(triggers_state | tr -cd 'a-z,=; -' | cut -c1-240)
 	[ -z "$tr_state" ] || triggers_header="header = \"X-Heimdall-Triggers: $tr_state\""
+	# Each site's git remote, credentials stripped (site_repos). The value
+	# is only paths and URLs, never quotes or backslashes.
+	repos_header="header = \"X-Heimdall-Site-Repos: $(site_repos <"$tmp/snapshot.json" | tr -cd 'A-Za-z0-9._~:/@+, -' | cut -c1-4096)\""
 
 	# The token goes to curl on stdin via --config (printf is a shell
 	# builtin), so it never appears in any process's arguments.
 	status=$(printf '%s\n' \
 		"header = \"Authorization: Bearer $token\"" \
 		'header = "Content-Type: application/json"' \
-		"$encoding" "$cacert" "$hostname_header" "$triggers_header" "$(privilege_config)" |
+		"$encoding" "$cacert" "$hostname_header" "$triggers_header" "$repos_header" "$(privilege_config)" |
 		curl --config - --silent --show-error \
 			--proto '=https,http' --tlsv1.2 \
 			--connect-timeout 10 --max-time 120 \
@@ -840,15 +952,16 @@ upgrade() {
 
 usage() {
 	cat >&2 <<'EOF'
-usage: heimdall-collect --print | --push | --version
+usage: heimdall-collect --print | --push | --site-repos | --version
        sudo heimdall-collect upgrade [vX.Y.Z]
 
-  --print    write a snapshot to stdout (for review or 'heimdall import')
-  --push     send a snapshot to $HEIMDALL_URL using $HEIMDALL_TOKEN_FILE
-  --version  print the collector version
-  upgrade    reinstall from the release the hub runs (or the one given),
-             keeping the hub, token and settings; checked against the
-             release's SHA256SUMS
+  --print       write a snapshot to stdout (for review or 'heimdall import')
+  --push        send a snapshot to $HEIMDALL_URL using $HEIMDALL_TOKEN_FILE
+  --site-repos  print the site repositories --push would send
+  --version     print the collector version
+  upgrade       reinstall from the release the hub runs (or the one given),
+                keeping the hub, token and settings; checked against the
+                release's SHA256SUMS
 EOF
 	exit 2
 }
@@ -860,7 +973,7 @@ fi
 [ $# -eq 1 ] || usage
 case $1 in
 --version) echo "$VERSION"; exit 0 ;;
---print | --push) ;;
+--print | --push | --site-repos) ;;
 *) usage ;;
 esac
 
@@ -871,4 +984,5 @@ fi
 case $1 in
 --print) snapshot ;;
 --push) push ;;
+--site-repos) sites_json | site_repos; echo ;;
 esac

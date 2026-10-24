@@ -17,6 +17,7 @@
   <a class="button secondary head-action" href="{{hostURL .Org .Host}}">Open host</a>
 </div>
 {{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{with .HandoffNote}}<p class="notice{{if $.Body.HandoffError}} notice-bad{{end}}" role="status">{{.}}</p>{{end}}
 
 <section class="facts card site-facts">
   <div class="fact">{{template "icon" "server"}}<div><div class="k">Web server</div><div class="v">{{with .Site.WebServer}}{{.}}{{else}}Listed in HEIMDALL_SITES{{end}}</div></div></div>
@@ -26,10 +27,25 @@
   <div class="fact">{{template "icon" "calendar"}}<div><div class="k">Last deploy</div><div class="v">{{with .Site.DeployedAt}}<span title="{{fullDate .}}">{{dayAgo .}}</span>{{else}}Unknown{{end}}</div></div></div>
   <div class="fact">{{template "icon" "package"}}<div><div class="k">Composer packages</div><div class="v">{{if .Site.Readable}}{{.Site.Packages}}{{else}}Unreadable{{end}}</div>{{if not .Site.Readable}}<div class="pills"><span class="pill warn" title="the collector couldn't read composer.json or composer.lock">can't check packages</span></div>{{end}}</div></div>
   <div class="runtimes-row">{{template "icon" "globe"}}<span class="k">Root</span><code class="path">{{pathBreak .Site.Root}}</code>{{if and .Site.DocumentRoot (ne .Site.DocumentRoot .Site.Root)}}<span class="muted small">serving</span> <code class="path">{{pathBreak (relPath .Site.Root .Site.DocumentRoot)}}</code>{{end}}{{if gt (len .Site.ServerNames) 1}}<span class="k">Names</span>{{range .Site.ServerNames}}<span class="tag">{{.}}</span>{{end}}{{end}}</div>
+  <div class="runtimes-row repo-row" id="repo">{{template "icon" "code"}}<span class="k">Repository</span>
+    {{with .Repo.Repo}}{{with repoWeb .}}<a href="{{.}}" rel="noopener noreferrer" class="repo-link"><code class="path">{{$.Body.Repo.Repo}}</code></a>{{else}}<code class="path">{{.}}</code>{{end}}
+    <span class="muted small">{{if $.Body.Repo.Manual}}set by an operator{{if and $.Body.Repo.Detected (ne $.Body.Repo.Detected $.Body.Repo.Manual)}} (the collector found <code>{{$.Body.Repo.Detected}}</code>){{end}}{{else}}found by the collector{{end}}</span>
+    {{else}}<span class="muted small">Unknown. The collector reads the site's <code>.git/config</code> when it can; an operator can set it here.</span>{{end}}
+    {{if .CanOperate}}<details class="label-pick repo-pick"{{if .RepoError}} open{{end}}>
+      <summary class="link small">{{if .Repo.Manual}}change{{else}}set{{end}}</summary>
+      <form method="post" action="/sites/repo" class="inline card repo-form">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.Org}}"><input type="hidden" name="host" value="{{.Host}}"><input type="hidden" name="root" value="{{.Site.Root}}">
+        <label class="repo-label">Repository URL <input type="text" name="repo" value="{{.Repo.Manual}}" placeholder="https://github.com/owner/repo" maxlength="512" autocomplete="off" spellcheck="false"></label>
+        <button type="submit">Save</button>{{if .Repo.Manual}} <button type="submit" name="clear" value="1" class="secondary">Use detected</button>{{end}}
+        <p class="muted small repo-help">Wins over what the collector finds. Credentials in the URL are removed, never stored.</p>
+      </form>
+    </details>{{end}}
+    {{with .RepoNotice}}<span class="small {{if $.Body.RepoError}}repo-error{{else}}repo-ok{{end}}" role="status">{{.}}</span>{{end}}
+  </div>
 </section>
 
 <section id="findings">
-  <h2>Composer findings</h2>
+  <div class="section-head"><h2>Composer findings</h2>{{with .HandoffURL}}<a class="button secondary handoff-btn" href="{{.}}">Hand off to agent</a>{{end}}</div>
   {{if not .Site.Readable}}<p class="empty">The collector couldn't read this site's composer.json or composer.lock, so its packages can't be checked. Make them readable by the collector's user.</p>
   {{else if .View.Total}}{{template "chips" (chipsFor .Site.Counts .View)}}{{template "osfindings" .View}}
   {{else if or .View.Sev .View.Fixable}}{{template "chips" (chipsFor .Site.Counts .View)}}<p class="empty">No findings match the filter.</p>

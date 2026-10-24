@@ -194,6 +194,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if res.Status < 300 { // opt-in privilege watch (privilege.go)
 		h.recordPrivilege(r.Context(), log, host, res.SnapshotID, r)
+		h.recordSiteRepos(r.Context(), log, host, r) // repos.go
 	}
 	if res.Status == http.StatusCreated && h.OnStored != nil {
 		h.OnStored(host)

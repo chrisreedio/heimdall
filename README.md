@@ -138,6 +138,7 @@ See [docs/anomaly-signals.md](docs/anomaly-signals.md) for what each signal mean
 - Commands for each host that **you** copy and run (`apt-get install --only-upgrade …`, `dnf upgrade --advisory …`)
 - "Patch plans" that group hosts into batches you can work through and tick off
 - Verification: the next check-in confirms the vulnerable version is gone
+- **Hand off to agent** (optional, off by default): ask your own coding agent, a Discord bot, to open a pull request that updates a site's vulnerable Composer or npm packages. The confirm step shows exactly what's posted, only that bot can be pinged, and every value comes from Heimdall's validated data. See [Hand off to an agent](docs/deployment.md#hand-off-to-an-agent)
 
 ### AI analysis (optional, your own model)
 - Off by default. Point `[ai]` at **your own** Azure AI Foundry / Azure OpenAI deployment and store its key with `sudo heimdall ai set-key`.

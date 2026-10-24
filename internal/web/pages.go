@@ -225,12 +225,21 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		s.fail(w, r, v, err)
 		return
 	}
+	repos, err := s.st.SiteRepos(ctx, host.ID)
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
 	for i := range body.Sites {
 		site := &body.Sites[i]
 		if l, ok := labels[store.SiteLabelKey(host.OrgSlug, host.Name, site.Root)]; ok {
 			site.Label, site.LabelSet = l, true
 		} else {
 			site.Label = suggestSiteLabel(site.ServerNames)
+		}
+		site.Repo = repos[site.Root].Repo()
+		if s.canHandoff(v, host.OrgID) && len(handoffFindings(body.Report, site.Root)) > 0 {
+			site.HandoffURL = handoffURL(host.OrgSlug, host.Name, site.Root, "")
 		}
 	}
 
@@ -293,6 +302,9 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	if body.AI, err = s.aiHostFor(r, v, host); err != nil {
 		s.fail(w, r, v, err)
 		return
+	}
+	if s.canHandoff(v, host.OrgID) {
+		aiHandoffs(body.AI, host.OrgSlug, host.Name, body.Sites, body.Report)
 	}
 	s.render(w, r, http.StatusOK, "host", v, host.Name, "hosts", body)
 }
@@ -529,10 +541,12 @@ func sortSites(rows []siteRow) {
 // siteSection is a site on the host page with its own findings.
 type siteSection struct {
 	report.Site
-	Findings []report.Finding
-	Command  *command
-	Label    string
-	LabelSet bool
+	Findings   []report.Finding
+	Command    *command
+	Label      string
+	LabelSet   bool
+	Repo       string // the site's repository ("" if unknown)
+	HandoffURL string // "Hand off to agent", when allowed and there's something to fix
 }
 
 var composerName = regexp.MustCompile(`^[a-z0-9]([_.-]?[a-z0-9]+)*/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$`)
@@ -741,6 +755,14 @@ type siteBody struct {
 	View           findingsView
 	Others         []report.Site // the host's other sites
 	Notice         string
+	// The site's repository: the one in use, and where it came from.
+	Repo         store.SiteRepo
+	CanOperate   bool   // may set the repository
+	RepoNotice   string // fixed text after saving it
+	RepoError    bool
+	HandoffURL   string // "Hand off to agent", when allowed and there's something to fix
+	HandoffNote  string // fixed text after a hand-off
+	HandoffError bool
 }
 
 // sitePage shows one site (a web root on a host): its stack, lifecycle and
@@ -798,6 +820,19 @@ func (s *server) sitePage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	if r.URL.Query().Get("labeled") == "1" {
 		body.Notice = "Label saved."
 	}
+	repos, err := s.st.SiteRepos(ctx, host.ID)
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	body.Repo, body.CanOperate = repos[root], v.Scope.CanOperate(host.OrgID)
+	rn := r.URL.Query().Get("repo")
+	body.RepoNotice, body.RepoError = repoNotices[rn], rn == "invalid"
+	if s.canHandoff(v, host.OrgID) && len(handoffFindings(h, root)) > 0 {
+		body.HandoffURL = handoffURL(host.OrgSlug, host.Name, root, "")
+	}
+	hn := r.URL.Query().Get("handoff")
+	body.HandoffNote, body.HandoffError = handoffNotices[hn], hn == "failed"
 	name := root
 	if len(body.Site.ServerNames) > 0 && body.Site.ServerNames[0] != "_" {
 		name = body.Site.ServerNames[0]

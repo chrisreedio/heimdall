@@ -118,3 +118,14 @@ brief_every       = "24h"         # "0" = on demand only
 max_output_tokens = 8000          # includes reasoning tokens
 max_input_tokens  = 24000         # per run (estimated); facts are trimmed to fit
 timeout           = "2m"
+
+# Coding agents for "Hand off to agent" (off unless listed). Each is a
+# Discord bot that reads a channel and can open pull requests. Heimdall
+# posts a fix request for one site's vulnerable Composer/npm packages to
+# the channel's webhook and @mentions only that bot. The webhook URL is a
+# secret: store it with `sudo heimdall notify set-webhook discord <name>`.
+# This sends package and advisory details; see docs/deployment.md.
+# [[agents]]
+# name            = "pr-bot"                # shown in the confirm step
+# discord_user_id = "123456789012345678"    # the bot's Discord user ID
+# destination     = "discord:agents"        # a stored Discord webhook
