@@ -6,6 +6,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
@@ -20,7 +21,8 @@ import (
 // versions still accept each other's requests. Bad values are dropped;
 // they never fail the push.
 const (
-	// PrivilegeHeader: "v1 <unix-ts>:<kind>[:<user>],..." (the last 7 days).
+	// PrivilegeHeader: "v1 <unix-ts>:<kind>[:<user>[:<source>]],..." (the
+	// last 7 days). The source goes last since an IPv6 address has colons.
 	PrivilegeHeader = "X-Heimdall-Privilege"
 	// PrivilegeWatchHeader: on, off or partial.
 	PrivilegeWatchHeader = "X-Heimdall-Privilege-Watch"
@@ -31,7 +33,26 @@ const (
 	maxPrivilegeAge = 8 * 24 * time.Hour
 )
 
-var privilegeUser = regexp.MustCompile(`^(?:[a-z_][a-z0-9_.-]{0,31}|\?)$`)
+var (
+	privilegeUser = regexp.MustCompile(`^(?:[a-z_][a-z0-9_.-]{0,31}|\?)$`)
+	// privilegeHost is a host name, as sshd reports one with UseDNS.
+	privilegeHost = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,62})(\.[A-Za-z0-9]([A-Za-z0-9-]{0,62}))*$`)
+)
+
+// privilegeSource validates where a session came from: an IP address, a
+// host name, or "?" (the server couldn't tell).
+func privilegeSource(s string) bool {
+	if s == "?" {
+		return true
+	}
+	if len(s) > 64 {
+		return false
+	}
+	if _, err := netip.ParseAddr(s); err == nil {
+		return !strings.Contains(s, "%") // no zones
+	}
+	return privilegeHost.MatchString(s) && strings.ContainsFunc(s, func(r rune) bool { return r == '-' || (r|0x20 >= 'a' && r|0x20 <= 'z') })
+}
 
 // parsePrivilege parses a PrivilegeHeader value. A malformed header gives
 // nil; a malformed or out-of-range entry in a good header is skipped.
@@ -46,8 +67,8 @@ func parsePrivilege(v string, now time.Time) []store.PrivilegeEvent {
 		if len(out) == maxPrivilegeEvents {
 			break
 		}
-		parts := strings.Split(entry, ":")
-		if len(parts) < 2 || len(parts) > 3 || len(parts[0]) > 12 {
+		parts := strings.SplitN(entry, ":", 4)
+		if len(parts) < 2 || len(parts[0]) > 12 {
 			continue
 		}
 		sec, err := strconv.ParseInt(parts[0], 10, 64)
@@ -64,11 +85,17 @@ func parsePrivilege(v string, now time.Time) []store.PrivilegeEvent {
 		default:
 			continue
 		}
-		if len(parts) == 3 {
+		if len(parts) >= 3 {
 			if !privilegeUser.MatchString(parts[2]) {
 				continue
 			}
 			ev.User = parts[2]
+		}
+		if len(parts) == 4 {
+			if !privilegeSource(parts[3]) {
+				continue
+			}
+			ev.Source = parts[3]
 		}
 		if !seen[ev] {
 			seen[ev] = true

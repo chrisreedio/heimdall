@@ -16,11 +16,14 @@ const PrivilegeRetention = 180 * 24 * time.Hour
 
 // PrivilegeEvent is one privileged access a server's privilege watch
 // recorded: when, which kind (sudo, su or root-ssh) and, only if the
-// server opted in to usernames, who ("?" for a name that didn't validate).
+// server opted in to usernames, who ("?" for a name that didn't validate)
+// and where the session came from (an IP address or host name, "?" when
+// the server couldn't tell, "" for a local session or no opt-in).
 type PrivilegeEvent struct {
-	At   time.Time
-	Kind string
-	User string
+	At     time.Time
+	Kind   string
+	User   string
+	Source string
 }
 
 // RecordPrivilege stores a host's reported events, skipping ones already
@@ -32,8 +35,8 @@ func (s *Store) RecordPrivilege(ctx context.Context, hostID int64, events []Priv
 	err = s.tx(ctx, func(tx *sql.Tx) error {
 		for _, ev := range events {
 			res, err := tx.ExecContext(ctx, `
-				INSERT INTO privilege_events (host_id, at, kind, user, received_at) VALUES (?, ?, ?, ?, ?)
-				ON CONFLICT DO NOTHING`, hostID, ev.At.Unix(), ev.Kind, ev.User, ts)
+				INSERT INTO privilege_events (host_id, at, kind, user, source, received_at) VALUES (?, ?, ?, ?, ?, ?)
+				ON CONFLICT DO NOTHING`, hostID, ev.At.Unix(), ev.Kind, ev.User, ev.Source, ts)
 			if err != nil {
 				return err
 			}
@@ -101,6 +104,27 @@ func (s *Store) PrivilegeSummary(ctx context.Context, hostID int64, since time.T
 		sum.Counts[kind] = n
 	}
 	return sum, rows.Err()
+}
+
+// RecentPrivilege returns a host's newest events, newest first.
+func (s *Store) RecentPrivilege(ctx context.Context, hostID int64, limit int) ([]PrivilegeEvent, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT at, kind, user, source FROM privilege_events WHERE host_id = ? ORDER BY at DESC, kind LIMIT ?`, hostID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []PrivilegeEvent
+	for rows.Next() {
+		var ev PrivilegeEvent
+		var at int64
+		if err := rows.Scan(&at, &ev.Kind, &ev.User, &ev.Source); err != nil {
+			return nil, err
+		}
+		ev.At = time.Unix(at, 0).UTC()
+		out = append(out, ev)
+	}
+	return out, rows.Err()
 }
 
 // CountAnomaly adds to an open anomaly that counts things, identified by
