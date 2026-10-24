@@ -31,6 +31,7 @@ const (
 type fakeOSV struct {
 	batches, vulnFetches atomic.Int32
 	vulnerable           func(name, version string) bool
+	modified             atomic.Value // querybatch's modified time for advisoryID, if set
 }
 
 func (f *fakeOSV) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -57,7 +58,11 @@ func (f *fakeOSV) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for _, q := range req.Queries {
 			var res result
 			if q.Package.Ecosystem == "Debian:12" && f.vulnerable(q.Package.Name, q.Version) {
-				res.Vulns = []ref{{ID: advisoryID, Modified: "2024-01-01T00:00:00Z"}}
+				m, _ := f.modified.Load().(string)
+				if m == "" {
+					m = "2024-01-01T00:00:00Z"
+				}
+				res.Vulns = []ref{{ID: advisoryID, Modified: m}}
 			}
 			if q.Package.Ecosystem == "Packagist" && q.Package.Name == "laravel/framework" && q.Version < "11.44.1" {
 				res.Vulns = []ref{{ID: laravelAdvisory, Modified: "2025-03-01T00:00:00Z"}}

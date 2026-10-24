@@ -112,6 +112,7 @@ Most PHP apps are a site on a shared box, so Heimdall inventories **sites**, not
 - Optional **[EPSS](https://www.first.org/epss/)** scores to help rank what to fix first
 - End-of-life warnings for operating systems and runtimes via **[endoflife.date](https://endoflife.date)**
 - Feeds are synced into a local cache. Outbound requests go only to a fixed allowlist of feed hosts and contain only `(ecosystem, package, version)` tuples.
+- Only the advisories that match your hosts' packages are fetched, and they're stored slimmed and compressed, so a hub's database stays in the tens of megabytes ([database size](docs/deployment.md#database-size)).
 
 ### Fleet views
 - **Dashboard:** hosts by risk, KEV hits, EOL systems, hosts with pending reboots, and stale hosts that haven't checked in for N days
