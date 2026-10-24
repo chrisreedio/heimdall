@@ -22,6 +22,9 @@ ExecStart=/usr/local/bin/heimdall -c /etc/heimdall/heimdall.toml serve
 # Entra ID SSO: the client secret, passed as a private systemd credential
 # (never in heimdall.toml). The file should be root-owned, mode 0600.
 #LoadCredential=heimdall-entra:/etc/heimdall/entra-secret
+# Optional AI analysis ([ai]): the Azure API key, likewise. `sudo heimdall
+# ai set-key` stores it and uncomments this line.
+#LoadCredential=heimdall-ai:/etc/heimdall/ai-key
 Restart=on-failure
 RestartSec=5s
 

@@ -14,6 +14,8 @@
   {{end}}
 </div>
 
+{{template "aibrief" .AIBrief}}
+
 {{if .News}}<a class="news-strip" href="/news?affects=me"><span class="pill bad">news</span> <span><strong>{{.News}}</strong> in the news affect{{if eq .News 1}}s{{end}} your hosts</span> <span aria-hidden="true">→</span></a>{{end}}
 
 <section class="tiles" aria-label="Summary">

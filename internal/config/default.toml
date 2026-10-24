@@ -91,3 +91,21 @@ smtp_port      = 587                 # STARTTLS required; 465 = implicit TLS
 # smtp_username = "heimdall"         # password: systemd credential "heimdall-smtp"
 webhook        = false               # URL: systemd credential "heimdall-webhook"
 webhook_format = "slack"
+
+[ai]
+# Optional server-side analysis with YOUR OWN Azure AI Foundry / Azure
+# OpenAI model deployment: a daily fleet brief on the dashboard and
+# "Explain this host" on host pages. Off by default. When on, compact,
+# pre-aggregated facts (hostnames, OS, package names and versions, CVEs,
+# counts) are sent to that endpoint; see docs/ai.md for exactly what.
+# The API key is never in this file: run `sudo heimdall ai set-key`, then
+# `heimdall ai test`.
+enabled           = false
+endpoint          = ""            # e.g. "https://myres.openai.azure.com"
+deployment        = ""            # your deployment's name, sent as "model"
+api               = "responses"   # or "chat" (Chat Completions)
+# reasoning_effort = "low"        # sent only if set; depends on the model
+brief_every       = "24h"         # "0" = on demand only
+max_output_tokens = 8000          # includes reasoning tokens
+max_input_tokens  = 24000         # per run (estimated); facts are trimmed to fit
+timeout           = "2m"

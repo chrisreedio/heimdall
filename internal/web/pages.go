@@ -108,7 +108,8 @@ type dashBody struct {
 	Tiles    tiles
 	Rows     []hostRow
 	Waiting  []store.Host
-	News     int // incidents in the news affecting a visible host
+	News     int       // incidents in the news affecting a visible host
+	AIBrief  *aiBriefs // AI fleet brief (nil when [ai] is off); see ai.go
 }
 
 type tiles struct {
@@ -236,6 +237,10 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		s.fail(w, r, v, err)
 		return
 	}
+	if body.AIBrief, err = s.aiBriefsFor(r, v, org, orgs); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
 	s.render(w, r, http.StatusOK, "dashboard", v, "Dashboard", "dashboard", body)
 }
 
@@ -327,6 +332,7 @@ type hostBody struct {
 	ShowOrgName     bool
 	News            []newsRow // incidents in the news affecting this host
 	ChangeWatch     string    // "on", "off", or "" if the collector doesn't report its triggers
+	AI              *aiView   // AI triage card (nil when [ai] is off); see ai.go
 }
 
 type command struct {
@@ -467,6 +473,10 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		body.News = newsRows(entries)
 	}
 	if body.Privilege, err = s.privilegeFor(ctx, host.ID); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if body.AI, err = s.aiHostFor(r, v, host); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}

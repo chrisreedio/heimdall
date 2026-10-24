@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	neturl "net/url"
 	"slices"
@@ -51,7 +52,11 @@ type Client struct {
 // New returns a client that may only reach the given hosts over HTTPS.
 func New(allowedHosts []string, userAgent string) *Client {
 	check := func(r *http.Request) error {
-		if r.URL.Scheme != "https" || !slices.Contains(allowedHosts, strings.ToLower(r.URL.Hostname())) {
+		scheme := r.URL.Scheme
+		if scheme == "http" && devLoopbackHTTP && isLoopback(r.URL.Hostname()) {
+			scheme = "https" // dev builds only (dev.go): a local fake server on the allowlist
+		}
+		if scheme != "https" || !slices.Contains(allowedHosts, strings.ToLower(r.URL.Hostname())) {
 			return fmt.Errorf("%w: %s://%s", ErrNotAllowed, r.URL.Scheme, r.URL.Host)
 		}
 		return nil
@@ -179,4 +184,18 @@ func (c *Client) do(req *http.Request, maxBytes int64) ([]byte, http.Header, err
 		return nil, nil, fmt.Errorf("GET %s: response larger than %d bytes", req.URL.Redacted(), maxBytes)
 	}
 	return b, resp.Header, nil
+}
+
+// devLoopbackHTTP is set only in dev builds (dev.go, -tags dev): plain
+// http is then allowed to an allowlisted loopback host, so the AI client
+// can be tried against a local fake model server. Release builds never
+// contain dev.go, and the allowlists never name loopback hosts otherwise.
+var devLoopbackHTTP = false
+
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

@@ -168,7 +168,7 @@ app's Overview, and create a secret under Certificates & secrets.
 		return err
 	}
 	fmt.Fprintf(a.stderr, "Enabled [auth.entra] in %s.\n", cfgPath)
-	changed, err := enableCredential(*unitFile, *secretFile)
+	changed, err := enableCredential(*unitFile, entraCredential, *secretFile)
 	if err != nil {
 		return err
 	}
@@ -332,26 +332,26 @@ func setTOMLKeys(src []byte, section string, kv [][2]string) []byte {
 	return []byte(strings.Join(out, "\n") + "\n")
 }
 
-// enableCredential makes sure the unit loads the client secret, reporting
+// enableCredential makes sure the unit loads a credential, reporting
 // whether it changed the file.
-func enableCredential(unit, secretFile string) (bool, error) {
+func enableCredential(unit, credential, secretFile string) (bool, error) {
 	b, err := os.ReadFile(unit)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, fmt.Errorf("%s not found; add `LoadCredential=%s:%s` to the hub's unit yourself", unit, entraCredential, secretFile)
+		return false, fmt.Errorf("%s not found; add `LoadCredential=%s:%s` to the hub's unit yourself", unit, credential, secretFile)
 	}
 	if err != nil {
 		return false, err
 	}
-	want := "LoadCredential=" + entraCredential + ":" + secretFile
+	want := "LoadCredential=" + credential + ":" + secretFile
 	lines := strings.Split(string(b), "\n")
 	for _, l := range lines {
-		if strings.HasPrefix(strings.TrimSpace(l), "LoadCredential="+entraCredential+":") {
+		if strings.HasPrefix(strings.TrimSpace(l), "LoadCredential="+credential+":") {
 			return false, nil
 		}
 	}
 	changed := false
 	for i, l := range lines {
-		if t := strings.TrimSpace(l); strings.HasPrefix(t, "#") && strings.HasPrefix(strings.TrimSpace(strings.TrimLeft(t, "#")), "LoadCredential="+entraCredential+":") {
+		if t := strings.TrimSpace(l); strings.HasPrefix(t, "#") && strings.HasPrefix(strings.TrimSpace(strings.TrimLeft(t, "#")), "LoadCredential="+credential+":") {
 			lines[i], changed = want, true
 			break
 		}

@@ -741,3 +741,41 @@ dl.conn dd { margin: 0; min-width: 0; }
   table.tokens .created { display: none; }
   .card form.row.token-form input:not([type=checkbox]) { min-width: 0; }
 }
+
+/* ── AI analysis (templates/ai.html): the dashboard's fleet brief and the
+   host page's triage card. Model text is plain, escaped text. ────────── */
+.ai-card { border-left: 4px solid var(--accent); }
+.ai-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.ai-head h2 { margin: 0; font-size: 17px; }
+.ai-org { font-weight: 500; font-size: 15px; }
+.ai-run { margin-left: auto; }
+.ai-run button { padding: 5px 14px; font-size: 13px; font-weight: 600; }
+.ai-run button[disabled] { opacity: .65; cursor: default; filter: none; }
+.ai-summary { margin: 12px 0 0; max-width: 90ch; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+.ai-actions { margin: 12px 0 0; padding-left: 22px; display: grid; gap: 10px; max-width: 100ch; }
+.ai-actions li { padding-left: 2px; overflow-wrap: anywhere; }
+.ai-actions li::marker { color: var(--muted); font-weight: 600; }
+.ai-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.ai-title .tag { text-decoration: none; }
+.ai-why { margin-top: 2px; white-space: pre-line; }
+.ai-cmd { margin-top: 6px; }
+.ai-notes { margin: 12px 0 0; max-width: 90ch; white-space: pre-line; }
+.ai-foot { margin: 12px 0 0; padding-top: 8px; border-top: 1px solid var(--border); }
+.ai-notice, .ai-running, .ai-empty { margin: 10px 0 0; }
+.ai-error { margin: 10px 0 0; padding: 6px 10px; border-radius: 6px; background: var(--med-bg); color: var(--med-fg); max-width: 90ch; }
+.ai-plan { margin-top: 10px; }
+.ai-plan > summary, .ai-cmdbox > summary { cursor: pointer; color: var(--link); font-weight: 600; font-size: 14px; }
+.ai-cmdbox { margin-top: 4px; }
+.ai-cmdbox > summary { font-size: 12px; font-weight: 500; width: max-content; margin: 0 0 4px; }
+.ai-plan > summary { margin: 0 0 4px; }
+.ai-spin {
+  display: inline-block; width: 10px; height: 10px; margin-right: 8px; vertical-align: -1px;
+  border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%;
+  animation: ai-spin 1s linear infinite;
+}
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ai-spin { animation: none; } }
+@media (max-width: 560px) {
+  .ai-run { margin-left: 0; flex-basis: 100%; }
+  .ai-actions { padding-left: 18px; }
+}

@@ -118,6 +118,18 @@ interval = "1h"
 
 The default source is [pwn.watch](https://pwn.watch), which publishes its incidents as JSON. Items credit their source ("via pwn.watch", linking to the incident), and the hub fetches at most hourly, respecting caching headers. Any https feed in the same shape can be added. Matching happens on the hub: nothing about your servers is sent. Run `heimdall feeds sync` to fetch now and `heimdall feeds status` to see how the last fetch went. A broken feed keeps the last good copy and never blocks the other feeds. See [threat-news.md](threat-news.md) for how matching works.
 
+## AI analysis
+
+Heimdall can write a daily brief per org and explain a host's findings using **your own** Azure AI Foundry / Azure OpenAI model deployment. It's off by default. To turn it on, set `[ai]` (`enabled`, `endpoint`, `deployment`), then:
+
+```sh
+sudo heimdall ai set-key     # the key, never echoed; adds LoadCredential=heimdall-ai to the unit
+sudo heimdall ai test        # one tiny request: HTTP status and latency
+sudo heimdall restart
+```
+
+Compact facts about your hosts (names, OS, package names and versions, CVEs, counts) are sent to that endpoint. [ai.md](ai.md) lists exactly what, and how the output is checked. Nothing a model says is ever run.
+
 ## Hardening checklist
 
 - [ ] UI reachable only over the tailnet/VPN
@@ -125,4 +137,4 @@ The default source is [pwn.watch](https://pwn.watch), which publishes its incide
 - [ ] Disk or volume encryption on the hub
 - [ ] Encrypted backups shipped off-box
 - [ ] `auth.local_login = false` once SSO works (break-glass via the CLI)
-- [ ] Egress limited to the feed hosts (firewall or proxy): `api.osv.dev`, `www.cisa.gov`, `endoflife.date`, `api.first.org`, `api.github.com` (update check), `login.microsoftonline.com` with SSO, and your `[news]` source hosts (e.g. `pwn.watch`) if threat news is on
+- [ ] Egress limited to the feed hosts (firewall or proxy): `api.osv.dev`, `www.cisa.gov`, `endoflife.date`, `api.first.org`, `api.github.com` (update check), `login.microsoftonline.com` with SSO, your `[news]` source hosts (e.g. `pwn.watch`) if threat news is on, and your `[ai]` endpoint's host if AI analysis is on

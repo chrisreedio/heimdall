@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -34,6 +35,113 @@ type Config struct {
 	MCP      MCP     `toml:"mcp"`
 	Updates  Updates `toml:"updates"`
 	News     News    `toml:"news"`
+	AI       AI      `toml:"ai"`
+}
+
+// AI configures optional server-side analysis with the operator's own
+// Azure AI Foundry / Azure OpenAI deployment: a daily fleet brief and an
+// on-demand "explain this host". Off by default. The API key is never in
+// this file: it's the systemd credential "heimdall-ai" (heimdall ai set-key).
+type AI struct {
+	Enabled bool `toml:"enabled"`
+	// Endpoint is the resource's https base URL, e.g.
+	// https://myres.openai.azure.com or https://myres.services.ai.azure.com,
+	// optionally ending in /openai/v1.
+	Endpoint string `toml:"endpoint"`
+	// Deployment is the model deployment's name (sent as "model"). Opaque:
+	// Heimdall assumes nothing about which model it is.
+	Deployment string `toml:"deployment"`
+	// API is "responses" (the default) or "chat" (Chat Completions).
+	API string `toml:"api"`
+	// ReasoningEffort is sent only when set (none, minimal, low, medium,
+	// high, xhigh, max); which values work depends on the model.
+	ReasoningEffort string   `toml:"reasoning_effort"`
+	BriefEvery      Duration `toml:"brief_every"`       // scheduled fleet brief; 0 = on demand only
+	MaxOutputTokens int      `toml:"max_output_tokens"` // includes reasoning tokens
+	MaxInputTokens  int      `toml:"max_input_tokens"`  // per run, estimated at 4 bytes a token
+	Timeout         Duration `toml:"timeout"`           // per request
+}
+
+// AI API styles.
+const (
+	AIResponses = "responses"
+	AIChat      = "chat"
+)
+
+// Host returns the endpoint's hostname, the AI client's only allowed
+// outbound destination.
+func (a AI) Host() string {
+	if u, err := url.Parse(a.Endpoint); err == nil {
+		return strings.ToLower(u.Hostname())
+	}
+	return ""
+}
+
+// devBuild is set by dev.go (go build -tags dev). It allows a plain-http
+// loopback ai.endpoint, for a local fake model server. Release builds
+// never contain that file.
+var devBuild = false
+
+var (
+	aiDeploymentRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._ -]{0,127}$`)
+	aiEfforts      = []string{"", "none", "minimal", "low", "medium", "high", "xhigh", "max"}
+)
+
+func (a AI) validate(add func(string, ...any)) {
+	if !a.Enabled {
+		return
+	}
+	if err := validateAIEndpoint(a.Endpoint); err != nil {
+		add("ai.endpoint: %w", err)
+	}
+	if !aiDeploymentRe.MatchString(a.Deployment) {
+		add("ai.deployment: set it to your model deployment's name (letters, digits, '.', '_', '-', spaces)")
+	}
+	if a.API != AIResponses && a.API != AIChat {
+		add("ai.api must be %q or %q", AIResponses, AIChat)
+	}
+	if !slices.Contains(aiEfforts, a.ReasoningEffort) {
+		add("ai.reasoning_effort must be empty or one of none, minimal, low, medium, high, xhigh, max")
+	}
+	if a.BriefEvery.Duration != 0 && a.BriefEvery.Duration < time.Hour {
+		add("ai.brief_every must be at least 1h (or \"0\" for on demand only)")
+	}
+	if a.MaxOutputTokens < 256 || a.MaxOutputTokens > 128000 {
+		add("ai.max_output_tokens must be between 256 and 128000")
+	}
+	if a.MaxInputTokens < 1000 || a.MaxInputTokens > 200000 {
+		add("ai.max_input_tokens must be between 1000 and 200000")
+	}
+	if a.Timeout.Duration < 5*time.Second || a.Timeout.Duration > 10*time.Minute {
+		add("ai.timeout must be between 5s and 10m")
+	}
+}
+
+// validateAIEndpoint accepts an https base URL with no credentials, query
+// or fragment, and a path of "" or /openai/v1.
+func validateAIEndpoint(s string) error {
+	u, err := url.Parse(s)
+	switch {
+	case s == "":
+		return errors.New("is required, e.g. https://myres.openai.azure.com")
+	case err != nil || len(s) > 512 || strings.ContainsFunc(s, unicode.IsControl):
+		return errors.New("is not a valid URL")
+	case u.Scheme == "http" && devBuild && isLoopback(u.Hostname()):
+		// dev builds only: a local fake model server
+	case u.Scheme != "https":
+		return errors.New("must be an https URL")
+	}
+	switch p := strings.TrimSuffix(u.Path, "/"); {
+	case u.Hostname() == "" || u.Opaque != "":
+		return errors.New("must name a host")
+	case u.User != nil:
+		return errors.New("must not contain credentials (the key is stored with `sudo heimdall ai set-key`)")
+	case u.RawQuery != "" || u.Fragment != "" || u.ForceQuery:
+		return errors.New("must not have a query or fragment")
+	case p != "" && p != "/openai/v1" && p != "/openai":
+		return errors.New("must be the resource's base URL (optionally ending in /openai/v1)")
+	}
+	return nil
 }
 
 // News configures threat news: curated incident feeds cross-referenced
@@ -178,6 +286,8 @@ func Default() Config {
 		MCP:     MCP{Listen: "127.0.0.1:8090", BaseURL: "http://127.0.0.1:8090"},
 		Updates: Updates{Check: true},
 		News:    News{Sources: []string{DefaultNewsSource}, Interval: Duration{time.Hour}},
+		AI: AI{API: AIResponses, BriefEvery: Duration{24 * time.Hour}, MaxOutputTokens: 8000,
+			MaxInputTokens: 24000, Timeout: Duration{2 * time.Minute}},
 	}
 }
 
@@ -336,6 +446,7 @@ func (c Config) Validate() error {
 			add("news.sources: %q %w", src, err)
 		}
 	}
+	c.AI.validate(add)
 	return errors.Join(errs...)
 }
 

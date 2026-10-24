@@ -13,7 +13,8 @@ import (
 )
 
 // rootCommands need root themselves; everything else runs as the hub user.
-var rootCommands = map[string]bool{"upgrade": true, "restart": true, "sso": true, "ingest": true, "version": true}
+var rootCommands = map[string]bool{"upgrade": true, "restart": true, "sso": true, "ingest": true, "version": true,
+	"ai set-key": true, "ai test": true} // "ai test" reads the root-owned key file
 
 // Seams for tests.
 var (
@@ -26,7 +27,7 @@ var (
 // root and nobody has to type `runuser -u heimdall-hub -- ...`. It replaces
 // the process and only returns if that isn't possible or needed.
 func asHubUser(configPath string, args []string) error {
-	if euid() != 0 || len(args) == 0 || rootCommands[args[0]] {
+	if euid() != 0 || len(args) == 0 || rootCommands[args[0]] || (len(args) > 1 && rootCommands[args[0]+" "+args[1]]) {
 		return nil
 	}
 	path := hubConfigPath(configPath)

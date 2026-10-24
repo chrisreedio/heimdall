@@ -49,6 +49,7 @@
   <div class="fact">{{template "icon" "chip"}}<div><div class="k">Collector</div><div class="v">{{.Summary.CollectorVersion}}</div>{{if .CollectorKnown}}<div class="pills">{{if .CollectorBehind}}<span class="pill warn" title="On the server: sudo heimdall-collect upgrade">update available</span>{{else}}<span class="pill ok">current</span>{{end}}</div>{{end}}{{if .ChangeWatch}}<div class="pills">{{if eq .ChangeWatch "on"}}<span class="pill ok" title="Reports as soon as packages change">change watch on</span>{{else}}<span class="pill warn" title="Changes are only reported on the schedule">change watch off</span>{{end}}</div>{{end}}</div></div>
   {{if .Report.Runtimes}}<div class="runtimes-row">{{template "icon" "layers"}}<span class="k">Runtimes</span>{{range .Report.Runtimes}}<span class="runtime"><strong>{{.Name}}</strong> {{.Version}} {{template "lifepill" .Life}}</span>{{end}}</div>{{end}}
 </section>
+{{template "aitriage" .AI}}
 
 {{if .News}}
 <section class="card news-card" aria-labelledby="in-the-news">
