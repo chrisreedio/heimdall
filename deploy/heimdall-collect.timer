@@ -2,8 +2,8 @@
 Description=Hourly Heimdall inventory push
 
 [Timer]
-# Soon after boot, so the hub sees the reboot and clears "reboot required".
-OnBootSec=3min
+# The report after boot is heimdall-collect-boot.timer: a random delay here
+# would apply to it too.
 # Hourly, so a silent host stands out within hours ([hosts] alert_after on
 # the hub). Unchanged reports are stored as small heartbeats.
 OnCalendar=hourly

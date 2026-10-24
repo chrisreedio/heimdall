@@ -75,7 +75,7 @@ dist:
 	GOOS=linux GOARCH=arm64 go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/heimdall-linux-arm64 ./cmd/heimdall & b=$$!; \
 	wait $$a && wait $$b
 	cp collector/collect.sh collector/collect.ps1 collector/install-windows.ps1 collector/privilege-watch.sh collector/privilege-hook deploy/heimdall.service deploy/heimdall-collect.service \
-		deploy/heimdall-collect.timer deploy/heimdall-collect-soon.timer deploy/heimdall-collect-changes.service \
+		deploy/heimdall-collect.timer deploy/heimdall-collect-boot.timer deploy/heimdall-collect-soon.timer deploy/heimdall-collect-changes.service \
 		deploy/heimdall-collect-changes.path deploy/collect.env.example deploy/splash.html dist/
 	sed 's/^HEIMDALL_VERSION=dev /HEIMDALL_VERSION=$(VERSION) /' collector/install.sh > dist/install.sh
 	sed 's/^HEIMDALL_VERSION=dev /HEIMDALL_VERSION=$(VERSION) /' deploy/install-hub.sh > dist/install-hub.sh
