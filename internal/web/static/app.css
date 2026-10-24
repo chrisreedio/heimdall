@@ -785,6 +785,7 @@ table.host-list .ver { font-size: 12px; }
   table.cards-sm td.zero { display: none; }
   table.cards-sm td[data-label]::before { content: attr(data-label) " "; color: var(--muted); font-size: 12px; font-weight: 400; }
   .list-bar { gap: 8px; }
+}
 
 /* AI assistants page (/account/assistants): personal MCP tokens and
    per-client setup. The "AI assistants" link sits beside the email. */
