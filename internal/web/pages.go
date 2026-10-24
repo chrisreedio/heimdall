@@ -146,6 +146,7 @@ type hostBody struct {
 	ShowOrgName     bool
 	News            []newsRow // incidents in the news affecting this host
 	ChangeWatch     string    // "on", "off", or "" if the collector doesn't report its triggers
+	AI              *aiView   // AI triage card (nil when [ai] is off); see ai.go
 }
 
 type command struct {
@@ -286,6 +287,10 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		body.News = newsRows(entries)
 	}
 	if body.Privilege, err = s.privilegeFor(ctx, host.ID); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if body.AI, err = s.aiHostFor(r, v, host); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}

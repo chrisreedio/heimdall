@@ -239,7 +239,8 @@ type dashBody struct {
 	Anomalies  []store.AnomalyView
 	AnomalyAll int
 	Fleet      fleetSummary
-	Hosts      int // visible hosts, reported or not
+	Hosts      int       // visible hosts, reported or not
+	AIBrief    *aiBriefs // AI fleet brief (nil when [ai] is off); see ai.go
 }
 
 // tile is one dashboard number. Every tile links to where it's acted on;
@@ -430,6 +431,10 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 	}
 	if len(body.Plans) > 4 {
 		body.Plans = body.Plans[:4]
+	}
+	if body.AIBrief, err = s.aiBriefsFor(r, v, org, orgs); err != nil {
+		s.fail(w, r, v, err)
+		return
 	}
 	s.render(w, r, http.StatusOK, "dashboard", v, "Dashboard", "dashboard", body)
 }

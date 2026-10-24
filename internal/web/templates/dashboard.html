@@ -22,6 +22,8 @@
   {{end}}
 </section>
 
+{{template "aibrief" .AIBrief}}
+
 <section aria-labelledby="attention">
   <div class="section-head"><h2 id="attention">Needs attention</h2>{{if .Attention}}<a class="small" href="/hosts?sort=priority">All hosts by priority →</a>{{end}}</div>
   {{if .Attention}}

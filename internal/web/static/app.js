@@ -137,3 +137,15 @@ document.addEventListener("DOMContentLoaded", function () {
     sync();
   });
 });
+
+// AI analysis: while a brief or host explanation is being written, reload
+// the page every few seconds until it's done (no reload without JS; the
+// page says to refresh).
+document.addEventListener("DOMContentLoaded", function () {
+  if (!document.querySelector("[data-ai-running]")) return;
+  setTimeout(function () {
+    var u = new URL(location.href);
+    u.searchParams.delete("ai"); // the "started" notice was for the first view
+    location.replace(u.toString());
+  }, 5000);
+});

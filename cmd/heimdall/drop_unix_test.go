@@ -36,7 +36,7 @@ func TestAsHubUser(t *testing.T) {
 		t.Errorf("argv = %q", got)
 	}
 	got = nil
-	for _, args := range [][]string{{"upgrade"}, {"restart"}, {"sso", "setup"}, {"ingest", "cert"}, {}} {
+	for _, args := range [][]string{{"upgrade"}, {"restart"}, {"sso", "setup"}, {"ingest", "cert"}, {"ai", "set-key"}, {"ai", "test"}, {}} {
 		if err := asHubUser(cfg, args); err != nil || got != nil {
 			t.Errorf("%v should run as root: %v %q", args, err, got)
 		}

@@ -66,6 +66,7 @@ Commands:
                                Patch plans: batch hosts, tick them off, auto-verify
   sso setup                    Set up Entra ID single sign-on (asks, writes, restarts)
   sso set-secret               Store or rotate the Entra client secret (never echoed)
+  ai set-key|status|test       AI analysis with your Azure model: store the key (never echoed), show, test
   upgrade [--check]            Upgrade this hub to the latest release (sudo)
   restart                      Restart the hub (after config changes) and check it's up (sudo)
   ingest cert                  Install a certificate for public ingest, e.g. a Cloudflare Origin cert (sudo)
@@ -115,6 +116,7 @@ var commands = map[string]command{
 		"mcp-token": group("user mcp-token", map[string]command{"create": cmdMCPTokenCreate, "list": cmdMCPTokenList, "revoke": cmdMCPTokenRevoke}),
 	}),
 	"sso":     group("sso", map[string]command{"setup": cmdSSOSetup, "set-secret": cmdSSOSetSecret}),
+	"ai":      group("ai", map[string]command{"set-key": cmdAISetKey, "status": cmdAIStatus, "test": cmdAITest}),
 	"upgrade": cmdUpgrade,
 	"restart": cmdRestart,
 	"ingest":  group("ingest", map[string]command{"cert": cmdIngestCert}),

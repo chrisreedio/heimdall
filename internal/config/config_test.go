@@ -102,6 +102,17 @@ func TestValidate(t *testing.T) {
 		{"news with no host", func(c *Config) { c.News.Sources = []string{"https:///x.json"} }, "must name a host"},
 		{"news enabled without sources", func(c *Config) { c.News.Enabled, c.News.Sources = true, nil }, "sources is empty"},
 		{"news too often", func(c *Config) { c.News.Enabled, c.News.Interval.Duration = true, 10*time.Minute }, "at least 1h"},
+		{"ai without endpoint", func(c *Config) { c.AI.Enabled, c.AI.Deployment = true, "sol" }, "ai.endpoint: is required"},
+		{"ai over http", func(c *Config) { aiOn(c, "http://r.openai.azure.com") }, "must be an https URL"},
+		{"ai with credentials", func(c *Config) { aiOn(c, "https://u:p@r.openai.azure.com") }, "credentials"},
+		{"ai with query", func(c *Config) { aiOn(c, "https://r.openai.azure.com/?api-version=1") }, "query"},
+		{"ai with a deployment path", func(c *Config) { aiOn(c, "https://r.openai.azure.com/openai/deployments/x") }, "base URL"},
+		{"ai without deployment", func(c *Config) { aiOn(c, "https://r.openai.azure.com"); c.AI.Deployment = "" }, "ai.deployment"},
+		{"ai deployment with slash", func(c *Config) { aiOn(c, "https://r.openai.azure.com"); c.AI.Deployment = "a/../b" }, "ai.deployment"},
+		{"ai bad api", func(c *Config) { aiOn(c, "https://r.openai.azure.com"); c.AI.API = "completions" }, "ai.api"},
+		{"ai brief too often", func(c *Config) { aiOn(c, "https://r.openai.azure.com"); c.AI.BriefEvery.Duration = time.Minute }, "brief_every"},
+		{"ai tiny output", func(c *Config) { aiOn(c, "https://r.openai.azure.com"); c.AI.MaxOutputTokens = 10 }, "max_output_tokens"},
+		{"ai bad effort", func(c *Config) { aiOn(c, "https://r.openai.azure.com"); c.AI.ReasoningEffort = "ultra" }, "reasoning_effort"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -131,6 +142,39 @@ func TestValidate(t *testing.T) {
 	}
 	if got := cfg.News.Hosts(); len(got) != 2 || got[0] != "pwn.watch" || got[1] != "feeds.example.com" {
 		t.Errorf("news hosts: %v", got)
+	}
+}
+
+func aiOn(c *Config, endpoint string) {
+	c.AI.Enabled, c.AI.Endpoint, c.AI.Deployment = true, endpoint, "6.1 sol"
+}
+
+func TestAIConfig(t *testing.T) {
+	cfg := Default()
+	if cfg.AI.Enabled || cfg.AI.API != AIResponses || cfg.AI.BriefEvery.Duration != 24*time.Hour {
+		t.Errorf("ai defaults: %+v", cfg.AI)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("ai off with no endpoint should be valid: %v", err)
+	}
+	// Plain http to loopback only in dev builds (a local fake server).
+	aiOn(&cfg, "http://127.0.0.1:9999")
+	if err := cfg.Validate(); (err == nil) != devBuild {
+		t.Errorf("http loopback endpoint (dev build %v): %v", devBuild, err)
+	}
+	for _, ep := range []string{"https://MyRes.openai.azure.com", "https://myres.services.ai.azure.com/openai/v1/", "https://myres.cognitiveservices.azure.com/openai"} {
+		aiOn(&cfg, ep)
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("%s: %v", ep, err)
+		}
+	}
+	if h := cfg.AI.Host(); h != "myres.cognitiveservices.azure.com" {
+		t.Errorf("host %q", h)
+	}
+	// The template's [ai] section parses (and is off).
+	c, err := parse(Template("h.db"))
+	if err != nil || c.AI.Enabled || c.AI.MaxInputTokens != 24000 {
+		t.Errorf("template: %+v %v", c.AI, err)
 	}
 }
 
