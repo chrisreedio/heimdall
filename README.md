@@ -128,6 +128,7 @@ Heimdall looks for patterns in the snapshots it already collects that are hard t
 - A kernel change without a reboot, or a reboot outside a maintenance window
 - The collector's version or checksum changing unexpectedly
 - New services, runtimes or packages that a host's peers don't have
+- [Reports that don't add up](docs/anomaly-signals.md#reports-that-dont-add-up) against the host's own history: uptime growing faster than time passes, an inventory reverting to an older one, a sudden big drop in packages, a collector downgrade, or a different OS
 
 See [docs/anomaly-signals.md](docs/anomaly-signals.md) for what each signal means, its innocent explanations, and what to do when one fires.
 
@@ -520,6 +521,7 @@ Builds on M6 patch plans and M7 history. See [docs/anomaly-signals.md](docs/anom
   - reboot outside a window
   - unknown collector version or checksum
   - new service, runtime or package not seen on tag peers
+  - reports that don't add up: uptime inconsistent with the boot time, inventory reverted, package drop, collector downgraded, OS changed
 - [x] Learning period for new hosts, so a first-ever snapshot doesn't alert on everything
 - [x] Triage: acknowledge with a note, or suppress a rule per host until a date. Every action is recorded in the audit log.
 - [x] Dashboard tile and notification digest entries (counts only)

@@ -15,7 +15,9 @@ import (
 // AnomalyRules are the rule names the anomalies table accepts.
 var AnomalyRules = []string{"silence", "replay", "clock_skew", "package_change", "package_downgrade",
 	"kernel_no_reboot", "unexpected_reboot", "collector_changed", "peer_outlier", "trigger_disabled",
-	"privileged_access", "privilege_watch_disabled"}
+	"privileged_access", "privilege_watch_disabled",
+	// Reports that don't add up (consistency with the host's own history).
+	"uptime_inconsistent", "inventory_reverted", "package_drop", "collector_downgrade", "os_changed"}
 
 // AddAnomaly records an anomaly unless the host has an unexpired
 // suppression for the rule, or an open anomaly with the same rule and
@@ -161,13 +163,16 @@ func containsString(list []string, v string) bool {
 // carries its own received time and uptime but shares its snapshot's
 // inventory, kernel and collector).
 type SnapshotFacts struct {
-	ID              int64 // the snapshot (for a heartbeat, the one it matched)
-	HeartbeatID     int64 // 0 for a snapshot
+	ID              int64  // the snapshot (for a heartbeat, the one it matched)
+	HeartbeatID     int64  // 0 for a snapshot
+	Source          string // push or import
 	ReceivedAt      time.Time
+	CollectedAt     time.Time // as claimed by the host
 	Kernel          string
 	UptimeSeconds   int64 // -1 if unknown
 	CollectorSHA256 string
 	CollectorVer    string
+	OSID            string // os-release ID ("" if unknown)
 }
 
 // Key identifies the report for anomaly dedupe keys.
@@ -183,11 +188,12 @@ func (f SnapshotFacts) Key() string {
 func (s *Store) RecentSnapshotFacts(ctx context.Context, hostID int64, n int) ([]SnapshotFacts, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, 0 AS hb, received_at, coalesce(kernel, ''), coalesce(uptime_seconds, -1),
-		       coalesce(lower(hex(collector_sha256)), ''), collector_version
+		       coalesce(lower(hex(collector_sha256)), ''), collector_version, source, collected_at, coalesce(os_id, '')
 		FROM snapshots WHERE host_id = ?
 		UNION ALL
 		SELECT s.id, hb.id, hb.received_at, coalesce(s.kernel, ''), coalesce(hb.uptime_seconds, -1),
-		       coalesce(lower(hex(s.collector_sha256)), ''), s.collector_version
+		       coalesce(lower(hex(s.collector_sha256)), ''), s.collector_version, hb.source, hb.collected_at,
+		       coalesce(s.os_id, '')
 		FROM heartbeats hb JOIN snapshots s ON s.id = hb.snapshot_id WHERE hb.host_id = ?
 		ORDER BY 3 DESC, 2 DESC, 1 DESC LIMIT ?`, hostID, hostID, n)
 	if err != nil {
@@ -197,11 +203,12 @@ func (s *Store) RecentSnapshotFacts(ctx context.Context, hostID int64, n int) ([
 	var out []SnapshotFacts
 	for rows.Next() {
 		var f SnapshotFacts
-		var at string
-		if err := rows.Scan(&f.ID, &f.HeartbeatID, &at, &f.Kernel, &f.UptimeSeconds, &f.CollectorSHA256, &f.CollectorVer); err != nil {
+		var at, collected string
+		if err := rows.Scan(&f.ID, &f.HeartbeatID, &at, &f.Kernel, &f.UptimeSeconds, &f.CollectorSHA256, &f.CollectorVer,
+			&f.Source, &collected, &f.OSID); err != nil {
 			return nil, err
 		}
-		f.ReceivedAt = parseTime(at)
+		f.ReceivedAt, f.CollectedAt = parseTime(at), parseTime(collected)
 		out = append(out, f)
 	}
 	return out, rows.Err()
@@ -222,6 +229,28 @@ func (s *Store) CollectorTrust(ctx context.Context, sha string) (anyTrusted, tru
 	err = s.db.QueryRowContext(ctx, `
 		SELECT count(*), coalesce(sum(lower(hex(sha256)) = ?), 0) FROM known_collectors`, sha).Scan(&n, &m)
 	return n > 0, m > 0, err
+}
+
+// InventoryMatch finds the host's newest snapshot, other than the given
+// ones, with the same inventory hash as snapshot id: an inventory the host
+// had before, reported again. Snapshots stored before inventory hashes
+// existed (migration 0007) never match.
+func (s *Store) InventoryMatch(ctx context.Context, hostID, id int64, exclude ...int64) (matchID int64, receivedAt time.Time, found bool, err error) {
+	ex, _ := json.Marshal(append([]int64{id}, exclude...))
+	var at string
+	err = s.db.QueryRowContext(ctx, `
+		SELECT o.id, o.received_at FROM snapshots s JOIN snapshots o
+		  ON o.host_id = s.host_id AND o.inventory_sha256 = s.inventory_sha256
+		WHERE s.id = ? AND s.host_id = ? AND s.inventory_sha256 IS NOT NULL
+		  AND o.id NOT IN (SELECT value FROM json_each(?))
+		ORDER BY o.received_at DESC, o.id DESC LIMIT 1`, id, hostID, string(ex)).Scan(&matchID, &at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, time.Time{}, false, nil
+	}
+	if err != nil {
+		return 0, time.Time{}, false, err
+	}
+	return matchID, parseTime(at), true, nil
 }
 
 // InOpenPlan reports whether the host is in an open patch plan.

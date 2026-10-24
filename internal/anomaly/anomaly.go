@@ -36,20 +36,24 @@ func (e *Engine) OnSnapshot(ctx context.Context, host store.IngestHost) ([]store
 	}
 	cur := facts[0]
 	var raised []store.Anomaly
-	raise := func(a store.Anomaly) error {
+	raiseOK := func(a store.Anomaly) (bool, error) {
 		ok, err := e.Store.AddAnomaly(ctx, host.ID, cur.ID, a, e.Now())
 		if ok {
 			raised = append(raised, a)
 		}
+		return ok, err
+	}
+	raise := func(a store.Anomaly) error {
+		_, err := raiseOK(a)
 		return err
 	}
 
 	// Collector integrity applies from the first snapshot.
+	anyTrusted, trusted, err := e.Store.CollectorTrust(ctx, cur.CollectorSHA256)
+	if err != nil {
+		return nil, err
+	}
 	if cur.CollectorSHA256 != "" {
-		anyTrusted, trusted, err := e.Store.CollectorTrust(ctx, cur.CollectorSHA256)
-		if err != nil {
-			return nil, err
-		}
 		if anyTrusted && !trusted {
 			if err := raise(store.Anomaly{Rule: "collector_changed", Severity: "high",
 				Summary: fmt.Sprintf("Collector %s reported an untrusted checksum %s…", cur.CollectorVer, cur.CollectorSHA256[:12]),
@@ -100,10 +104,29 @@ func (e *Engine) OnSnapshot(ctx context.Context, host store.IngestHost) ([]store
 		}
 	}
 
-	// Package changes. An unchanged report (heartbeat) shares its snapshot's
-	// packages, so there is nothing to compare.
+	// Reports that don't add up (consistency.go). Uptime is in heartbeats
+	// too. No maintenance makes uptime outrun the clock, so windows and
+	// plans don't apply to it.
+	if a, ok := uptimeInconsistent(prev, cur); ok {
+		if err := raise(a); err != nil {
+			return nil, err
+		}
+	}
+
+	// Snapshot-to-snapshot rules. An unchanged report (heartbeat) shares its
+	// snapshot's inventory, so there is nothing to compare.
 	if prev.ID == cur.ID {
 		return raised, nil
+	}
+	if a, ok := osChanged(prev, cur); ok && !expected {
+		if err := raise(a); err != nil {
+			return nil, err
+		}
+	}
+	if a, ok := collectorDowngrade(prev, cur, anyTrusted, trusted); ok && !expected {
+		if err := raise(a); err != nil {
+			return nil, err
+		}
 	}
 	a, err := e.Store.SnapshotPackages(ctx, host.ID, prev.ID)
 	if err != nil {
@@ -130,13 +153,33 @@ func (e *Engine) OnSnapshot(ctx context.Context, host store.IngestHost) ([]store
 			return nil, err
 		}
 	}
+	// A big drop is one summarising anomaly in place of package_change
+	// (unless package_drop is suppressed for the host).
+	dropped := false
+	if an, ok := packageDrop(len(a), len(b), d, cur.ID); ok && !expected {
+		if dropped, err = raiseOK(an); err != nil {
+			return nil, err
+		}
+	}
 	// Upgrades are routine (unattended-upgrades); installs and removals aren't.
-	if n := len(d.Added) + len(d.Removed); n > 0 && !expected {
+	if n := len(d.Added) + len(d.Removed); n > 0 && !expected && !dropped {
 		if err := raise(store.Anomaly{Rule: "package_change", Severity: "medium",
 			Summary: fmt.Sprintf("%d package(s) installed or removed outside a window or plan: %s", n,
 				changeNames(append(slices.Clone(d.Added), d.Removed...), 5)),
 			Detail: map[string]any{"key": fmt.Sprint(cur.ID), "added": changeList(d.Added), "removed": changeList(d.Removed)}}); err != nil {
 			return nil, err
+		}
+	}
+	// Back to an older inventory, with packages changed since the last one.
+	if !d.Empty() && !expected {
+		matchID, matchedAt, found, err := e.Store.InventoryMatch(ctx, host.ID, cur.ID, prev.ID)
+		if err != nil {
+			return nil, err
+		}
+		if found {
+			if err := raise(inventoryReverted(matchID, matchedAt, d, cur.ID)); err != nil {
+				return nil, err
+			}
 		}
 	}
 	// Odd one out: new packages that none of the host's tag peers have.

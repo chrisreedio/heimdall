@@ -33,6 +33,11 @@ Heimdall is good at catching **sloppy or automated attacks**, and just as often 
 | **Change reporting disabled** (`trigger_disabled`) | The change watch or the collector's timer was switched off, so changes stop being reported promptly | You disabled it while debugging, or uninstalled the collector | M8 |
 | **Privileged access** (opt-in) | Someone used sudo, su or logged in as root over SSH outside a maintenance window | You or a colleague fixing something by hand; scripts that use sudo | Privilege watch |
 | **Privilege watch disabled** (opt-in) | The PAM hook was removed or broken to hide privileged access | You turned it off with `--no-watch-privilege`, or a PAM file was replaced by a package upgrade | Privilege watch |
+| **Uptime doesn't add up** (`uptime_inconsistent`) | A fake report: uptime grew faster than time passed, so the claimed boot time moved earlier | None known: the check allows 10 minutes and both the host's and the hub's clock. A container moved to another node reports that node's uptime | [Consistency](#reports-that-dont-add-up) |
+| **Inventory reverted** (`inventory_reverted`, low) | An old report resent with fresh timestamps | A deliberate rollback, or a package installed and then removed again | [Consistency](#reports-that-dont-add-up) |
+| **Package drop** (`package_drop`) | The inventory was gutted to hide things | A big cleanup outside a maintenance window | [Consistency](#reports-that-dont-add-up) |
+| **Collector downgraded** (`collector_downgrade`) | An old or modified collector is sending the reports | You reinstalled from an older copy of `install.sh` | [Consistency](#reports-that-dont-add-up) |
+| **OS changed** (`os_changed`) | The reports aren't coming from this host | A reinstall or an in-place distro migration (CentOS to Rocky) outside a window | [Consistency](#reports-that-dont-add-up) |
 
 "Odd one out" means a new service, runtime or package that a host's **tag peers** don't have. For example, one `web` host in `prod` suddenly has a package the other `web` hosts don't.
 
@@ -65,6 +70,26 @@ An attacker with root can fake this header, just like the snapshot. It catches t
 ### Unchanged reports
 
 Frequent reports are cheap. When a report's inventory matches the host's latest snapshot, Heimdall doesn't store a new snapshot. It records the report as a small *heartbeat* with its time and uptime. The inventory covers packages, pending updates, sites, containers, lockfiles, kernel, OS, reboot-required, skipped checks and the collector's version and checksum. Only `collected_at` and `uptime_seconds` change on every run, so only those are ignored. Reboots are still detected from each heartbeat's uptime. Changes (`host history`/`diff`) only list snapshots, so they only show real changes.
+
+### Reports that don't add up
+
+An attacker with root can make the collector send fake reports, but a fake has to agree with everything the hub has already seen from that host. These rules compare each report with the host's **own** previous report (heartbeats included where it matters) and need no collector changes. Like the other change rules, they start after the [learning period](#keeping-the-noise-down), so a host's first reports, and a hub that has just been upgraded, never alert. [Suppressions](#keeping-the-noise-down) apply to all of them.
+
+| Rule | Severity | Fires when | Windows and plans |
+|---|---|---|---|
+| `uptime_inconsistent` | medium | Uptime grew more than 10 minutes beyond the time that passed since the previous report (snapshot or heartbeat), by both the host's clock (`collected_at`) and the hub's (received time). Put another way, the boot time (`collected_at` − uptime) moved earlier. | Don't apply: no maintenance makes uptime outrun the clock |
+| `inventory_reverted` | low | A new snapshot's inventory is identical to an older snapshot's (not the previous one's), and packages changed on the way back. | Apply: a rollback in a window is expected |
+| `package_drop` | high | The package count fell by more than 30% **and** at least 20 packages from one snapshot to the next. | Apply |
+| `collector_downgrade` | medium | The collector's x.y.z version went backwards, and no collector release is trusted. | Apply |
+| `os_changed` | medium | The os-release ID changed, such as `ubuntu` to `debian`. | Apply: a reinstall in a window is expected |
+
+What they deliberately leave alone:
+
+- **Reboots.** A smaller uptime is a reboot, which **Unexpected reboot** already covers. Uptime that grows *less* than the time passed is a paused VM or a sleeping laptop (WSL), so it never alerts. Missing or zero uptimes (some containers) and `import`s are skipped.
+- **Small removals.** An `apt autoremove` of a few packages is an ordinary **Unplanned package change**. A package drop replaces that anomaly for its report, so a gutted inventory is one alert listing the removals, not two. If you suppress `package_drop`, the report falls back to **Unplanned package change**. An empty package list means the package check was unavailable, and isn't counted as a drop.
+- **Flapping that isn't packages.** A container that stops and starts again also returns a host to an earlier inventory, so **Inventory reverted** needs a package change. Snapshots stored before inventory hashes existed never match.
+- **Collector rollbacks to a trusted release.** If any release is trusted (`heimdall collector trust`), an untrusted checksum is already **Collector changed** (high) from the first report, so the downgrade rule only adds a signal on hubs with no trusted releases. Dev builds (`0.4.13-dev.4`) compare as their release.
+- **Time going backwards.** A report's `collected_at` can't land before the previous one's without tripping **Clock skew**: pushes must be within 15 minutes of the hub's clock, so a backwards step could be at most 30 minutes, between reports less than 30 minutes apart, which is what an NTP correction looks like. Imports are expected to be old. There's no separate rule.
 
 ### Privilege watch
 

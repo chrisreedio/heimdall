@@ -24,6 +24,8 @@ type env struct {
 	eng *Engine
 	seq int
 	gap time.Duration // between pushes; 0 = a day
+	// boot is each host's boot time, from which default uptimes are derived.
+	boot map[int64]time.Time
 }
 
 func newEnv(t *testing.T) *env {
@@ -42,10 +44,15 @@ func (e *env) host(name string, tags ...string) store.IngestHost {
 }
 
 type snap struct {
-	pkgs   map[string]string
-	kernel string
-	uptime int64
-	sha    string
+	pkgs     map[string]string
+	kernel   string
+	uptime   int64 // 0: up since the host's last boot (a steady uptime)
+	noUptime bool  // "uptime" unavailable
+	sha      string
+	ver      string        // collector version; default 0.2.0
+	os       string        // os-release ID; default debian
+	source   string        // default push
+	skew     time.Duration // collected_at minus the hub's time
 }
 
 // push stores a report a day (or e.gap) after the previous one and runs the rules.
@@ -56,13 +63,25 @@ func (e *env) push(h store.IngestHost, s snap) []string {
 	if s.kernel == "" {
 		s.kernel = "6.1.0-26"
 	}
-	if s.uptime == 0 {
-		s.uptime = int64(e.seq) * 86400 * 10 // steadily up
+	if e.boot == nil {
+		e.boot = map[int64]time.Time{}
 	}
-	sn := &snapshot.Snapshot{Format: snapshot.FormatV1, CollectedAt: e.now, PackageManager: "dpkg",
-		Collector: snapshot.Collector{Version: "0.2.0", SHA256: s.sha},
-		OS:        snapshot.OS{ID: "debian", VersionID: "12"}, Kernel: snapshot.Kernel{Release: s.kernel, Arch: "x86_64"},
+	if _, ok := e.boot[h.ID]; !ok {
+		e.boot[h.ID] = e.now.Add(-30 * 24 * time.Hour)
+	}
+	collected := e.now.Add(s.skew)
+	if s.uptime == 0 {
+		s.uptime = int64(collected.Sub(e.boot[h.ID]).Seconds()) // steadily up
+	} else {
+		e.boot[h.ID] = collected.Add(-time.Duration(s.uptime) * time.Second) // later pushes stay consistent
+	}
+	sn := &snapshot.Snapshot{Format: snapshot.FormatV1, CollectedAt: collected, PackageManager: "dpkg",
+		Collector: snapshot.Collector{Version: cmp.Or(s.ver, "0.2.0"), SHA256: s.sha},
+		OS:        snapshot.OS{ID: cmp.Or(s.os, "debian"), VersionID: "12"}, Kernel: snapshot.Kernel{Release: s.kernel, Arch: "x86_64"},
 		UptimeSeconds: s.uptime}
+	if s.noUptime {
+		sn.UptimeSeconds, sn.Unavailable = 0, []string{"uptime"}
+	}
 	for _, name := range slices.Sorted(func(yield func(string) bool) {
 		for k := range s.pkgs {
 			if !yield(k) {
@@ -72,7 +91,7 @@ func (e *env) push(h store.IngestHost, s snap) []string {
 	}) {
 		sn.Packages = append(sn.Packages, snapshot.Package{Name: name, Version: s.pkgs[name], Arch: "amd64"})
 	}
-	if _, err := e.st.SaveSnapshot(e.t.Context(), store.NewSnapshot{Host: h, Source: "push", ReceivedAt: e.now, Snapshot: sn,
+	if _, err := e.st.SaveSnapshot(e.t.Context(), store.NewSnapshot{Host: h, Source: cmp.Or(s.source, "push"), ReceivedAt: e.now, Snapshot: sn,
 		PayloadSHA256: sha256.Sum256([]byte(fmt.Sprint(h.ID, e.seq)))}, nil); err != nil {
 		e.t.Fatal(err)
 	}
