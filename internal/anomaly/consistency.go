@@ -148,16 +148,18 @@ func inventoryReverted(matchID int64, matchedAt time.Time, d history.Diff, snaps
 	return store.Anomaly{Rule: "inventory_reverted", Severity: "low",
 		Summary: fmt.Sprintf("Inventory went back to exactly what it was on %s (%d package change(s) undone). "+
 			"Low severity: a rollback does this too, but so does an old report resent with fresh timestamps",
-			usDate(matchedAt), len(d.Added)+len(d.Removed)+len(d.Upgraded)+len(d.Downgraded)),
+			usTime(matchedAt), len(d.Added)+len(d.Removed)+len(d.Upgraded)+len(d.Downgraded)),
 		Detail: map[string]any{"key": fmt.Sprint(snapshotID), "matches_snapshot": matchID,
 			"matches_received_at": matchedAt.UTC().Format(time.RFC3339)}}
 }
 
-func usDate(t time.Time) string { return t.UTC().Format("Jan 2, 2006") }
 func usTime(t time.Time) string { return t.UTC().Format("Jan 2, 2006 3:04 PM") + " UTC" }
 
-// duration renders a duration as "3d 4h", "2h 5m" or "45m".
+// duration renders a duration as "3d 4h", "2h 5m", "45m" or "under a minute".
 func duration(d time.Duration) string {
+	if d < time.Minute {
+		return "under a minute"
+	}
 	d = d.Round(time.Minute)
 	days, hours, mins := int(d/(24*time.Hour)), int(d%(24*time.Hour)/time.Hour), int(d%time.Hour/time.Minute)
 	switch {

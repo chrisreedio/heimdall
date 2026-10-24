@@ -85,7 +85,7 @@ An attacker with root can make the collector send fake reports, but a fake has t
 
 What they deliberately leave alone:
 
-- **Reboots.** A smaller uptime is a reboot, which **Unexpected reboot** already covers. Uptime that grows *less* than the time passed is a paused VM or a sleeping laptop (WSL), so it never alerts. Missing or zero uptimes (some containers) and `import`s are skipped.
+- **Reboots.** A smaller uptime is a reboot, which **Unexpected reboot** already covers, even when the reports are only minutes apart (a kernel upgrade reported, then a reboot), so it's never mistaken for **Kernel changed without a reboot**. Uptime that grows *less* than the time passed is a paused VM or a sleeping laptop (WSL), so it never alerts. Missing or zero uptimes (some containers) and `import`s are skipped.
 - **Small removals.** An `apt autoremove` of a few packages is an ordinary **Unplanned package change**. A package drop replaces that anomaly for its report, so a gutted inventory is one alert listing the removals, not two. If you suppress `package_drop`, the report falls back to **Unplanned package change**. An empty package list means the package check was unavailable, and isn't counted as a drop.
 - **Flapping that isn't packages.** A container that stops and starts again also returns a host to an earlier inventory, so **Inventory reverted** needs a package change. Snapshots stored before inventory hashes existed never match.
 - **Collector rollbacks to a trusted release.** If any release is trusted (`heimdall collector trust`), an untrusted checksum is already **Collector changed** (high) from the first report, so the downgrade rule only adds a signal on hubs with no trusted releases. Dev builds (`0.4.13-dev.4`) compare as their release.

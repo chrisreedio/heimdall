@@ -209,6 +209,13 @@ func TestConsistencyRules(t *testing.T) {
 			{snap{pkgs: with(base, "linux-image-6.1.0-27", "6.1.115-1")}, nil},
 			{snap{pkgs: with(base, "linux-image-6.1.0-27", "6.1.115-1"), kernel: "6.1.0-27", uptime: 90}, nil},
 			{snap{pkgs: with(base, "linux-image-6.1.0-27", "6.1.115-1"), kernel: "6.1.0-27"}, nil}}},
+		// Event-driven reports: one a minute after the upgrade, the next 3
+		// minutes after boot. The reboot is still a reboot, not a kernel
+		// that changed in place.
+		{name: "kernel upgrade then a reboot minutes later", gap: 4 * time.Minute, steps: []step{
+			{snap{pkgs: with(base, "linux-image-6.1.0-27", "6.1.115-1")}, []string{"package_change"}},
+			{snap{pkgs: with(base, "linux-image-6.1.0-27", "6.1.115-1"), kernel: "6.1.0-27", uptime: 180}, []string{"unexpected_reboot"}},
+			{snap{pkgs: with(base, "linux-image-6.1.0-27", "6.1.115-1"), kernel: "6.1.0-27"}, nil}}},
 		{name: "uptime unavailable", gap: time.Hour, steps: []step{
 			{snap{pkgs: base, noUptime: true}, nil}, {snap{pkgs: base, noUptime: true}, nil}, {snap{pkgs: base}, nil}}},
 		{name: "uptime outruns the clock in a heartbeat", gap: time.Hour, steps: []step{
