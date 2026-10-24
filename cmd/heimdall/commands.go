@@ -94,6 +94,7 @@ func cmdMigrate(a *app, args []string) error {
 	if err != nil {
 		return err
 	}
+	migrateConfig(a)
 	s, err := store.Open(a.ctx, cfg.Database)
 	if err != nil {
 		return err
