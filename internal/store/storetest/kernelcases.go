@@ -20,9 +20,9 @@ import (
 // the linux-aws metapackages, already at the 7.0 kernel with no update
 // pending, and both the 6.17.0-1009 and the 7.0.0-1014 ABI packages.
 //
-//   - goby-fun runs 7.0.0-1014-aws. The 6.17 packages are an old kernel
+//   - web-02 runs 7.0.0-1014-aws. The 6.17 packages are an old kernel
 //     that isn't running, and carry the 4 KEV findings.
-//   - goby-local runs 6.17.0-1009-aws, with 7.0.0-1014-aws installed but
+//   - web-01 runs 6.17.0-1009-aws, with 7.0.0-1014-aws installed but
 //     not booted (reboot required). The KEV findings are on the running
 //     kernel, and upgrading the metapackages does nothing: the fix is the
 //     reboot.
@@ -31,8 +31,8 @@ import (
 // finding whose fix no pending update installs (fixed upstream, not in the
 // package cache), and an xz-utils finding whose fix is pending (liblzma5).
 const (
-	OldKernelHost     = "goby-fun"
-	RebootPendingHost = "goby-local"
+	OldKernelHost     = "web-02"
+	RebootPendingHost = "web-01"
 	KernelOld         = "6.17.0-1009-aws"
 	KernelNew         = "7.0.0-1014-aws"
 	KernelKEVs        = 4
@@ -87,7 +87,7 @@ func KernelCaseSnapshot(t testing.TB, host string, now time.Time) []byte {
 
 // SeedKernelCases adds both hosts to org (which must exist, environment
 // "prod" is created) with their snapshots, advisories, KEV entries and
-// findings, and returns them (goby-fun, goby-local).
+// findings, and returns them (web-02, web-01).
 func SeedKernelCases(t testing.TB, st *store.Store, org string, now time.Time) (fun, local store.IngestHost) {
 	t.Helper()
 	ctx := t.Context()

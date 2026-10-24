@@ -67,44 +67,44 @@ const (
 func TestKernelCaseFacts(t *testing.T) {
 	_, _, _, facts, allowed := kernelCaseFacts(t)
 
-	// goby-local runs 6.17 with 7.0 installed: the reboot comes first, and
+	// web-01 runs 6.17 with 7.0 installed: the reboot comes first, and
 	// nothing upgrades the metapackages (they have no update pending).
 	l := facts[storetest.RebootPendingHost]
 	if l.KernelState != kernel.StateRebootPending || l.NewerKernel != storetest.KernelNew || l.RunningKernel != storetest.KernelOld ||
 		l.RebootPending != storetest.KernelKEVs || l.NotRunning != 0 || l.NotInCache != 1 {
-		t.Errorf("goby-local kernel facts: state %q newer %q running %q reboot-pending %d not-running %d not-in-cache %d",
+		t.Errorf("web-01 kernel facts: state %q newer %q running %q reboot-pending %d not-running %d not-in-cache %d",
 			l.KernelState, l.NewerKernel, l.RunningKernel, l.RebootPending, l.NotRunning, l.NotInCache)
 	}
 	if got, want := commandsOf(l), []string{RebootCommand, liblzma, securityUp}; !slices.Equal(got, want) {
-		t.Errorf("goby-local commands %q\nwant %q", got, want)
+		t.Errorf("web-01 commands %q\nwant %q", got, want)
 	}
 	if !strings.HasPrefix(l.Commands[0].Label, "Reboot to run "+storetest.KernelNew) {
 		t.Errorf("reboot label %q", l.Commands[0].Label)
 	}
 	if l.Counts.KEV != storetest.KernelKEVs || l.Counts.RebootPending != storetest.KernelKEVs || l.Counts.NotRunning != 0 {
-		t.Errorf("goby-local counts %+v", l.Counts)
+		t.Errorf("web-01 counts %+v", l.Counts)
 	}
 	st := statusesOf(l)
 	if st["UBUNTU-CVE-2026-31001"] != kernel.StatusRebootPending || st["UBUNTU-CVE-2026-31010"] != kernel.StatusRebootPending ||
 		st["UBUNTU-CVE-2026-32001"] != kernel.StatusNewerKernel || st["UBUNTU-CVE-2026-33001"] != "" {
-		t.Errorf("goby-local kernel statuses %v", st)
+		t.Errorf("web-01 kernel statuses %v", st)
 	}
 
-	// goby-fun runs 7.0: the 6.17 KEVs are on an old kernel, cleared by
+	// web-02 runs 7.0: the 6.17 KEVs are on an old kernel, cleared by
 	// the purge, not live, and not counted as KEV.
 	f := facts[storetest.OldKernelHost]
 	if f.KernelState != kernel.StateOldKernels || f.NewerKernel != "" || f.NotRunning != storetest.KernelKEVs || f.RebootPending != 0 || f.NotInCache != 1 {
-		t.Errorf("goby-fun kernel facts: state %q newer %q not-running %d not-in-cache %d", f.KernelState, f.NewerKernel, f.NotRunning, f.NotInCache)
+		t.Errorf("web-02 kernel facts: state %q newer %q not-running %d not-in-cache %d", f.KernelState, f.NewerKernel, f.NotRunning, f.NotInCache)
 	}
 	if got, want := commandsOf(f), []string{liblzma, securityUp, purge617}; !slices.Equal(got, want) {
-		t.Errorf("goby-fun commands %q\nwant %q", got, want)
+		t.Errorf("web-02 commands %q\nwant %q", got, want)
 	}
 	if f.Counts.KEV != 0 || f.Counts.NotRunning != storetest.KernelKEVs || f.Counts.Fixable != 2 || f.Counts.NoFix != 1 {
-		t.Errorf("goby-fun counts %+v", f.Counts)
+		t.Errorf("web-02 counts %+v", f.Counts)
 	}
 	st = statusesOf(f)
 	if st["UBUNTU-CVE-2026-31001"] != kernel.StatusNotRunning || st["UBUNTU-CVE-2026-32001"] != kernel.StatusRunning {
-		t.Errorf("goby-fun kernel statuses %v", st)
+		t.Errorf("web-02 kernel statuses %v", st)
 	}
 	if f.Top[len(f.Top)-1].KernelStatus != kernel.StatusNotRunning || f.Top[0].KernelStatus == kernel.StatusNotRunning {
 		t.Error("findings on the old kernel should rank after live ones")
@@ -121,14 +121,14 @@ func TestKernelCaseFacts(t *testing.T) {
 		}
 	}
 	if a := allowed[storetest.RebootPendingHost]; len(a.Required) != 1 || a.Required[0].Command != RebootCommand || !a.RequiredFirst {
-		t.Errorf("goby-local required steps %+v", a.Required)
+		t.Errorf("web-01 required steps %+v", a.Required)
 	}
 	if a := allowed[storetest.OldKernelHost]; len(a.Required) != 0 {
-		t.Errorf("goby-fun required steps %+v", a.Required)
+		t.Errorf("web-02 required steps %+v", a.Required)
 	}
 }
 
-// The model's plan for goby-local led with the metapackage upgrade, which
+// The model's plan for web-01 led with the metapackage upgrade, which
 // does nothing there. The consistency check drops it, trims a mixed
 // command to what Heimdall suggested, and puts the missing reboot first.
 func TestKernelCaseReconcile(t *testing.T) {
@@ -170,13 +170,13 @@ func TestKernelCaseReconcile(t *testing.T) {
 		t.Errorf("plan with the reboot: %+v", res.Actions)
 	}
 
-	// goby-fun has nothing to reboot for: a reboot Heimdall didn't suggest
+	// web-02 has nothing to reboot for: a reboot Heimdall didn't suggest
 	// is dropped, the purge stays, and nothing is added.
 	fun := storetest.OldKernelHost
 	fa := Allowed{Hosts: map[string]HostAllowed{fun: allowed[fun]}}
 	res, _ = Parse(answer(act(fun, purge617), act(fun, RebootCommand), act(fun, noOpMeta)), fa)
 	if res = Reconcile(res, fa); len(res.Actions) != 1 || res.Actions[0].Command != purge617 {
-		t.Errorf("goby-fun plan: %+v", res.Actions)
+		t.Errorf("web-02 plan: %+v", res.Actions)
 	}
 
 	// End to end: the stored result carries the mark, and Decode keeps it.

@@ -32,7 +32,7 @@ func preText(body, id string) string {
 func TestKernelCaseHostPages(t *testing.T) {
 	e := kernelCaseEnv(t)
 
-	// goby-local runs 6.17 with 7.0 installed: reboot, not a metapackage upgrade.
+	// web-01 runs 6.17 with 7.0 installed: reboot, not a metapackage upgrade.
 	local := e.get("/hosts/acme/"+storetest.RebootPendingHost, signedIn(e)).Body.String()
 	for _, want := range []string{
 		`kernel ` + storetest.KernelOld,
@@ -45,23 +45,23 @@ func TestKernelCaseHostPages(t *testing.T) {
 		`<code>sudo apt-get update</code>`,
 	} {
 		if !strings.Contains(local, want) {
-			t.Errorf("goby-local page missing %q", want)
+			t.Errorf("web-01 page missing %q", want)
 		}
 	}
 	if got := preText(local, "cmd-reboot"); got != "sudo reboot" {
-		t.Errorf("goby-local reboot command %q", got)
+		t.Errorf("web-01 reboot command %q", got)
 	}
 	if got := preText(local, "cmd-fix"); got != "sudo apt-get update &amp;&amp; sudo apt-get install --only-upgrade liblzma5" {
-		t.Errorf("goby-local fix command %q", got)
+		t.Errorf("web-01 fix command %q", got)
 	}
 	if i, j := strings.Index(local, `id="cmd-reboot"`), strings.Index(local, `id="cmd-fix"`); i < 0 || i > j {
 		t.Error("the reboot should come before the upgrade")
 	}
 	if strings.Contains(local, "old kernel installed") || strings.Contains(local, `id="cmd-old-kernels"`) {
-		t.Error("goby-local has no old kernel")
+		t.Error("web-01 has no old kernel")
 	}
 
-	// goby-fun runs 7.0: the 6.17 findings are on an old kernel.
+	// web-02 runs 7.0: the 6.17 findings are on an old kernel.
 	fun := e.get("/hosts/acme/"+storetest.OldKernelHost, signedIn(e)).Body.String()
 	for _, want := range []string{
 		`kernel ` + storetest.KernelNew, `old kernel installed</a>`, `>not running</span>`,
@@ -69,20 +69,20 @@ func TestKernelCaseHostPages(t *testing.T) {
 		`1 finding fixed upstream, not yet in this host's package cache.`,
 	} {
 		if !strings.Contains(fun, want) {
-			t.Errorf("goby-fun page missing %q", want)
+			t.Errorf("web-02 page missing %q", want)
 		}
 	}
 	if got := preText(fun, "cmd-fix"); got != "sudo apt-get update &amp;&amp; sudo apt-get install --only-upgrade liblzma5" {
-		t.Errorf("goby-fun fix command %q", got)
+		t.Errorf("web-02 fix command %q", got)
 	}
 	if got := preText(fun, "cmd-old-kernels"); !strings.HasPrefix(got, "sudo apt-get purge linux-aws-6.17-headers-6.17.0-1009 ") ||
 		strings.Contains(got, "7.0.0") {
-		t.Errorf("goby-fun purge command %q", got)
+		t.Errorf("web-02 purge command %q", got)
 	}
 	if strings.Contains(fun, "reboot pending") || strings.Contains(fun, `id="cmd-reboot"`) {
-		t.Error("goby-fun has no reboot pending")
+		t.Error("web-02 has no reboot pending")
 	}
-	for name, body := range map[string]string{"goby-local": local, "goby-fun": fun} {
+	for name, body := range map[string]string{"web-01": local, "web-02": fun} {
 		if cmd := preText(body, "cmd-fix"); strings.Contains(cmd, "linux-aws") {
 			t.Errorf("%s: the patch command names a metapackage with no update pending: %q", name, cmd)
 		}
@@ -132,13 +132,13 @@ func TestKernelCaseCounts(t *testing.T) {
 		return hosts[i : i+j]
 	}
 	if r := row(storetest.RebootPendingHost); !strings.Contains(r, `>reboot pending</span>`) || !strings.Contains(r, `<span class="badge kev">4</span>`) {
-		t.Errorf("goby-local row: %s", r)
+		t.Errorf("web-01 row: %s", r)
 	}
 	if r := row(storetest.OldKernelHost); !strings.Contains(r, `data-label="Not running">4</td>`) || strings.Contains(r, `badge kev`) {
-		t.Errorf("goby-fun row: %s", r)
+		t.Errorf("web-02 row: %s", r)
 	}
 	if body := e.get("/hosts?only=kev", signedIn(e)).Body.String(); strings.Contains(body, storetest.OldKernelHost) {
-		t.Error("goby-fun is listed as known-exploited, but its KEVs are on a kernel that isn't running")
+		t.Error("web-02 is listed as known-exploited, but its KEVs are on a kernel that isn't running")
 	}
 	if dash := e.get("/", signedIn(e)).Body.String(); !strings.Contains(dash, "4 on kernels not running") {
 		t.Error("dashboard doesn't count findings on kernels not running")
