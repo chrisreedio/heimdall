@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package notify sends digests by email or webhook. A digest carries only
-// counts and a link to the UI: no hostnames, package names, versions or
-// advisory IDs, so a leaked email or chat message doesn't reveal where the
-// fleet is weak. The Digest type has no field that could hold such details.
+// Package notify sends digests and alerts by email, a generic webhook,
+// Slack or Discord. A digest carries only counts and a link to the UI: no
+// hostnames, package names, versions or advisory IDs, so a leaked email or
+// chat message doesn't reveal where the fleet is weak. The Digest type has
+// no field that could hold such details.
 //
-// The one exception is the silence Alert (alert.go): it names the hosts
-// that stopped (or resumed) reporting, and nothing else about them.
+// The one exception is the Alert (alert.go): it names the hosts that
+// stopped or resumed reporting, or raised a high-signal anomaly (with a
+// fixed label for the rule), and nothing else about them.
 package notify
 
 import (

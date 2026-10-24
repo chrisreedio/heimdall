@@ -217,6 +217,20 @@ app's Overview, and create a secret under Certificates & secrets.
 // updateEntraConfig turns on [auth.entra] for one tenant, keeping the rest
 // of the file (comments included), its owner and its mode.
 func updateEntraConfig(path, tenant, clientID string) error {
+	return updateConfigKeys(path, "auth.entra", [][2]string{
+		{"enabled", "true"},
+		{"tenant", strconv.Quote(tenant)},
+		{"client_id", strconv.Quote(clientID)},
+		{"allowed_tenants", "[" + strconv.Quote(tenant) + "]"},
+	}, func(cfg config.Config) bool {
+		return cfg.Auth.Entra.Enabled && cfg.Auth.Entra.Tenant == tenant && cfg.Auth.Entra.ClientID == clientID
+	})
+}
+
+// updateConfigKeys sets keys in one section of the config, keeping the
+// rest of the file (comments included), its owner and its mode. The new
+// file must load and pass check, or the old one is left unchanged.
+func updateConfigKeys(path, section string, kv [][2]string, check func(config.Config) bool) error {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return err
@@ -225,12 +239,7 @@ func updateEntraConfig(path, tenant, clientID string) error {
 	if err != nil {
 		return err
 	}
-	out := setTOMLKeys(src, "auth.entra", [][2]string{
-		{"enabled", "true"},
-		{"tenant", strconv.Quote(tenant)},
-		{"client_id", strconv.Quote(clientID)},
-		{"allowed_tenants", "[" + strconv.Quote(tenant) + "]"},
-	})
+	out := setTOMLKeys(src, section, kv)
 	f, err := os.CreateTemp(filepath.Dir(path), ".tmp-heimdall-")
 	if err != nil {
 		return err
@@ -248,8 +257,8 @@ func updateEntraConfig(path, tenant, clientID string) error {
 	if err != nil {
 		return fmt.Errorf("the updated config doesn't load (left unchanged): %w", err)
 	}
-	if !cfg.Auth.Entra.Enabled || cfg.Auth.Entra.Tenant != tenant || cfg.Auth.Entra.ClientID != clientID {
-		return errors.New("couldn't update [auth.entra] in the config (left unchanged); edit it by hand")
+	if !check(cfg) {
+		return fmt.Errorf("couldn't update [%s] in the config (left unchanged); edit it by hand", section)
 	}
 	if err := os.Chmod(tmp, fi.Mode().Perm()); err != nil {
 		return err

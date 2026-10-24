@@ -60,7 +60,8 @@ Follow the [quick start](../README.md#quick-start), then:
 | First admin | `hd user create --admin you@example.com` |
 | Entra SSO | Register an app (redirect `https://<ui>/auth/callback`), then run `sudo heimdall sso setup`: it asks for the tenant ID, client ID and secret (never echoed), writes `[auth.entra]`, the secret and the unit's `LoadCredential` line, and restarts the hub |
 | Trust the collector release | `hd collector trust --version 0.3.0 <sha256 of collect.sh>` |
-| Digest | Set `[notify]` and add `LoadCredential=heimdall-smtp:…` or `heimdall-webhook:…` |
+| Slack / Discord alerts and digest | `hd notify set-webhook slack ops` (or `discord alerts`), then `hd notify test`; see [Notifications](#notifications) |
+| Email digest | Set `[notify]` email settings and add `LoadCredential=heimdall-smtp:…` |
 
 (`hd` = `sudo heimdall`: on an installed hub it runs as `heimdall-hub` with `/etc/heimdall/heimdall.toml`)
 
@@ -118,6 +119,54 @@ interval = "1h"
 
 The default source is [pwn.watch](https://pwn.watch), which publishes its incidents as JSON. Items credit their source ("via pwn.watch", linking to the incident), and the hub fetches at most hourly, respecting caching headers. Any https feed in the same shape can be added. Matching happens on the hub: nothing about your servers is sent. Run `heimdall feeds sync` to fetch now and `heimdall feeds status` to see how the last fetch went. A broken feed keeps the last good copy and never blocks the other feeds. See [threat-news.md](threat-news.md) for how matching works.
 
+## Notifications
+
+Heimdall sends two kinds of message, to every destination you turn on (several at once is fine, for example Slack and Discord):
+
+- **Immediate alerts:** a host went silent (`[hosts] alert_after`, default 3h) and, later, is back; and new high-signal anomalies: change reporting disabled, privilege watch disabled, privileged access outside a maintenance window, and anything high severity (collector changed, package downgraded, packages vanished, a replayed report). New anomalies are checked every 30 seconds and sent as one message. `[notify] alert_anomalies = false` keeps only the silence alerts.
+- **The digest** (`[notify] every`, e.g. `"24h"`): counts only.
+
+**What's in a message.** Counts, `org/host` names and a fixed label per rule ("privilege watch disabled"), with a link to the hub (`[ui] base_url`, sign-in required). Never package names, versions, CVEs, user names, inventory or an anomaly's own summary. The digest has no host names at all.
+
+**Discord bots can read alerts.** Anyone and any bot in the channel sees the messages, so they are designed to be safe to share: the content above, and nothing in them can ping anyone. Discord messages carry `allowed_mentions: {"parse": []}`, and host names are shown as code with every `@` neutralised, so a host called `@everyone` can't ping. Slack messages escape `&`, `<` and `>`, so `<!channel>` in a name is shown, not parsed.
+
+### Slack
+
+1. In Slack, create an app for your workspace (api.slack.com/apps, "From scratch"), open **Incoming Webhooks**, turn it on, and **Add New Webhook to Workspace** for the channel. Copy the URL, `https://hooks.slack.com/services/T…/B…/…`. ([Slack's guide](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks))
+2. On the hub:
+   ```sh
+   sudo heimdall notify set-webhook slack ops   # paste the URL; it's never echoed
+   sudo heimdall notify test slack:ops          # a clearly labelled test message
+   sudo heimdall restart
+   ```
+
+Messages use [Block Kit](https://docs.slack.dev/block-kit) (a header, a section, a context line with the link) with a plain `text` fallback for notifications.
+
+### Discord
+
+1. In Discord, open the channel's **Edit Channel** (the cog), then **Integrations**, **Webhooks**, **New Webhook**. Name it (for example "Heimdall") and **Copy Webhook URL**, `https://discord.com/api/webhooks/<id>/<token>`. ([Discord's docs](https://docs.discord.com/developers/resources/webhook))
+2. On the hub:
+   ```sh
+   sudo heimdall notify set-webhook discord alerts
+   sudo heimdall notify test discord:alerts
+   sudo heimdall restart
+   ```
+
+Messages are one embed, coloured by severity: red for silent hosts, high-severity anomalies and a digest with known-exploited or critical findings, orange for other anomalies and digests, green for "back" and a quiet digest, blurple for a test. URLs copied from `discordapp.com` or the PTB and Canary clients are accepted and stored as `discord.com`.
+
+### Commands
+
+| Command | What it does |
+|---|---|
+| `sudo heimdall notify set-webhook <slack\|discord\|webhook> <name>` | Asks for the URL with echo off (`--stdin` to pipe it), checks it (Slack: `https://hooks.slack.com/services/…`; Discord: `https://discord.com/api/webhooks/…`; `webhook`: any https URL, sent the raw JSON), stores it in `/etc/heimdall/notify-<kind>-<name>` (mode 0600), adds `LoadCredential=heimdall-notify-<kind>-<name>:…` to the unit and `"<kind>:<name>"` to `[notify] destinations`. Run it again to rotate the URL. |
+| `heimdall notify test [destination]` | Sends a test message to every destination, or one (`slack:ops`, `discord`, `email`), and prints OK or the error for each. |
+| `heimdall notify preview [--alert silent\|back\|anomaly\|test]` | Prints the digest (or an example alert), then each destination's exact payload, with the URL redacted. Sends nothing. |
+| `heimdall notify send` | Sends the digest now. |
+
+**Webhook URLs are credentials** (anyone with one can post to your channel), so they are never in `heimdall.toml`: the config only lists which destinations are on. The original `webhook = true` setting (URL in the `heimdall-webhook` credential, `webhook_format = "slack"` or `"json"`) keeps working; `set-webhook` is the preferred way now. Email works as before.
+
+**Delivery.** Each destination may only reach its own host over HTTPS (`hooks.slack.com`, `discord.com`, or a generic webhook's host). Destinations are sent to in parallel, so a slow or broken one never delays the others, and ingest never waits on any of them. A failed send is retried with backoff (4 tries), honouring a 429's `Retry-After` (Slack allows about one message per second per webhook, see [rate limits](https://docs.slack.dev/apis/web-api/rate-limits); Discord's are [here](https://docs.discord.com/developers/topics/rate-limits)); a 4xx such as a deleted webhook isn't retried. Failures are logged by destination name, never with the URL. A silence alert that no destination took is retried on the next check; one that reached some destinations isn't resent.
+
 ## AI analysis
 
 Heimdall can write a daily brief per org and explain a host's findings using **your own** Azure AI Foundry / Azure OpenAI model deployment. It's off by default. To turn it on, set `[ai]` (`enabled`, `endpoint`, `deployment`), then:
@@ -137,4 +186,4 @@ Compact facts about your hosts (names, OS, package names and versions, CVEs, cou
 - [ ] Disk or volume encryption on the hub
 - [ ] Encrypted backups shipped off-box
 - [ ] `auth.local_login = false` once SSO works (break-glass via the CLI)
-- [ ] Egress limited to the feed hosts (firewall or proxy): `api.osv.dev`, `www.cisa.gov`, `endoflife.date`, `api.first.org`, `api.github.com` (update check), `login.microsoftonline.com` with SSO, your `[news]` source hosts (e.g. `pwn.watch`) if threat news is on, and your `[ai]` endpoint's host if AI analysis is on
+- [ ] Egress limited to the feed hosts (firewall or proxy): `api.osv.dev`, `www.cisa.gov`, `endoflife.date`, `api.first.org`, `api.github.com` (update check), `login.microsoftonline.com` with SSO, your `[news]` source hosts (e.g. `pwn.watch`) if threat news is on, your `[ai]` endpoint's host if AI analysis is on, and `hooks.slack.com` / `discord.com` (or your webhook's host) for the notify destinations you use

@@ -61,7 +61,10 @@ Commands:
   collector trust|list         Manage known-good collector checksums
   feeds sync|status            Refresh OSV, KEV and end-of-life data now
   report                       Findings and lifecycle per host (text, JSON, CSV or HTML)
-  notify preview|send          Show or send the counts-only digest now
+  notify preview|send          Show (with each destination's payload) or send the digest now
+  notify test [destination]    Send a labelled test message (all destinations, or one)
+  notify set-webhook <slack|discord|webhook> <name>
+                               Store a Slack, Discord or webhook URL (never echoed)
   plan create|list|show|add|rm|done|undo|close
                                Patch plans: batch hosts, tick them off, auto-verify
   sso setup                    Set up Entra ID single sign-on (asks, writes, restarts)
@@ -105,7 +108,8 @@ var commands = map[string]command{
 	"backup":    cmdBackup,
 	"anomaly":   group("anomaly", map[string]command{"list": cmdAnomalyList, "ack": cmdAnomalyAck, "suppress": cmdAnomalySuppress}),
 	"window":    group("window", map[string]command{"add": cmdWindowAdd, "list": cmdWindowList, "rm": cmdWindowRm}),
-	"notify":    group("notify", map[string]command{"preview": cmdNotifyPreview, "send": cmdNotifySend}),
+	"notify": group("notify", map[string]command{"preview": cmdNotifyPreview, "send": cmdNotifySend,
+		"test": cmdNotifyTest, "set-webhook": cmdNotifySetWebhook}),
 	"plan": group("plan", map[string]command{
 		"create": cmdPlanCreate, "list": cmdPlanList, "show": cmdPlanShow, "add": cmdPlanAdd,
 		"rm": cmdPlanRm, "done": cmdPlanDone, "undo": cmdPlanUndo, "close": cmdPlanClose,

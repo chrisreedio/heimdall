@@ -42,9 +42,17 @@ func (e *Email) Send(ctx context.Context, d Digest) error {
 	return e.send(ctx, d.Subject(), d.Text())
 }
 
-// SendAlert delivers a silence alert the same way.
+// SendAlert delivers an alert the same way.
 func (e *Email) SendAlert(ctx context.Context, a Alert) error {
 	return e.send(ctx, a.Subject(), a.Text())
+}
+
+func (e *Email) Name() string { return "email" }
+
+func (e *Email) PreviewDigest(d Digest) any { return "Subject: " + d.Subject() + "\n\n" + d.Text() }
+func (e *Email) PreviewAlert(a Alert) any   { return "Subject: " + a.Subject() + "\n\n" + a.Text() }
+func (e *Email) Target() string {
+	return fmt.Sprintf("smtp://%s:%d, %d %s", e.Host, e.Port, len(e.To), plural(len(e.To), "recipient", "recipients"))
 }
 
 func (e *Email) send(ctx context.Context, subject, text string) error {

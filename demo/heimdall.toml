@@ -65,6 +65,8 @@ base_url = "http://127.0.0.1:8090"
 [notify]
 # Counts-only digest (no hostnames, packages or CVEs), e.g. every = "24h".
 every          = "0"
+# Slack/Discord: `heimdall notify set-webhook <slack|discord> <name>` stores the URL.
+# destinations = ["slack:ops", "discord:alerts"]
 # email_to     = ["ops@example.com"]
 # email_from   = "heimdall@example.com"
 # smtp_host    = "smtp.example.com"
