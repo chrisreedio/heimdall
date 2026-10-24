@@ -190,13 +190,16 @@ func buildFindingsView(base, pm string, q url.Values, list []report.Finding, pkg
 
 	var kept []report.Finding
 	for _, f := range list {
-		if fv.Fixable && f.Fixed == "" {
+		// Like the chips' counts, the known-exploited and fixable filters
+		// leave out what isn't live kernel exposure.
+		notLive := f.NotRunning || f.KernelStatus == kernel.StatusUserland
+		if fv.Fixable && (f.Fixed == "" || notLive) {
 			continue
 		}
 		switch fv.Sev {
 		case "":
 		case "kev":
-			if !f.KEV {
+			if !f.KEV || notLive {
 				continue
 			}
 		case "unknown":
@@ -308,9 +311,9 @@ func groupByPackage(list []report.Finding) []pkgGroup {
 		}
 	}
 	slices.SortStableFunc(groups, func(a, b pkgGroup) int {
-		running := map[bool]int{false: 1, true: 0} // old kernels that aren't running go last
+		running := map[bool]int{false: 1, true: 0} // old kernels that aren't running, and kernel userland, go last
 		for _, d := range [][2]int{
-			{running[a.NotRunning], running[b.NotRunning]}, {a.KEV, b.KEV}, {a.News, b.News}, {severityRank[a.Worst], severityRank[b.Worst]},
+			{running[a.NotRunning || a.KernelStatus == kernel.StatusUserland], running[b.NotRunning || b.KernelStatus == kernel.StatusUserland]}, {a.KEV, b.KEV}, {a.News, b.News}, {severityRank[a.Worst], severityRank[b.Worst]},
 			{a.BySev["critical"], b.BySev["critical"]}, {a.BySev["high"], b.BySev["high"]}, {a.Total, b.Total},
 		} {
 			if d[0] != d[1] {

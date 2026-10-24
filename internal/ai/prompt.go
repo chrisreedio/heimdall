@@ -28,6 +28,7 @@ Rules:
   - reboot_pending: on the running kernel while newer_installed_kernel is installed. The fix is the reboot command, not an upgrade (findings_cleared_by_reboot counts them). It's live exposure until the reboot, so when there are any the reboot is the first step. Say the newer kernel may still have findings of its own.
   - not_running: on an older kernel that is installed but not running (apt keeps one as a boot fallback). Upgrading never clears it, removing that kernel does, and it is not live exposure. Rank those after findings on the running kernel, and suggest the removal command when one is given.
   - newer_kernel: on the newer kernel that isn't booted yet. Rebooting won't clear it.
+  - userland: only on packages built from the kernel source that aren't the kernel (linux-tools-common, linux-libc-dev: perf tooling and headers). Not live kernel exposure, and not counted in kev or fixable even when the advisory is known-exploited. Never make one an urgent step or reason for a reboot; mention them in notes at most. Upgrading them via suggested_commands is fine.
   - running: on the running kernel, no newer one installed.
 - Only suggest a reboot when it's in suggested_commands.
 - Set "host" to a hostname exactly as it appears in the data, or null.

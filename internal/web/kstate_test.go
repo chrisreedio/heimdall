@@ -41,7 +41,7 @@ func TestKernelCaseHostPages(t *testing.T) {
 		`>next kernel</span>`,    // the 7.0 kernel's own finding
 		`Reboot to run ` + storetest.KernelNew + ` <span class="muted small">· clears 4 findings marked "reboot pending"</span>`,
 		`may still have findings of its own`,
-		`1 finding fixed upstream, not yet in this host's package cache.`,
+		`2 findings fixed upstream, not yet in this host's package cache.`,
 		`<code>sudo apt-get update</code>`,
 	} {
 		if !strings.Contains(local, want) {
@@ -66,7 +66,7 @@ func TestKernelCaseHostPages(t *testing.T) {
 	for _, want := range []string{
 		`kernel ` + storetest.KernelNew, `old kernel installed</a>`, `>not running</span>`,
 		`<strong>4</strong> on kernels not running`, `<strong>0</strong> known-exploited`,
-		`1 finding fixed upstream, not yet in this host's package cache.`,
+		`2 findings fixed upstream, not yet in this host's package cache.`,
 	} {
 		if !strings.Contains(fun, want) {
 			t.Errorf("web-02 page missing %q", want)
@@ -111,10 +111,10 @@ func TestKernelCaseCounts(t *testing.T) {
 		counts[h.Name] = h.Counts
 	}
 	want := map[string]report.Counts{
-		storetest.OldKernelHost: {Total: 7, KEV: 0, Critical: 1, High: 4, Medium: 2, Fixable: 2, FixPending: 1, NoFix: 1, FixUrgent: 1,
-			NotRunning: 4},
-		storetest.RebootPendingHost: {Total: 7, KEV: 4, Critical: 1, High: 4, Medium: 2, Fixable: 6, FixPending: 1, NoFix: 1, FixUrgent: 5,
-			RebootPending: 4},
+		storetest.OldKernelHost: {Total: 8, KEV: 0, Critical: 1, High: 5, Medium: 2, Fixable: 2, FixPending: 1, NoFix: 1, FixUrgent: 1,
+			NotRunning: 4, KernelUserland: 1},
+		storetest.RebootPendingHost: {Total: 8, KEV: 4, Critical: 1, High: 5, Medium: 2, Fixable: 6, FixPending: 1, NoFix: 1, FixUrgent: 5,
+			RebootPending: 4, KernelUserland: 1},
 	}
 	for name, w := range want {
 		if counts[name] != w {
@@ -140,7 +140,19 @@ func TestKernelCaseCounts(t *testing.T) {
 	if body := e.get("/hosts?only=kev", signedIn(e)).Body.String(); strings.Contains(body, storetest.OldKernelHost) {
 		t.Error("web-02 is listed as known-exploited, but its KEVs are on a kernel that isn't running")
 	}
-	if dash := e.get("/", signedIn(e)).Body.String(); !strings.Contains(dash, "4 on kernels not running") {
-		t.Error("dashboard doesn't count findings on kernels not running")
+	if dash := e.get("/", signedIn(e)).Body.String(); !strings.Contains(dash, "4 on kernels not running") || !strings.Contains(dash, "2 on kernel userland") {
+		t.Error("dashboard doesn't count findings on kernels not running or kernel userland")
+	}
+
+	// The linux-tools-common KEV is muted: badged, left out of the
+	// known-exploited filter, still listed with all findings.
+	page := e.get("/hosts/acme/"+storetest.OldKernelHost+"?findings=all", signedIn(e)).Body.String()
+	for _, want := range []string{`>kernel userland</span>`, `<strong>1</strong> on kernel userland</span>`, `linux-tools-common`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("web-02 page missing %q", want)
+		}
+	}
+	if kev := e.get("/hosts/acme/"+storetest.OldKernelHost+"?sev=kev", signedIn(e)).Body.String(); strings.Contains(kev, storetest.UserlandKEVCVE) {
+		t.Error("the known-exploited filter lists a kernel userland finding")
 	}
 }

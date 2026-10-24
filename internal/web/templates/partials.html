@@ -93,7 +93,7 @@
 {{end}}
 
 {{/* kernelbadge: a finding's (or package group's) kernel status, with a leading space. */}}
-{{define "kernelbadge"}}{{if eq . "not_running"}} <span class="badge muted" title="On an older kernel that's installed but not running: removing it clears this">not running</span>{{else if eq . "reboot_pending"}} <span class="badge warn" title="On the running kernel, while a newer kernel is already installed: rebooting clears this (the newer kernel may have findings of its own)">reboot pending</span>{{else if eq . "newer_kernel"}} <span class="badge muted" title="On the newer kernel that's installed but not booted yet: it runs after the reboot, so rebooting won't clear this">next kernel</span>{{end}}{{end}}
+{{define "kernelbadge"}}{{if eq . "not_running"}} <span class="badge muted" title="On an older kernel that's installed but not running: removing it clears this">not running</span>{{else if eq . "reboot_pending"}} <span class="badge warn" title="On the running kernel, while a newer kernel is already installed: rebooting clears this (the newer kernel may have findings of its own)">reboot pending</span>{{else if eq . "userland"}} <span class="badge muted" title="On a package built from the kernel source that isn't the kernel (tools, headers): not live kernel exposure, so it's left out of the known-exploited and fixable counts. Upgrading it still clears it">kernel userland</span>{{else if eq . "newer_kernel"}} <span class="badge muted" title="On the newer kernel that's installed but not booted yet: it runs after the reboot, so rebooting won't clear this">next kernel</span>{{end}}{{end}}
 
 {{/* rebootcmd: the "reboot to run the newer kernel" command (a findingsView). */}}
 {{define "rebootcmd"}}{{with .RebootCmd}}<div class="cmd fix-cmd">
@@ -121,6 +121,7 @@
     {{if $.V.Fixable}}<a class="chip chip-ok active" href="{{index $.V.FixLink "off"}}" title="{{.C.FixPending}} via updates already pending on the host"><strong>{{.C.Fixable}}</strong> fixable now</a>
     {{else}}<a class="chip chip-ok" href="{{index $.V.FixLink "on"}}" title="Show only findings an update fixes ({{.C.FixPending}} already pending on the host)"><strong>{{.C.Fixable}}</strong> fixable now</a>{{end}}
     {{if .C.NotRunning}}<span class="chip chip-muted" title="On older kernels that are installed but not running: not live exposure, so they're left out of the known-exploited and fixable counts"><strong>{{.C.NotRunning}}</strong> on kernels not running</span>{{end}}
+    {{if .C.KernelUserland}}<span class="chip chip-muted" title="On packages built from the kernel source that aren't the kernel (linux-tools-common, linux-libc-dev): not live kernel exposure, so they're left out of the known-exploited and fixable counts"><strong>{{.C.KernelUserland}}</strong> on kernel userland</span>{{end}}
   </div>
 {{end}}
 {{/* whyPills: why a fleetHost needs attention, most urgent first. */}}

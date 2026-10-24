@@ -113,6 +113,10 @@ type Counts struct {
 	// RebootPending are on the running kernel while a newer one is
 	// installed: still live, and counted everywhere, until the reboot.
 	RebootPending int `json:"reboot_pending"`
+	// KernelUserland are only on packages built from a kernel source that
+	// aren't a kernel (linux-tools-common, linux-libc-dev…): left out like
+	// NotRunning (Total = Fixable + NoFix + NotRunning + KernelUserland).
+	KernelUserland int `json:"kernel_userland"`
 }
 
 type Finding struct {
@@ -348,6 +352,8 @@ func (c *Counts) add(f store.ReportFinding, kernelStatus string) {
 	switch {
 	case kernelStatus == kernel.StatusNotRunning:
 		c.NotRunning++
+	case kernelStatus == kernel.StatusUserland:
+		c.KernelUserland++
 	case f.FixedVersion != "":
 		c.Fixable++
 		if f.Severity == "critical" || f.Severity == "high" {
@@ -356,7 +362,7 @@ func (c *Counts) add(f store.ReportFinding, kernelStatus string) {
 	default:
 		c.NoFix++
 	}
-	if kernelStatus != kernel.StatusNotRunning {
+	if kernelStatus != kernel.StatusNotRunning && kernelStatus != kernel.StatusUserland {
 		if f.KEV {
 			c.KEV++
 		}
@@ -388,7 +394,8 @@ func (c *Counts) add(f store.ReportFinding, kernelStatus string) {
 func countsFrom(c store.FindingCounts) Counts {
 	return Counts{Total: c.Total, KEV: c.KEV, Critical: c.Critical, High: c.High, Medium: c.Medium, Low: c.Low,
 		Unknown: c.Unknown, Fixable: c.Fixable, FixPending: c.FixPending, NoFix: c.NoFix, FixUrgent: c.FixUrgent,
-		InNews: c.InNews, NotRunning: c.NotRunning, RebootPending: c.RebootPending}
+		InNews: c.InNews, NotRunning: c.NotRunning, RebootPending: c.RebootPending,
+		KernelUserland: c.KernelUserland}
 }
 
 func (c *Counts) merge(o Counts) {
@@ -406,6 +413,7 @@ func (c *Counts) merge(o Counts) {
 	c.InNews += o.InNews
 	c.NotRunning += o.NotRunning
 	c.RebootPending += o.RebootPending
+	c.KernelUserland += o.KernelUserland
 }
 
 func nonNil(s []string) []string {
@@ -447,6 +455,9 @@ func WriteText(w io.Writer, r *Report, limit int) {
 			c.Fixable, c.FixPending, c.NoFix)
 		if c.NotRunning > 0 {
 			fmt.Fprintf(w, "            %d on old kernels that are installed but not running\n", c.NotRunning)
+		}
+		if c.KernelUserland > 0 {
+			fmt.Fprintf(w, "            %d on kernel userland packages (tools, headers), not the running kernel\n", c.KernelUserland)
 		}
 		if h.NewerKernel != "" {
 			fmt.Fprintf(w, "  Kernel: %s installed but %s still running: reboot to run it (%d findings clear)\n",

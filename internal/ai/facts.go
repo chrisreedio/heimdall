@@ -99,8 +99,10 @@ type hostFact struct {
 	RunningKernel  string    `json:"running_kernel,omitempty"`
 	// OldKernels counts installed kernel packages older than the running
 	// one; NotRunning counts findings that are only on them.
-	OldKernels   int    `json:"old_kernel_packages,omitempty"`
-	NotRunning   int    `json:"findings_on_old_kernels,omitempty"`
+	OldKernels int `json:"old_kernel_packages,omitempty"`
+	NotRunning int `json:"findings_on_old_kernels,omitempty"`
+	// Userland counts findings only on kernel userland packages.
+	Userland     int    `json:"findings_on_kernel_userland,omitempty"`
 	NewestKernel string `json:"newest_installed_kernel,omitempty"`
 	// KernelState is kernel.State.Name; NewerKernel the newer kernel that
 	// a reboot puts in use, and RebootPending the findings that reboot
@@ -211,7 +213,7 @@ func rank(a, b report.Finding) int {
 		return 0
 	}
 	return cmp.Or(
-		bi(a.NotRunning)-bi(b.NotRunning), // old kernels that aren't running last
+		bi(a.NotRunning || a.KernelStatus == kernel.StatusUserland)-bi(b.NotRunning || b.KernelStatus == kernel.StatusUserland), // not live kernel exposure last
 		bi(b.KEV)-bi(a.KEV), bi(b.InNews)-bi(a.InNews), bi(b.Fixed != "")-bi(a.Fixed != ""),
 		sevRank[b.Severity]-sevRank[a.Severity], cmp.Compare(b.EPSS, a.EPSS), cmp.Compare(b.CVSS, a.CVSS),
 		strings.Compare(a.Package, b.Package))
@@ -485,6 +487,9 @@ func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 		if f.NotRunning { // an old kernel's fix is removing it
 			hf.NotRunning++
 			continue
+		}
+		if f.KernelStatus == kernel.StatusUserland {
+			hf.Userland++
 		}
 		if f.Fixed == "" {
 			nf := noFix[f.Package]

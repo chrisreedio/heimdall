@@ -48,6 +48,21 @@ var (
 // notKernelSources share the linux- prefix but aren't kernels.
 var notKernelSources = []string{"linux-firmware", "linux-base", "linux-atm", "linux-ftpd", "linux-libc-dev", "linux-tools-common", "linux-cloud-tools-common", "linux-doc", "linux-sound-base"}
 
+// userland are Debian/Ubuntu packages built from a kernel source that
+// aren't a kernel: perf and its wrappers, the kernel headers libc builds
+// against, docs and the source tarball. Advisories for the kernel source
+// list them, but a kernel bug isn't live through them.
+var userland = []string{"linux-tools-common", "linux-cloud-tools-common", "linux-libc-dev", "linux-doc", "linux-source", "linux-tools-host"}
+
+// UserlandNames are Userland's exact names (it also takes linux-source-*).
+func UserlandNames() []string { return slices.Clone(userland) }
+
+// Userland reports whether name is one of those packages
+// (linux-source-6.8.0 included).
+func Userland(pm, name string) bool {
+	return pm == "dpkg" && (slices.Contains(userland, name) || strings.HasPrefix(name, "linux-source-"))
+}
+
 // DpkgFullUpgrade is the fallback for a Debian/Ubuntu kernel fix on a host
 // with no kernel metapackage to upgrade.
 const DpkgFullUpgrade = "sudo apt-get update && sudo apt-get upgrade"
@@ -256,6 +271,10 @@ const (
 	// StatusNewerKernel: on a newer kernel that's installed but not yet
 	// booted. It's live after the reboot, so rebooting won't clear it.
 	StatusNewerKernel = "newer_kernel"
+	// StatusUserland: only on packages built from a kernel source that
+	// aren't a kernel (Userland). Not live kernel exposure; upgrading them
+	// is still the fix.
+	StatusUserland = "userland"
 )
 
 // Host kernel states (State.Name).
@@ -280,15 +299,16 @@ type State struct {
 	Old, Boot []string
 
 	old, boot, newer map[string]bool
+	dpkg             bool
 }
 
 // HostState works out a host's kernel state from its installed packages.
 func HostState(pm, running string, pkgs []Installed) State {
 	r := runningRelease(running)
 	if pm != "dpkg" || r == "" {
-		return State{Running: running}
+		return State{Running: running, dpkg: pm == "dpkg"}
 	}
-	s := State{Running: running, old: map[string]bool{}, boot: map[string]bool{}, newer: map[string]bool{}}
+	s := State{Running: running, old: map[string]bool{}, boot: map[string]bool{}, newer: map[string]bool{}, dpkg: true}
 	if n := Newest(pm, pkgs); n != "" {
 		if nr := runningRelease(n); nr != "" && version.CompareDpkg(nr, r) > 0 {
 			s.Newer = n
@@ -338,10 +358,13 @@ func (s State) Name() string {
 }
 
 // Status is a finding's kernel status from its binary packages, or ""
-// unless it's on Debian/Ubuntu kernel ABI packages. The store's
-// finding_counts recount mirrors the not_running and reboot_pending rules
-// with the Old and Boot sets, so keep the two in step.
+// unless it's on Debian/Ubuntu kernel ABI or userland packages. The
+// store's finding_counts recount mirrors the not_running, reboot_pending
+// and userland rules (with the Old and Boot sets), so keep the two in step.
 func (s State) Status(binaries []string) string {
+	if s.dpkg && len(binaries) > 0 && !slices.ContainsFunc(binaries, func(b string) bool { return !Userland("dpkg", b) }) {
+		return StatusUserland
+	}
 	if s.old == nil || len(binaries) == 0 {
 		return ""
 	}

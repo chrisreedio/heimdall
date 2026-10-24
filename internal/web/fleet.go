@@ -277,6 +277,7 @@ type fleetSummary struct {
 	Version           string // this hub's release, when it is one
 	Open, NoFix       int    // findings
 	NotRunning        int    // ...on old kernels that aren't running
+	KernelUserland    int    // ...on kernel userland packages
 	Fixable           int
 }
 
@@ -319,6 +320,7 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		f.Open += c.Total
 		f.NoFix += c.NoFix
 		f.NotRunning += c.NotRunning
+		f.KernelUserland += c.KernelUserland
 		f.Fixable += c.Fixable
 		t.kev += c.KEV
 		t.urgent += c.FixUrgent

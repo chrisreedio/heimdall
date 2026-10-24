@@ -4,6 +4,7 @@ package kernel
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -60,5 +61,28 @@ func TestHostStateOldKernels(t *testing.T) {
 		if s.Name() != "" || s.Status(bins617) != "" {
 			t.Errorf("unknown state should say nothing: %+v", s)
 		}
+	}
+}
+
+func TestStatusUserland(t *testing.T) {
+	s := HostState("dpkg", "7.0.0-1014-aws", []Installed{{Name: "linux-image-7.0.0-1014-aws", Version: "7.0.0-1014.14"}})
+	for bins, want := range map[string]string{
+		"linux-tools-common":                            StatusUserland,
+		"linux-libc-dev":                                StatusUserland,
+		"linux-source-6.8.0":                            StatusUserland,
+		"linux-tools-common linux-libc-dev":             StatusUserland,
+		"linux-tools-common linux-image-7.0.0-1014-aws": StatusRunning,
+		"libssl3t64":                                    "",
+	} {
+		if got := s.Status(strings.Fields(bins)); got != want {
+			t.Errorf("Status(%s) = %q, want %q", bins, got, want)
+		}
+	}
+	// Known even when the running kernel isn't; never for other managers.
+	if got := HostState("dpkg", "", nil).Status([]string{"linux-libc-dev"}); got != StatusUserland {
+		t.Errorf("unknown running kernel: %q", got)
+	}
+	if got := HostState("rpm", "5.14.0-427.el9.x86_64", nil).Status([]string{"linux-libc-dev"}); got != "" {
+		t.Errorf("rpm: %q", got)
 	}
 }

@@ -71,7 +71,7 @@ func TestKernelCaseFacts(t *testing.T) {
 	// nothing upgrades the metapackages (they have no update pending).
 	l := facts[storetest.RebootPendingHost]
 	if l.KernelState != kernel.StateRebootPending || l.NewerKernel != storetest.KernelNew || l.RunningKernel != storetest.KernelOld ||
-		l.RebootPending != storetest.KernelKEVs || l.NotRunning != 0 || l.NotInCache != 1 {
+		l.RebootPending != storetest.KernelKEVs || l.NotRunning != 0 || l.NotInCache != 2 || l.Userland != 1 {
 		t.Errorf("web-01 kernel facts: state %q newer %q running %q reboot-pending %d not-running %d not-in-cache %d",
 			l.KernelState, l.NewerKernel, l.RunningKernel, l.RebootPending, l.NotRunning, l.NotInCache)
 	}
@@ -86,14 +86,15 @@ func TestKernelCaseFacts(t *testing.T) {
 	}
 	st := statusesOf(l)
 	if st["UBUNTU-CVE-2026-31001"] != kernel.StatusRebootPending || st["UBUNTU-CVE-2026-31010"] != kernel.StatusRebootPending ||
-		st["UBUNTU-CVE-2026-32001"] != kernel.StatusNewerKernel || st["UBUNTU-CVE-2026-33001"] != "" {
+		st["UBUNTU-CVE-2026-32001"] != kernel.StatusNewerKernel || st["UBUNTU-CVE-2026-33001"] != "" ||
+		st["UBUNTU-"+storetest.UserlandKEVCVE] != kernel.StatusUserland {
 		t.Errorf("web-01 kernel statuses %v", st)
 	}
 
 	// web-02 runs 7.0: the 6.17 KEVs are on an old kernel, cleared by
 	// the purge, not live, and not counted as KEV.
 	f := facts[storetest.OldKernelHost]
-	if f.KernelState != kernel.StateOldKernels || f.NewerKernel != "" || f.NotRunning != storetest.KernelKEVs || f.RebootPending != 0 || f.NotInCache != 1 {
+	if f.KernelState != kernel.StateOldKernels || f.NewerKernel != "" || f.NotRunning != storetest.KernelKEVs || f.RebootPending != 0 || f.NotInCache != 2 || f.Userland != 1 {
 		t.Errorf("web-02 kernel facts: state %q newer %q not-running %d not-in-cache %d", f.KernelState, f.NewerKernel, f.NotRunning, f.NotInCache)
 	}
 	if got, want := commandsOf(f), []string{liblzma, securityUp, purge617}; !slices.Equal(got, want) {

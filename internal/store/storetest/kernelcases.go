@@ -29,7 +29,10 @@ import (
 //
 // Each host also has a finding on the 7.0 kernel with no fix, an openssl
 // finding whose fix no pending update installs (fixed upstream, not in the
-// package cache), and an xz-utils finding whose fix is pending (liblzma5).
+// package cache), an xz-utils finding whose fix is pending (liblzma5), and
+// a known-exploited kernel advisory that only lists linux-tools-common
+// (kernel userland: perf tooling from the generic linux source, not the
+// running kernel).
 const (
 	OldKernelHost     = "web-02"
 	RebootPendingHost = "web-01"
@@ -39,7 +42,10 @@ const (
 )
 
 // KernelKEVCVEs are the known-exploited CVEs on the 6.17 kernel.
+// UserlandKEVCVE is known-exploited too, but only on linux-tools-common.
 var KernelKEVCVEs = []string{"CVE-2026-31001", "CVE-2026-31002", "CVE-2026-31003", "CVE-2026-31010"}
+
+const UserlandKEVCVE = "CVE-2026-35001"
 
 var (
 	aws617 = []string{"linux-aws-6.17-headers-6.17.0-1009", "linux-aws-6.17-tools-6.17.0-1009", "linux-headers-6.17.0-1009-aws",
@@ -60,11 +66,14 @@ var KernelCaseFindings = []store.Finding{
 		Binaries: []string{"libssl3t64"}},
 	{AdvisoryID: "UBUNTU-CVE-2026-34001", Package: "xz-utils", Version: "5.6.1+really5.4.5-1ubuntu0.3", FixedVersion: "5.6.1+really5.4.5-1ubuntu0.4",
 		Binaries: []string{"liblzma5"}, FixPending: true},
+	{AdvisoryID: "UBUNTU-" + UserlandKEVCVE, Package: "linux", Version: "6.8.0-87.88", FixedVersion: "6.8.0-88.89",
+		Binaries: []string{"linux-tools-common"}},
 }
 
 var kernelCaseSeverity = map[string]string{
 	"UBUNTU-CVE-2026-31001": "high", "UBUNTU-CVE-2026-31002": "high", "UBUNTU-CVE-2026-31003": "critical", "UBUNTU-CVE-2026-31010": "high",
 	"UBUNTU-CVE-2026-32001": "medium", "UBUNTU-CVE-2026-33001": "medium", "UBUNTU-CVE-2026-34001": "high",
+	"UBUNTU-" + UserlandKEVCVE: "high",
 }
 
 // KernelCaseSnapshot is one case's snapshot JSON, collected at now.
@@ -100,7 +109,7 @@ func SeedKernelCases(t testing.TB, st *store.Store, org string, now time.Time) (
 		}
 	}
 	var kev []store.KEVEntry
-	for _, c := range KernelKEVCVEs {
+	for _, c := range append(KernelKEVCVEs, UserlandKEVCVE) {
 		kev = append(kev, store.KEVEntry{CVE: c, DateAdded: now})
 	}
 	if err := st.ReplaceKEV(ctx, kev); err != nil {

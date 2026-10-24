@@ -92,7 +92,7 @@ This is **exactly** what leaves the hub, as one JSON document per run. It's buil
   - the package, installed version and fixed-in version, and whether the fix is already pending;
   - the advisory ID and up to 3 CVEs;
   - the severity, KEV flag, EPSS and in-the-news flag;
-  - for kernel findings on Debian and Ubuntu, the `kernel_status`: `running`, `not_running` (an older kernel that's installed but not running), `reboot_pending` (the running kernel, while a newer one is installed: rebooting clears it) or `newer_kernel` (the newer kernel that isn't booted yet: rebooting won't clear it);
+  - for kernel findings on Debian and Ubuntu, the `kernel_status`: `running`, `not_running` (an older kernel that's installed but not running), `reboot_pending` (the running kernel, while a newer one is installed: rebooting clears it) or `newer_kernel` (the newer kernel that isn't booted yet: rebooting won't clear it) or `userland` (packages built from the kernel source that aren't the kernel, like `linux-tools-common` and `linux-libc-dev`: left out of the known-exploited and fixable counts);
   - the advisory summary, trimmed to 160 characters.
 - **No fix yet:** a count per package (up to 15) with its worst severity.
 - **Runtimes:** name, version and lifecycle.

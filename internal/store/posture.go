@@ -17,8 +17,8 @@ import (
 // FindingCounts tallies one host's open findings in one place: its OS
 // (site root "") or one site. It counts exactly what OpenFindings returns,
 // the way report.Counts does: findings on old kernels that aren't running
-// (NotRunning) are left out of KEV, Fixable, FixPending, FixUrgent and
-// NoFix.
+// (NotRunning) and those only on kernel userland packages (KernelUserland)
+// are left out of KEV, Fixable, FixPending, FixUrgent and NoFix.
 type FindingCounts struct {
 	Total, KEV, Critical, High, Medium, Low, Unknown int
 	Fixable                                          int // a fixed version exists
@@ -28,6 +28,7 @@ type FindingCounts struct {
 	InNews                                           int // named by a live threat-news incident
 	NotRunning                                       int // on an old kernel that's installed but not running
 	RebootPending                                    int // on the running kernel, a newer one installed
+	KernelUserland                                   int // only on kernel userland packages (kernel.Userland)
 }
 
 // OpenFindingCounts returns every host's open-finding tallies by site root
@@ -36,7 +37,7 @@ type FindingCounts struct {
 func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]FindingCounts, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT host_id, site_root, total, kev, critical, high, medium, low, unknown,
-		       fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending
+		       fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending, kernel_userland
 		FROM finding_counts`)
 	if err != nil {
 		return nil, err
@@ -48,10 +49,10 @@ func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]Fin
 		var root string
 		var c FindingCounts
 		if err := rows.Scan(&host, &root, &c.Total, &c.KEV, &c.Critical, &c.High, &c.Medium, &c.Low, &c.Unknown,
-			&c.Fixable, &c.FixPending, &c.FixUrgent, &c.InNews, &c.NotRunning, &c.RebootPending); err != nil {
+			&c.Fixable, &c.FixPending, &c.FixUrgent, &c.InNews, &c.NotRunning, &c.RebootPending, &c.KernelUserland); err != nil {
 			return nil, err
 		}
-		c.NoFix = c.Total - c.Fixable - c.NotRunning
+		c.NoFix = c.Total - c.Fixable - c.NotRunning - c.KernelUserland
 		if out[host] == nil {
 			out[host] = map[string]FindingCounts{}
 		}
@@ -66,7 +67,9 @@ func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]Fin
 // advisory or one of its CVE aliases. ?2 is each host's kernel package
 // sets (kernelSets), so an OS finding is not_running when every binary is
 // an old kernel's package, and reboot_pending when every binary is the
-// running kernel's while a newer one is installed: kernel.State.Status.
+// running kernel's while a newer one is installed, and userland when every
+// binary is a kernel userland package (?3, kernel.Userland's list):
+// kernel.State.Status.
 const countsSQL = `
 	WITH kev AS (
 		SELECT k.cve_id AS id FROM kev_entries k
@@ -83,23 +86,29 @@ const countsSQL = `
 		SELECT f.host_id, f.site_root, a.severity AS sev,
 		       coalesce(f.fixed_version, '') != '' AS fixable, f.fix_pending AS pending,
 		       f.advisory_id IN (SELECT id FROM kev) AS kev, f.advisory_id IN (SELECT id FROM news) AS news,
+		       coalesce(f.site_root = '' AND json_array_length(f.binaries) > 0 AND h.dpkg AND NOT EXISTS (
+		           SELECT 1 FROM json_each(f.binaries) b WHERE b.value NOT IN (SELECT value FROM json_each(?3))
+		           AND b.value NOT LIKE 'linux-source-%'), 0) AS ku,
 		       coalesce(f.site_root = '' AND json_array_length(f.binaries) > 0 AND ks.old IS NOT NULL AND NOT EXISTS (
-		           SELECT 1 FROM json_each(f.binaries) b WHERE b.value NOT IN (SELECT value FROM json_each(ks.old))), 0) AS nr,
+		           SELECT 1 FROM json_each(f.binaries) b WHERE b.value NOT IN (SELECT value FROM json_each(ks.old))), 0) AS nr0,
 		       coalesce(f.site_root = '' AND json_array_length(f.binaries) > 0 AND ks.boot IS NOT NULL AND NOT EXISTS (
 		           SELECT 1 FROM json_each(f.binaries) b WHERE b.value NOT IN (SELECT value FROM json_each(ks.boot))), 0) AS rb
 		FROM findings f JOIN advisories a INDEXED BY advisories_tally ON a.id = f.advisory_id
 		LEFT JOIN ks ON ks.host_id = f.host_id
-		WHERE f.resolved_at IS NULL AND a.withdrawn IS NULL AND f.host_id IN (SELECT id FROM hosts WHERE ?1 = 0 OR id = ?1))
+		JOIN (SELECT h.id, coalesce(s.package_manager = 'dpkg', 0) AS dpkg FROM hosts h
+		      LEFT JOIN snapshots s ON s.id = h.last_snapshot_id WHERE ?1 = 0 OR h.id = ?1) h ON h.id = f.host_id
+		WHERE f.resolved_at IS NULL AND a.withdrawn IS NULL),
+	fk AS (SELECT *, nr0 AND NOT ku AS nr, ku OR nr0 AS off FROM fs)
 	INSERT INTO finding_counts (host_id, site_root, total, kev, critical, high, medium, low, unknown,
-	                            fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending)
+	                            fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending, kernel_userland)
 	SELECT host_id, site_root, count(*),
-	       sum(kev AND NOT nr),
+	       sum(kev AND NOT off),
 	       sum(sev = 'critical'), sum(sev = 'high'), sum(sev = 'medium'),
 	       sum(sev = 'low'), sum(sev NOT IN ('critical', 'high', 'medium', 'low')),
-	       sum(fixable AND NOT nr), sum(pending AND NOT nr),
-	       sum(fixable AND NOT nr AND sev IN ('critical', 'high')),
-	       sum(news), sum(nr), sum(rb AND NOT nr)
-	FROM fs
+	       sum(fixable AND NOT off), sum(pending AND NOT off),
+	       sum(fixable AND NOT off AND sev IN ('critical', 'high')),
+	       sum(news), sum(nr), sum(rb AND NOT off), sum(ku)
+	FROM fk
 	GROUP BY host_id, site_root`
 
 // refreshFindingCounts rewrites finding_counts for one host (0 = every
@@ -114,9 +123,15 @@ func refreshFindingCounts(ctx context.Context, tx *sql.Tx, hostID int64) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM finding_counts WHERE ?1 = 0 OR host_id = ?1`, hostID); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, countsSQL, hostID, sets)
+	_, err = tx.ExecContext(ctx, countsSQL, hostID, sets, userlandJSON)
 	return err
 }
+
+// userlandJSON is kernel.Userland's exact names, for countsSQL.
+var userlandJSON = func() string {
+	b, _ := json.Marshal(kernel.UserlandNames())
+	return string(b)
+}()
 
 // kernelSets is, as JSON, each Debian/Ubuntu host's old-kernel and
 // reboot-pending package names ({"<host id>": {"old": [...], "boot": [...]}})
