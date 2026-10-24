@@ -1,9 +1,11 @@
 {{define "content"}}{{with .Body}}
 <div class="head">
   <h1>Hosts</h1>
+  <span class="muted head-sub">{{if or .Env .Tag .Only}}{{len .Hosts}} of {{.Total}}{{else}}{{.Total}}{{end}}</span>
   <a class="button head-action" href="/hosts/new">Add a host</a>
   {{if .ShowOrgs}}
   <form method="get" action="/hosts" class="filter">
+    {{with .Only}}<input type="hidden" name="only" value="{{.}}">{{end}}{{with .Sort}}<input type="hidden" name="sort" value="{{.}}">{{end}}
     <label>Org
       <select name="org">
         <option value="">All</option>
@@ -14,34 +16,57 @@
   </form>
   {{end}}
 </div>
-{{if gt (len .Envs) 1}}<nav class="filter-chips" aria-label="Environment">
-  <a href="/hosts{{with .Org}}?org={{.}}{{end}}"{{if not .Env}} aria-current="true"{{end}}>All <span>{{.Total}}</span></a>
-  {{range .Envs}}<a href="/hosts?env={{.}}{{with $.Body.Org}}&org={{.}}{{end}}"{{if eq . $.Body.Env}} aria-current="true"{{end}}>{{.}} <span>{{index $.Body.EnvCount .}}</span></a>{{end}}
-</nav>{{end}}
+{{if .Total}}
+<div class="list-bar">
+  {{if .EnvChips}}<nav class="filter-chips" aria-label="Environment">
+    {{range .EnvChips}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Label}} <span>{{.Count}}</span></a>{{end}}
+  </nav>{{else}}<span></span>{{end}}
+  <nav class="seg" aria-label="Sort"><span class="seg-label">Sort</span>{{range .Sorts}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Label}}</a>{{end}}</nav>
+</div>
+<nav class="filter-chips quick" aria-label="Show only">
+  {{range .Onlys}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}{{if .Value}} class="only-{{.Value}}"{{end}}>{{.Label}} <span>{{.Count}}</span></a>{{end}}
+  {{with .Tag}}<a href="{{$.Body.ClearTag}}" aria-current="true" title="Remove the tag filter">tag {{.}} <span aria-hidden="true">✕</span></a>{{end}}
+</nav>
+{{end}}
 {{if .Hosts}}
-<div class="scroll"><table>
-  <thead><tr><th>Host</th>{{if .ShowOrgs}}<th>Org</th>{{end}}<th>Env</th><th>OS</th><th class="num">Open</th><th class="num">KEV</th><th class="num">Fixable</th><th>Tags</th><th>Last seen</th></tr></thead>
+<div class="scroll"><table class="host-list cards-sm">
+  <thead><tr>
+    <th>Host</th><th>OS</th>
+    <th class="num" title="CISA Known Exploited Vulnerabilities">KEV</th>
+    <th class="num" title="Threat-news incidents that match open findings">News</th>
+    <th class="num" title="Fixable findings rated critical or high">Crit/high fix</th>
+    <th class="num" title="Findings an update fixes">Fixable</th>
+    <th class="num" title="Affected, but no fix released yet">No fix yet</th>
+    <th>Updates</th><th>Last report</th><th>Collector</th><th class="num">Anomalies</th>
+  </tr></thead>
   <tbody>
-  {{range .Hosts}}
+  {{range .Hosts}}{{$c := .R.Counts}}{{$tags := .Tags}}
   <tr>
-    <td><a href="{{hostURL .OrgSlug .Name}}">{{.Name}}</a></td>
-    {{if $.Body.ShowOrgs}}<td>{{.OrgSlug}}</td>{{end}}
-    <td>{{.EnvSlug}}</td>
+    <td class="h-host full">
+      <a class="h-name" href="{{hostURL .OrgSlug .Name}}">{{.Name}}</a>{{if $.Body.ShowOrgs}} <span class="muted small">{{.OrgSlug}}</span>{{end}}
+      <div class="h-meta"><span class="env-chip" title="Environment">{{.EnvSlug}}</span>{{range .ShownTags}}<a class="tag" href="/hosts?tag={{.}}{{with $.Body.Org}}&amp;org={{.}}{{end}}">{{.}}</a>{{end}}{{with .MoreTags}}<span class="tag" title="{{join $tags ", "}}">+{{.}}</span>{{end}}</div>
+    </td>
     {{if .Reported}}
-    <td>{{.Row.OS}}</td>
-    <td class="num">{{.Row.Counts.Total}}</td>
-    <td class="num">{{if .Row.Counts.KEV}}<span class="badge kev">{{.Row.Counts.KEV}}</span>{{else}}0{{end}}</td>
-    <td class="num">{{.Row.Counts.Fixable}}</td>
+    <td class="h-os full"><span class="h-os-name">{{.R.OS}}</span>{{$s := lifeState .R.OSLife}}{{if or (eq $s "eol") (eq $s "soon")}} {{template "lifepill" .R.OSLife}}{{end}}{{range .NonOSEOL}} <span class="pill {{if eq .State "eol"}}bad{{else}}warn{{end}}" title="{{if .Life.EOLDate}}end of life {{fullDate .Life.EOLDate}}{{end}}">{{.Label}} {{if eq .State "eol"}}EoL{{else}}EoL in {{.Life.DaysLeft}}d{{end}}</span>{{end}}</td>
+    <td class="num{{if not $c.KEV}} zero{{end}}" data-label="KEV">{{if $c.KEV}}<span class="badge kev">{{num $c.KEV}}</span>{{else}}<span class="muted">0</span>{{end}}</td>
+    <td class="num{{if not .News}} zero{{end}}" data-label="News">{{if .News}}<a class="badge news" href="/news?affects=me">{{.News}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
+    <td class="num{{if not $c.FixUrgent}} zero{{end}}" data-label="Crit/high fix">{{if $c.FixUrgent}}<strong class="sub-bad">{{num $c.FixUrgent}}</strong>{{else}}<span class="muted">0</span>{{end}}</td>
+    <td class="num{{if not $c.Fixable}} zero{{end}}" data-label="Fixable">{{if $c.Fixable}}{{num $c.Fixable}}{{else}}<span class="muted">0</span>{{end}}</td>
+    <td class="num muted{{if not $c.NoFix}} zero{{end}}" data-label="No fix yet">{{num $c.NoFix}}</td>
+    <td class="h-upd{{if not (or .Pending .Reboot)}} zero{{end}}" data-label="Updates">{{if .Pending}}{{.Pending}}{{else}}<span class="muted">0</span>{{end}}{{if .PendingSecurity}} <span class="pill bad">{{.PendingSecurity}} security</span>{{end}}{{if .Reboot}} <span class="pill warn">reboot</span>{{end}}</td>
+    <td class="nowrap h-seen" data-label="Last report" title="{{time .R.LastSeen}}"><span{{if .Stale}} class="stale"{{end}}>{{ago .R.LastSeen}}</span>{{if .Stale}} <span class="pill warn">stale</span>{{end}}</td>
+    <td class="h-coll" data-label="Collector"><span class="ver">{{.Collector}}</span>{{if .CollectorBehind}} <span class="pill muted" title="On the server: sudo heimdall-collect upgrade">behind</span>{{end}}{{if eq .ChangeWatch "off"}} <span class="pill warn" title="Changes are only reported on the schedule">watch off</span>{{end}}</td>
+    <td class="num{{if not .Anomalies}} zero{{end}}" data-label="Anomalies">{{if .Anomalies}}<a class="pill {{if eq .AnomalyWorst "high"}}bad{{else}}warn{{end}}" href="/anomalies">{{.Anomalies}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
     {{else}}
-    <td colspan="4" class="muted">waiting for first report</td>
+    <td colspan="10" class="muted h-wait full">waiting for first report{{if not .LastSeenAt.IsZero}} · checked in {{ago .LastSeenAt}}{{end}}</td>
     {{end}}
-    <td>{{range .Tags}}<span class="tag">{{.}}</span> {{end}}</td>
-    <td{{if .Row.Stale}} class="stale"{{end}}>{{ago .LastSeenAt}}</td>
   </tr>
   {{end}}
   </tbody>
 </table></div>
+{{else if .Total}}
+<p class="empty">No hosts match these filters. <a href="/hosts{{with .Org}}?org={{.}}{{end}}">Show all hosts</a>.</p>
 {{else}}
-<p class="empty">No hosts yet. Add one with <code>heimdall host add &lt;hostname&gt;</code>.</p>
+<p class="empty">No hosts yet. <a href="/hosts/new">Add a host</a> to get the install command for your first server.</p>
 {{end}}
 {{end}}{{end}}

@@ -242,8 +242,11 @@ func (s *Store) MatchNews(ctx context.Context, hostID int64, at time.Time) error
 			ON CONFLICT (item_id, host_id, kind) DO UPDATE SET reason = excluded.reason`, ts); err != nil {
 			return err
 		}
-		_, err := tx.ExecContext(ctx, `DELETE FROM temp.current_news_matches`)
-		return err
+		if _, err := tx.ExecContext(ctx, `DELETE FROM temp.current_news_matches`); err != nil {
+			return err
+		}
+		// Incidents going live or closing change which findings are "in the news".
+		return refreshFindingCounts(ctx, tx, hostID)
 	})
 }
 

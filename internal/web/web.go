@@ -571,6 +571,10 @@ var funcs = template.FuncMap{
 		return p
 	},
 	"lifeState": lifeState,
+	"num":       commas,
+	"rule":      ruleLabel,
+	// timep is a time's address, for the date funcs that take a pointer.
+	"timep": func(t time.Time) *time.Time { return &t },
 	// unmet: a known-false requirement check (nil means unknown).
 	"unmet": func(b *bool) bool { return b != nil && !*b },
 	"first": func(s []string) string {

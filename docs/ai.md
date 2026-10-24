@@ -144,7 +144,7 @@ When the input budget is tight, the less important parts go first: fewer finding
 
 ## Storage
 
-Migration `0010_ai.sql` adds `ai_runs`: one row per run, holding the org, host (null for briefs), kind, status (`running`, `ok` or `error`), created and finished times, who asked, the deployment, the model the API reported, the token counts, the fixed error text, and the validated result JSON. The last 10 runs per org brief and per host are kept, and older ones are pruned when a run finishes. A `running` row older than the timeout plus a minute (for example, after a restart) is shown as timed out and doesn't block a new run.
+Migration `0011_ai.sql` adds `ai_runs`: one row per run, holding the org, host (null for briefs), kind, status (`running`, `ok` or `error`), created and finished times, who asked, the deployment, the model the API reported, the token counts, the fixed error text, and the validated result JSON. The last 10 runs per org brief and per host are kept, and older ones are pruned when a run finishes. A `running` row older than the timeout plus a minute (for example, after a restart) is shown as timed out and doesn't block a new run.
 
 ## What might differ on a real deployment
 
