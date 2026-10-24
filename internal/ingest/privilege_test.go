@@ -33,11 +33,24 @@ func TestParsePrivilege(t *testing.T) {
 		ts(-9*24*time.Hour) + ":sudo",         // too old
 		ts(time.Hour) + ":sudo",               // too far ahead
 		"abc:sudo", "-5:sudo", ":", "1:2:3:4", // garbage
+		// With a source, last: IPv4, IPv6 (colons and all), a host name, "?".
+		ts(-time.Second) + ":sudo:chris:203.0.113.7",
+		ts(-time.Second) + ":root-ssh:root:2001:db8::1",
+		ts(-time.Second) + ":su:deploy:bastion.example.com",
+		ts(-time.Second) + ":su:ops:?",
+		ts(-time.Second) + ":sudo:eve:999.1.1.1",    // not an address
+		ts(-time.Second) + ":sudo:eve:fe80::1%eth0", // zone
+		ts(-time.Second) + ":sudo:eve:a b",          // space
+		ts(-time.Second) + ":sudo:eve:" + strings.Repeat("a", 65),
 	}, ","), now)
 	want := []store.PrivilegeEvent{
 		{At: now.Add(-time.Hour).UTC(), Kind: "sudo"},
 		{At: now.Add(-time.Minute).UTC(), Kind: "root-ssh", User: "root"},
 		{At: now.Add(-time.Minute).UTC(), Kind: "su", User: "?"},
+		{At: now.Add(-time.Second).UTC(), Kind: "sudo", User: "chris", Source: "203.0.113.7"},
+		{At: now.Add(-time.Second).UTC(), Kind: "root-ssh", User: "root", Source: "2001:db8::1"},
+		{At: now.Add(-time.Second).UTC(), Kind: "su", User: "deploy", Source: "bastion.example.com"},
+		{At: now.Add(-time.Second).UTC(), Kind: "su", User: "ops", Source: "?"},
 	}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("parsePrivilege = %v\nwant %v", got, want)
@@ -160,9 +173,9 @@ func TestPrivilegeWindowsAndSuppression(t *testing.T) {
 	if a := e.openAnomalies(); len(a) != 0 {
 		t.Fatalf("event inside a window raised %v", a)
 	}
-	e.pushPrivilege("v1 "+at(-time.Minute)+":su:bob", "on")
+	e.pushPrivilege("v1 "+at(-time.Minute)+":su:bob:198.51.100.4", "on")
 	as := e.openAnomalies()
-	if len(as) != 1 || !strings.Contains(as[0].Summary, "1 privileged access ") || !strings.Contains(as[0].Summary, "by bob") {
+	if len(as) != 1 || !strings.Contains(as[0].Summary, "1 privileged access ") || !strings.Contains(as[0].Summary, "by bob from 198.51.100.4") {
 		t.Fatalf("anomalies = %+v", as)
 	}
 

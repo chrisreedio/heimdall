@@ -723,8 +723,8 @@ EOF
 }
 
 # ── Privilege watch (opt-in, install.sh --watch-privilege) ─────────────────
-# Recent privileged-access events (time and kind, plus a username only with
-# --watch-privilege-users) and whether the PAM hook is intact, as curl
+# Recent privileged-access events (time and kind, plus the username and
+# source only with --watch-privilege-users) and whether the PAM hook is intact, as curl
 # config header lines. Headers, not snapshot fields, so collectors and hubs
 # of different versions still accept each other. Nothing is kept here: the
 # last 7 days are resent each time and the hub dedupes.
@@ -752,8 +752,10 @@ privilege_config() {
 	list=$(awk -v since=$((now - 7 * 86400)) -v now="$now" '
 		$1 ~ /^[0-9]+$/ && $1 >= since && $1 <= now + 900 &&
 		($2 == "sudo" || $2 == "su" || $2 == "root-ssh") &&
-		(NF == 2 || (NF == 3 && $3 ~ /^([a-z_][a-z0-9_.-]*|\?)$/ && length($3) <= 32)) {
-			k = $1 ":" $2 (NF == 3 ? ":" $3 : "")
+		(NF == 2 || ((NF == 3 || NF == 4) && $3 ~ /^([a-z_][a-z0-9_.-]*|\?)$/ && length($3) <= 32)) &&
+		(NF < 4 || ($4 ~ /^([A-Za-z0-9.:-]+|\?)$/ && length($4) <= 64)) {
+			# The source goes last: an IPv6 address has colons of its own.
+			k = $1 ":" $2 (NF >= 3 ? ":" $3 : "") (NF == 4 && $4 != "-" ? ":" $4 : "")
 			if (!(k in seen)) { seen[k] = 1; e[n++] = k } # the hub dedupes these anyway
 		}
 		END {

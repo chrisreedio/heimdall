@@ -46,7 +46,8 @@ usage: install.sh --hub https://ingest.example.com [--token-stdin | --token-file
   --no-push      don't push a first snapshot
   --watch-privilege        record when sudo, su or a root SSH login happens (time
                            and kind only; never commands); see docs/collector.md
-  --watch-privilege-users  also record who (implies --watch-privilege)
+  --watch-privilege-users  also record who, and the IP the session came from
+                           (implies --watch-privilege)
   --no-watch-privilege     remove the privilege watch
   (re-running keeps the current privilege watch choice)
 EOF

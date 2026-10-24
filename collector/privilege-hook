@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Heimdall privilege watch: run by pam_exec when a sudo, su or root SSH
 # session opens. It records THAT privileged access happened (a timestamp
-# and a kind, plus a username only with --watch-privilege-users), never
-# what was typed. Installed by install.sh --watch-privilege as
+# and a kind, plus with --watch-privilege-users the username and where the
+# session came from), never what was typed. Installed by install.sh --watch-privilege as
 # /usr/local/lib/heimdall/privilege-hook; see docs/collector.md.
 #
 # It must never block or slow a login: PAM calls it as `optional`, it
@@ -16,6 +16,32 @@ umask 022
 
 RECORD_USERS=0 # set by install.sh --watch-privilege-users
 EVENTS_DIR=/var/lib/heimdall-privilege
+
+# source_of KIND prints where the session came from: an SSH login's remote
+# address (PAM_RHOST), or for sudo and su the remote host of the terminal's
+# login session (from utmp, via who). "-" when there's none (a local
+# console, cron, or a terminal utmp doesn't list such as tmux), "?" when
+# it doesn't look like an address or host name.
+source_of() {
+	if [ "$1" = root-ssh ]; then
+		src=${PAM_RHOST:-}
+	else
+		# sudo sets PAM_RHOST to this host's own name, so it's no use here.
+		tty=${PAM_TTY:-}
+		tty=${tty#/dev/}
+		src=
+		case $tty in
+		'' | *[!a-z0-9/]*) ;;
+		*) src=$(who 2>/dev/null | awk -v t="$tty" '$2 == t { h = $NF } END { if (h ~ /^\(.*\)$/) print substr(h, 2, length(h) - 2) }') ;;
+		esac
+	fi
+	case $src in
+	'') src=- ;;
+	*[!A-Za-z0-9.:-]*) src='?' ;;
+	esac
+	[ "${#src}" -le 64 ] || src='?'
+	printf '%s' "$src"
+}
 
 record() {
 	[ "${PAM_TYPE:-}" = open_session ] || return 0
@@ -40,7 +66,7 @@ record() {
 		*) who='?' ;;
 		esac
 		[ "${#who}" -le 32 ] || who='?'
-		line="$line $who"
+		line="$line $who $(source_of "$kind")"
 	fi
 	f=$EVENTS_DIR/events
 	printf '%s\n' "$line" >>"$f" 2>/dev/null || return 0
