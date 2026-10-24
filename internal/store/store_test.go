@@ -8,15 +8,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/chrisreedio/heimdall/internal/secret"
 )
 
+// newStore returns a fresh, migrated store. The schema is built once per
+// test run and copied, since migrating takes a few hundred milliseconds
+// under the race detector (storetest does the same for other packages,
+// which this package's tests can't import).
 func newStore(t *testing.T) *Store {
 	t.Helper()
+	templateOnce.Do(func() { template, templateErr = buildTemplate() })
+	if templateErr != nil {
+		t.Fatal(templateErr)
+	}
 	path := filepath.Join(t.TempDir(), "h.db")
-	if err := Create(path); err != nil {
+	if err := os.WriteFile(path, template, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	s, err := Open(t.Context(), path)
@@ -24,10 +33,37 @@ func newStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close() })
-	if _, err := s.Migrate(t.Context()); err != nil {
-		t.Fatal(err)
-	}
 	return s
+}
+
+var (
+	templateOnce sync.Once
+	template     []byte
+	templateErr  error
+)
+
+func buildTemplate() ([]byte, error) {
+	dir, err := os.MkdirTemp("", "heimdall-store-test-")
+	if err != nil {
+		return nil, err
+	}
+	defer os.RemoveAll(dir)
+	path := filepath.Join(dir, "h.db")
+	if err := Create(path); err != nil {
+		return nil, err
+	}
+	s, err := Open(context.Background(), path)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := s.Migrate(context.Background()); err != nil {
+		s.Close()
+		return nil, err
+	}
+	if err := s.Close(); err != nil { // checkpoints the WAL into the file
+		return nil, err
+	}
+	return os.ReadFile(path)
 }
 
 func TestCreateIsOwnerOnly(t *testing.T) {

@@ -10,13 +10,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/chrisreedio/heimdall/internal/config"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/store/storetest"
 )
 
 type env struct {
@@ -34,18 +34,7 @@ var fixtureTime = time.Date(2026, 10, 22, 4, 17, 3, 0, time.UTC)
 
 func newEnv(t *testing.T, mutate func(*config.Ingest)) *env {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "h.db")
-	if err := store.Create(path); err != nil {
-		t.Fatal(err)
-	}
-	st, err := store.Open(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	if _, err := st.Migrate(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	st := storetest.New(t)
 	ctx := t.Context()
 	st.CreateOrg(ctx, "test", "acme", "")
 	st.CreateEnv(ctx, "test", "acme", "prod", "")

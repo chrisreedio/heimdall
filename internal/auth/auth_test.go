@@ -4,12 +4,12 @@ package auth
 
 import (
 	"errors"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/store/storetest"
 )
 
 func TestRFC6238Vectors(t *testing.T) {
@@ -138,20 +138,10 @@ const (
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "h.db")
-	if err := store.Create(path); err != nil {
-		t.Fatal(err)
-	}
-	st, err := store.Open(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	if _, err := st.Migrate(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	st := storetest.New(t)
 	e := &env{t: t, st: st, now: time.Unix(1_800_000_000, 0), secret: NewTOTPSecret()}
 	hash, _ := HashPassword(password)
+	var err error
 	if e.userID, err = st.CreateLocalUser(t.Context(), "test", email, "Admin", true, hash, e.secret); err != nil {
 		t.Fatal(err)
 	}

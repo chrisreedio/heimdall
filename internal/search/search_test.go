@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/chrisreedio/heimdall/internal/ingest"
 	"github.com/chrisreedio/heimdall/internal/snapshot"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/store/storetest"
 )
 
 func TestParse(t *testing.T) {
@@ -70,18 +70,7 @@ type fleet struct {
 
 func newFleet(t *testing.T) *fleet {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "h.db")
-	if err := store.Create(path); err != nil {
-		t.Fatal(err)
-	}
-	st, err := store.Open(t.Context(), path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { st.Close() })
-	if _, err := st.Migrate(t.Context()); err != nil {
-		t.Fatal(err)
-	}
+	st := storetest.New(t)
 	ctx := t.Context()
 	st.CreateOrg(ctx, "test", "acme", "")
 	st.CreateEnv(ctx, "test", "acme", "prod", "")
