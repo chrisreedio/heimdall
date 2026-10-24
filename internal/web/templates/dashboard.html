@@ -1,6 +1,7 @@
 {{define "content"}}{{with .Body}}
 <div class="head">
   <h1>Dashboard</h1>
+  {{if .Hosts}}<span class="muted head-sub">{{.Fleet.Reported}} of {{.Hosts}} host{{if ne .Hosts 1}}s{{end}} reporting</span>{{end}}
   {{if .ShowOrgs}}
   <form method="get" action="/" class="filter">
     <label>Org
@@ -17,46 +18,77 @@
 {{if .News}}<a class="news-strip" href="/news?affects=me"><span class="pill bad">news</span> <span><strong>{{.News}}</strong> in the news affect{{if eq .News 1}}s{{end}} your hosts</span> <span aria-hidden="true">→</span></a>{{end}}
 
 <section class="tiles" aria-label="Summary">
-  <div class="tile"><span class="n">{{.Tiles.Hosts}}</span><span class="l">hosts reporting</span></div>
-  <div class="tile{{if .Tiles.KEV}} bad{{end}}"><span class="n">{{.Tiles.KEV}}</span><span class="l">known-exploited findings</span></div>
-  <div class="tile{{if .Tiles.Critical}} bad{{end}}"><span class="n">{{.Tiles.Critical}}</span><span class="l">critical findings</span></div>
-  <div class="tile{{if .Tiles.Fixable}} warn{{end}}"><span class="n">{{.Tiles.Fixable}}</span><span class="l">hosts with fixes available</span></div>
-  <div class="tile{{if .Tiles.EOL}} warn{{end}}"><span class="n">{{.Tiles.EOL}}</span><span class="l">hosts running end-of-life software</span></div>
-  <div class="tile{{if .Tiles.Reboot}} warn{{end}}"><span class="n">{{.Tiles.Reboot}}</span><span class="l">reboots required</span></div>
-  <div class="tile{{if .Tiles.Stale}} warn{{end}}"><span class="n">{{.Tiles.Stale}}</span><span class="l">stale hosts</span></div>
-  <a class="tile{{if .Tiles.Sites}} warn{{end}}" href="/sites"><span class="n">{{.Tiles.Sites}}</span><span class="l">sites needing attention</span></a>
+  {{range .Tiles}}<a class="tile{{with .Class}} {{.}}{{end}}" href="{{.Href}}"><span class="n">{{num .N}}</span><span class="l">{{.Label}}</span><span class="s">{{.Sub}}</span></a>
+  {{end}}
 </section>
 
-<section>
-  <h2>Patch first</h2>
-  {{if .Rows}}
-  <div class="scroll"><table>
-    <thead><tr><th>Host</th>{{if .ShowOrgs}}<th>Org</th>{{end}}<th>OS</th><th class="num">KEV</th><th class="num">Critical</th><th class="num">High</th><th class="num">Fixable</th><th>Flags</th><th>Last seen</th></tr></thead>
+<section aria-labelledby="attention">
+  <div class="section-head"><h2 id="attention">Needs attention</h2>{{if .Attention}}<a class="small" href="/hosts?sort=priority">All hosts by priority →</a>{{end}}</div>
+  {{if .Attention}}
+  <div class="scroll"><table class="attn cards-sm">
+    <thead><tr><th>Host</th><th>Why</th><th class="num" title="Fixable findings rated critical or high">Crit/high fix</th><th class="num" title="Findings an update fixes">Fixable</th><th class="num" title="Affected, but no fix released yet">No fix yet</th><th>Last report</th></tr></thead>
     <tbody>
-    {{range .Rows}}
+    {{range .Attention}}{{$c := .R.Counts}}
     <tr>
-      <td><a href="{{hostURL .Org .Name}}">{{.Name}}</a></td>
-      {{if $.Body.ShowOrgs}}<td>{{.Org}}</td>{{end}}
-      <td>{{.OS}}</td>
-      <td class="num">{{if .Counts.KEV}}<span class="badge kev">{{.Counts.KEV}}</span>{{else}}0{{end}}</td>
-      <td class="num">{{.Counts.Critical}}</td>
-      <td class="num">{{.Counts.High}}</td>
-      <td class="num">{{.Counts.Fixable}}</td>
-      <td>{{if .EOL}}<span class="badge warn">EOL</span> {{end}}{{if .Reboot}}<span class="badge warn">reboot</span> {{end}}{{if not .Ecosystem}}<span class="badge muted">no matching</span>{{end}}</td>
-      <td{{if .Stale}} class="stale"{{end}}>{{ago .LastSeen}}</td>
+      <td class="attn-host full"><a href="{{hostURL .OrgSlug .Name}}">{{.Name}}</a> <span class="env-chip">{{.EnvSlug}}</span>{{if $.Body.ShowOrgs}} <span class="muted small">{{.OrgSlug}}</span>{{end}}</td>
+      <td class="why full">{{template "whyPills" .}}</td>
+      <td class="num{{if not $c.FixUrgent}} zero{{end}}" data-label="Crit/high fix">{{if $c.FixUrgent}}<strong class="sub-bad">{{num $c.FixUrgent}}</strong>{{else}}<span class="muted">0</span>{{end}}</td>
+      <td class="num{{if not $c.Fixable}} zero{{end}}" data-label="Fixable">{{if $c.Fixable}}{{num $c.Fixable}}{{else}}<span class="muted">0</span>{{end}}</td>
+      <td class="num muted{{if not $c.NoFix}} zero{{end}}" data-label="No fix yet">{{num $c.NoFix}}</td>
+      <td class="nowrap{{if .Stale}} stale{{end}}" data-label="Last report" title="{{time .R.LastSeen}}">{{ago .R.LastSeen}}</td>
     </tr>
     {{end}}
     </tbody>
   </table></div>
+  {{if or .MoreAttn .Quiet}}<p class="more">{{if .MoreAttn}}<a href="/hosts?sort=priority">{{.MoreAttn}} more host{{if ne .MoreAttn 1}}s{{end}} need{{if eq .MoreAttn 1}}s{{end}} attention</a>{{if .Quiet}} · {{end}}{{end}}{{if .Quiet}}{{.Quiet}} host{{if ne .Quiet 1}}s have{{else}} has{{end}} nothing to act on right now{{end}}.</p>{{end}}
+  {{else if .Fleet.Reported}}
+  <p class="empty">Nothing needs action: no known-exploited or fixable findings, nothing past end of life, no reboots, stale hosts or open anomalies.</p>
   {{else}}
   <p class="empty">No hosts have reported yet. <a href="/hosts/new">Add a host</a> to get the install command for your first server.</p>
   {{end}}
 </section>
 
-{{if .Waiting}}
-<section>
-  <h2>Waiting for first report</h2>
-  <ul class="plain">{{range .Waiting}}<li><a href="{{hostURL .OrgSlug .Name}}">{{.Name}}</a>{{if $.Body.ShowOrgs}} <span class="muted">({{.OrgSlug}})</span>{{end}}</li>{{end}}</ul>
-</section>
-{{end}}
+<div class="dash-cards">
+  <section class="card dash-card" aria-labelledby="plans-h">
+    <div class="section-head"><h2 id="plans-h">Patch plans</h2><a class="small" href="/plans">All plans →</a></div>
+    {{if .Plans}}<ul class="dash-list">{{range .Plans}}<li>
+      <div class="dl-main"><a href="/plans/{{.ID}}">{{.Name}}</a>{{if $.Body.ShowOrgs}} <span class="muted small">{{if .OrgSlug}}{{.OrgSlug}}{{else}}all orgs{{end}}</span>{{end}}<span class="muted small dl-right" title="{{time .CreatedAt}}">started {{dayAgo (timep .CreatedAt)}}</span></div>
+      <div class="plan-progress"><progress value="{{.Done}}" max="{{if .Hosts}}{{.Hosts}}{{else}}1{{end}}" aria-label="{{.Done}} of {{.Hosts}} patched"></progress><span class="small">{{.Done}} of {{.Hosts}} patched{{if .Verified}} · <span class="ok-text">{{.Verified}} verified</span>{{end}}</span></div>
+    </li>{{end}}</ul>
+    {{else}}<p class="empty">No open plans. A plan groups hosts into batches to patch and tick off; <a href="/plans">start one</a>.</p>{{end}}
+  </section>
+
+  <section class="card dash-card" aria-labelledby="eol-h">
+    <div class="section-head"><h2 id="eol-h">End of life</h2>{{if .EOL}}<a class="small" href="/hosts?only=eol&amp;sort=priority">Hosts →</a>{{end}}</div>
+    {{if .EOL}}<ul class="dash-list">{{range .EOL}}<li class="dl-main">
+      <a href="{{.Href}}"><strong>{{.Label}}</strong></a>
+      {{template "lifepill" .Life}}
+      <span class="muted small dl-right">{{if .Sites}}{{.Sites}} site{{if ne .Sites 1}}s{{end}} on {{end}}{{if eq (len .Hosts) 1}}{{(index .Hosts 0).Name}}{{else}}{{len .Hosts}} hosts{{end}}</span>
+    </li>{{end}}</ul>
+    {{if .MoreEOL}}<p class="more"><a href="/hosts?only=eol&amp;sort=priority">{{.MoreEOL}} more</a></p>{{end}}
+    {{else}}<p class="empty">Nothing is past or within 90 days of end of life.{{with .NextEOL}} Next up: <strong>{{.Label}}</strong> on {{(index .Hosts 0).Name}}, <span title="{{fullDate .Life.EOLDate}}">{{longDate .Life.EOLDate}}</span>.{{end}}</p>{{end}}
+  </section>
+
+  <section class="card dash-card" aria-labelledby="anom-h">
+    <div class="section-head"><h2 id="anom-h">Recent anomalies</h2>{{if .AnomalyAll}}<a class="small" href="/anomalies">All {{.AnomalyAll}} open →</a>{{end}}</div>
+    {{if .Anomalies}}<ul class="dash-list">{{range .Anomalies}}<li>
+      <div class="dl-main"><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span> <span title="{{.Rule}}">{{rule .Rule}}</span> <span class="muted">on</span> <a href="{{hostURL .Host.OrgSlug .Host.Name}}">{{.Host.Name}}</a><span class="muted small dl-right" title="{{time .DetectedAt}}">{{ago .DetectedAt}}</span></div>
+      <div class="muted small clamp1" title="{{.Summary}}">{{.Summary}}</div>
+    </li>{{end}}</ul>
+    {{else}}<p class="empty">No open anomalies. These tripwires fire when a host's reports don't add up: silence, disabled change watch, packages dropping, privileged access.</p>{{end}}
+  </section>
+
+  <section class="card dash-card" aria-labelledby="fleet-h">
+    <div class="section-head"><h2 id="fleet-h">Fleet</h2><a class="small" href="/hosts">Hosts →</a></div>
+    {{with .Fleet}}<dl class="dash-facts">
+      <div><dt>Reporting</dt><dd>{{.Reported}} host{{if ne .Reported 1}}s{{end}}{{if .Waiting}} · <a href="/hosts?only=waiting">{{.Waiting}} waiting</a>{{end}}</dd></div>
+      <div><dt>Last report</dt><dd>{{with .Newest}}<span title="{{time .R.LastSeen}}">{{ago .R.LastSeen}}</span> <span class="muted small">{{.Name}}</span>{{else}}<span class="muted">none yet</span>{{end}}</dd></div>
+      <div><dt>Oldest report</dt><dd>{{with .Oldest}}<span class="{{if .Stale}}stale{{end}}" title="{{time .R.LastSeen}}">{{ago .R.LastSeen}}</span> <a class="small" href="{{hostURL .OrgSlug .Name}}">{{.Name}}</a>{{else}}<span class="muted">none yet</span>{{end}}</dd></div>
+      <div><dt>Collectors</dt><dd>{{if .Behind}}<a class="pill warn" href="/hosts?only=collector">{{.Behind}} behind {{.Version}}</a>{{else if .Version}}{{if .Reported}}<span class="pill ok">all on {{.Version}}</span>{{else}}<span class="muted">none yet</span>{{end}}{{else}}<span class="muted small">compared on release builds</span>{{end}}{{if .WatchOff}} <a class="pill warn" href="/hosts?only=collector" title="Changes are only reported on the schedule">change watch off on {{.WatchOff}}</a>{{end}}</dd></div>
+      <div class="wide"><dt>Open findings</dt><dd><span><strong>{{num .Fixable}}</strong> fixable</span> <span class="muted">{{num .NoFix}} with no fix released yet · {{num .Open}} in all</span></dd></div>
+    </dl>
+    {{if .WaitingHosts}}<p class="muted small waiting">Waiting for first report: {{range $i, $h := .WaitingHosts}}{{if $i}}, {{end}}<a href="{{hostURL $h.OrgSlug $h.Name}}">{{$h.Name}}</a>{{end}}</p>{{end}}
+    {{end}}
+  </section>
+</div>
 {{end}}{{end}}

@@ -89,9 +89,11 @@ type Counts struct {
 	Medium     int `json:"medium"`
 	Low        int `json:"low"`
 	Unknown    int `json:"unknown"`
-	Fixable    int `json:"fixable"`     // a fixed version exists
-	FixPending int `json:"fix_pending"` // ...and an already-pending update installs it
-	NoFix      int `json:"no_fix"`      // affected, but no fix released yet
+	Fixable    int `json:"fixable"`               // a fixed version exists
+	FixPending int `json:"fix_pending"`           // ...and an already-pending update installs it
+	NoFix      int `json:"no_fix"`                // affected, but no fix released yet
+	FixUrgent  int `json:"fixable_critical_high"` // fixable, and critical or high
+	InNews     int `json:"in_news"`               // named by a live threat-news incident
 }
 
 type Finding struct {
@@ -118,6 +120,10 @@ type Finding struct {
 type Filter struct {
 	Org   string // org slug, or "" for every visible org
 	Scope store.Scope
+	Host  string // one host's name (in Org), or "" for all
+	// CountsOnly leaves Findings empty and tallies Counts in SQL instead,
+	// for pages that show counts across many hosts.
+	CountsOnly bool
 }
 
 // Build reports on every visible host that has reported.
@@ -128,6 +134,12 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 		return nil, err
 	}
 	r := &Report{GeneratedAt: now.UTC(), Hosts: []Host{}}
+	var tallies map[int64]map[string]store.FindingCounts
+	if f.CountsOnly {
+		if tallies, err = st.OpenFindingCounts(ctx); err != nil {
+			return nil, err
+		}
+	}
 	eolCache := map[string][]eol.Cycle{}
 	cycles := func(product string) ([]eol.Cycle, error) {
 		if c, ok := eolCache[product]; ok {
@@ -155,7 +167,7 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 	}
 
 	for _, h := range hosts {
-		if !f.Scope.CanView(h.OrgID) || (orgSlug != "" && h.OrgSlug != orgSlug) {
+		if !f.Scope.CanView(h.OrgID) || (orgSlug != "" && h.OrgSlug != orgSlug) || (f.Host != "" && h.Name != f.Host) {
 			continue
 		}
 		inv, err := st.Inventory(ctx, h)
@@ -199,21 +211,32 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 			host.Runtimes = append(host.Runtimes, out)
 		}
 
-		fs, err := st.OpenFindings(ctx, h.ID)
-		if err != nil {
-			return nil, err
-		}
-		for _, f := range fs {
-			host.Findings = append(host.Findings, Finding{
-				Advisory: f.AdvisoryID, CVEs: nonNil(f.CVEs), Severity: f.Severity, CVSS: f.CVSS,
-				KEV: f.KEV, KEVRansomware: f.KEVRansomware, Package: f.Package, Version: f.Version,
-				Binaries: nonNil(f.Binaries), Fixed: f.FixedVersion, FixPending: f.FixPending,
-				Summary: f.Summary, FirstSeen: f.FirstSeen, Site: f.SiteRoot, EPSS: f.EPSS, InNews: f.InNews,
-			})
-			host.Counts.add(f)
+		siteCounts := map[string]Counts{}
+		if f.CountsOnly {
+			for root, c := range tallies[h.ID] {
+				siteCounts[root] = countsFrom(c)
+				host.Counts.merge(countsFrom(c))
+			}
+		} else {
+			fs, err := st.OpenFindings(ctx, h.ID)
+			if err != nil {
+				return nil, err
+			}
+			for _, f := range fs {
+				host.Findings = append(host.Findings, Finding{
+					Advisory: f.AdvisoryID, CVEs: nonNil(f.CVEs), Severity: f.Severity, CVSS: f.CVSS,
+					KEV: f.KEV, KEVRansomware: f.KEVRansomware, Package: f.Package, Version: f.Version,
+					Binaries: nonNil(f.Binaries), Fixed: f.FixedVersion, FixPending: f.FixPending,
+					Summary: f.Summary, FirstSeen: f.FirstSeen, Site: f.SiteRoot, EPSS: f.EPSS, InNews: f.InNews,
+				})
+				host.Counts.add(f)
+				c := siteCounts[f.SiteRoot]
+				c.add(f)
+				siteCounts[f.SiteRoot] = c
+			}
 		}
 		for _, s := range inv.Sites {
-			site, err := buildSite(s, fs, lifecycle)
+			site, err := buildSite(s, siteCounts[s.Root], lifecycle)
 			if err != nil {
 				return nil, err
 			}
@@ -224,11 +247,11 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 	return r, nil
 }
 
-func buildSite(s store.InventorySite, fs []store.ReportFinding, lifecycle func(product, cycle string) (*Lifecycle, error)) (Site, error) {
+func buildSite(s store.InventorySite, counts Counts, lifecycle func(product, cycle string) (*Lifecycle, error)) (Site, error) {
 	site := Site{
 		Root: s.Root, DocumentRoot: s.DocumentRoot, ServerNames: nonNil(s.ServerNames), WebServer: s.WebServer,
 		Readable: s.Readable, PHPFPM: s.PHPFPMVersion, PHPRequirement: s.PHPRequirement,
-		Framework: s.Framework, FrameworkVersion: s.FrameworkVersion, Packages: len(s.Packages),
+		Framework: s.Framework, FrameworkVersion: s.FrameworkVersion, Packages: len(s.Packages), Counts: counts,
 	}
 	if !s.DeployedAt.IsZero() {
 		d := s.DeployedAt
@@ -253,11 +276,6 @@ func buildSite(s store.InventorySite, fs []store.ReportFinding, lifecycle func(p
 			}
 		}
 	}
-	for _, f := range fs {
-		if f.SiteRoot == s.Root {
-			site.Counts.add(f)
-		}
-	}
 	return site, nil
 }
 
@@ -271,8 +289,14 @@ func (c *Counts) add(f store.ReportFinding) {
 	}
 	if f.FixedVersion != "" {
 		c.Fixable++
+		if f.Severity == "critical" || f.Severity == "high" {
+			c.FixUrgent++
+		}
 	} else {
 		c.NoFix++
+	}
+	if f.InNews {
+		c.InNews++
 	}
 	switch f.Severity {
 	case "critical":
@@ -286,6 +310,28 @@ func (c *Counts) add(f store.ReportFinding) {
 	default:
 		c.Unknown++
 	}
+}
+
+// countsFrom converts the store's SQL tally.
+func countsFrom(c store.FindingCounts) Counts {
+	return Counts{Total: c.Total, KEV: c.KEV, Critical: c.Critical, High: c.High, Medium: c.Medium, Low: c.Low,
+		Unknown: c.Unknown, Fixable: c.Fixable, FixPending: c.FixPending, NoFix: c.NoFix, FixUrgent: c.FixUrgent,
+		InNews: c.InNews}
+}
+
+func (c *Counts) merge(o Counts) {
+	c.Total += o.Total
+	c.KEV += o.KEV
+	c.Critical += o.Critical
+	c.High += o.High
+	c.Medium += o.Medium
+	c.Low += o.Low
+	c.Unknown += o.Unknown
+	c.Fixable += o.Fixable
+	c.FixPending += o.FixPending
+	c.NoFix += o.NoFix
+	c.FixUrgent += o.FixUrgent
+	c.InNews += o.InNews
 }
 
 func nonNil(s []string) []string {
