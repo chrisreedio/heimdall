@@ -31,6 +31,7 @@
     {{if .Viewer.IsAdmin}}<a href="/admin/users"{{if eq .Nav "users"}} aria-current="page"{{end}}>Users</a>{{end}}
   </nav>
   <div class="who">
+    {{if .MCP}}<a class="who-link" href="/account/assistants"{{if eq .Nav "assistants"}} aria-current="page"{{end}}>AI assistants</a>{{end}}
     <span class="email">{{.Viewer.Email}}</span>
     <form method="post" action="/logout">
       <input type="hidden" name="csrf" value="{{.CSRF}}">

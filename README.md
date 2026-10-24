@@ -550,6 +550,8 @@ Builds on M6 patch plans and M7 history. See [docs/anomaly-signals.md](docs/anom
 ### M11 · MCP for AI assistants
 - [x] Read-only MCP endpoint (Streamable HTTP, JSON-RPC 2.0) on its own loopback listener, exposed over the tailnet with `tailscale serve`
 - [x] Per-user tokens (`hmd_mcp_…`, hashed, revocable). Scope and roles follow the user, and every call is audit-logged.
+- [x] Self-service **AI assistants** page: each user creates (shown once), lists and revokes their own tokens, and admins can revoke anyone's from Users. It has copy-paste setup for Claude Desktop, Claude Code and other clients.
+- [x] **Claude Desktop extension** (`.mcpb`), built by each hub with its URL filled in: a zero-dependency Node bridge from stdio to the hub over the tailnet, with the token kept in the OS keychain. Claude's cloud custom connectors aren't used, because they'd need the hub on the internet.
 - [x] Tools: `search`, `patch_priorities`, `host`, `sites`, `anomalies`, `changes`, `drift`, all through the same scoped code paths as the UI
 - [x] Prompt-injection hygiene (untrusted-data labelling, read-only), Origin check against DNS rebinding, bounded output
 - [ ] Later: opt-in write tools for operators (acknowledge an anomaly, tick a patch plan item)
