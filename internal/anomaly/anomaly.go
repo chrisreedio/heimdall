@@ -79,7 +79,11 @@ func (e *Engine) OnSnapshot(ctx context.Context, host store.IngestHost) ([]store
 	// Reboots and kernels.
 	elapsed := int64(cur.ReceivedAt.Sub(prev.ReceivedAt).Seconds())
 	if cur.UptimeSeconds >= 0 && prev.UptimeSeconds >= 0 {
-		rebooted := cur.UptimeSeconds < elapsed-300 && cur.UptimeSeconds < prev.UptimeSeconds+elapsed-300
+		// Uptime never goes backwards without a reboot, however close
+		// together the reports are (a report minutes before a reboot, and
+		// the one 3 minutes after boot).
+		rebooted := cur.UptimeSeconds < elapsed-300 && cur.UptimeSeconds < prev.UptimeSeconds+elapsed-300 ||
+			cur.UptimeSeconds > 0 && cur.UptimeSeconds < prev.UptimeSeconds
 		switch {
 		case rebooted && !expected:
 			if err := raise(store.Anomaly{Rule: "unexpected_reboot", Severity: "low",

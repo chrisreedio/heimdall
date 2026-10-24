@@ -158,6 +158,22 @@ func TestRebootAndKernel(t *testing.T) {
 	}
 }
 
+// Event-driven reports: one a minute after a kernel upgrade, the next 3
+// minutes after the reboot into it. That's a reboot, not a kernel that
+// changed in place.
+func TestRebootMinutesAfterReport(t *testing.T) {
+	e := newEnv(t)
+	h := e.host("web-01")
+	e.learn(h)
+	e.gap = 4 * time.Minute
+	up := int64(30 * 86400)
+	e.push(h, snap{pkgs: with(base, "linux-image-6.1.0-27", "6.1.115-1"), uptime: up})
+	got := e.push(h, snap{pkgs: with(base, "linux-image-6.1.0-27", "6.1.115-1"), kernel: "6.1.0-27", uptime: 180})
+	if !slices.Equal(got, []string{"unexpected_reboot"}) {
+		t.Errorf("reboot minutes after a report: %v", got)
+	}
+}
+
 func TestPeerOutlierAndSuppression(t *testing.T) {
 	e := newEnv(t)
 	h := e.host("web-01", "web")
