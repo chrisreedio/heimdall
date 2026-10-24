@@ -26,7 +26,7 @@ func TestFindingsView(t *testing.T) {
 		}
 	}
 	base := "/hosts/acme/web-01"
-	fv := buildFindingsView(base, "dpkg", url.Values{}, list)
+	fv := buildFindingsView(base, "dpkg", url.Values{}, list, nil)
 	if fv.View != "packages" || fv.Total != 240 || fv.Pages != 3 || len(fv.Groups) != findingsPerPage {
 		t.Fatalf("default view: %s total=%d pages=%d groups=%d", fv.View, fv.Total, fv.Pages, len(fv.Groups))
 	}
@@ -40,7 +40,7 @@ func TestFindingsView(t *testing.T) {
 		t.Errorf("paging links: next=%q prev=%q", fv.NextLink, fv.PrevLink)
 	}
 	// Filters combine, and changing one goes back to page 1.
-	fv = buildFindingsView(base, "dpkg", url.Values{"sev": {"critical"}, "fix": {"1"}, "page": {"9"}}, list)
+	fv = buildFindingsView(base, "dpkg", url.Values{"sev": {"critical"}, "fix": {"1"}, "page": {"9"}}, list, nil)
 	// The patch command covers exactly the filtered, fixable packages.
 	if fv.FixCmd == nil || !strings.HasPrefix(fv.FixCmd.Text, "sudo apt-get update && sudo apt-get install --only-upgrade pkg-003 ") || strings.Contains(fv.FixCmd.Text, "pkg-000") {
 		t.Errorf("fix command = %+v", fv.FixCmd)
@@ -60,7 +60,7 @@ func TestFindingsView(t *testing.T) {
 		t.Errorf("another chip: %q", l)
 	}
 	// All findings, a page at a time; junk parameters are ignored.
-	fv = buildFindingsView(base, "dpkg", url.Values{"view": {"all"}, "page": {"2"}, "sev": {"<x>"}}, list)
+	fv = buildFindingsView(base, "dpkg", url.Values{"view": {"all"}, "page": {"2"}, "sev": {"<x>"}}, list, nil)
 	if fv.View != "all" || len(fv.Rows) != findingsPerPage || fv.Page != 2 || fv.Sev != "" {
 		t.Errorf("all view: rows=%d page=%d sev=%q", len(fv.Rows), fv.Page, fv.Sev)
 	}
@@ -73,12 +73,64 @@ func TestFixCommandUsesBinaryNames(t *testing.T) {
 		{Package: "perl", Fixed: ""}, // no fix: not included
 		{Package: "evil; rm -rf /", Fixed: "1"},
 	}
-	cmd, n, pending := fixCommand("dpkg", list)
+	cmd, n, pending := fixCommand("dpkg", list, nil)
 	if cmd == nil || cmd.Text != "sudo apt-get update && sudo apt-get install --only-upgrade libc6 libssl3 openssl" || n != 3 || pending != 1 {
 		t.Errorf("cmd=%+v n=%d pending=%d", cmd, n, pending)
 	}
-	if cmd, _, _ := fixCommand("pacman", list); cmd != nil {
+	if cmd, _, _ := fixCommand("pacman", list, nil); cmd != nil {
 		t.Error("no command for package managers without one")
+	}
+}
+
+func TestFixCommandKernel(t *testing.T) {
+	set := func(names ...string) map[string]bool {
+		m := map[string]bool{}
+		for _, n := range names {
+			m[n] = true
+		}
+		return m
+	}
+	awsKernel := report.Finding{Package: "linux-aws-6.17", Fixed: "6.17.0-1019.19~24.04.1",
+		Binaries: []string{"linux-aws-6.17-headers-6.17.0-1009", "linux-headers-6.17.0-1009-aws", "linux-modules-6.17.0-1009-aws", "linux-tools-6.17.0-1009-aws"}}
+	openssl := report.Finding{Package: "openssl", Fixed: "3.0.13-0ubuntu3.5", Binaries: []string{"libssl3", "openssl"}}
+	aws := set("linux-aws", "linux-image-aws", "linux-headers-aws", "linux-image-6.17.0-1009-aws", "linux-modules-6.17.0-1009-aws",
+		"linux-aws-6.17-headers-6.17.0-1009", "linux-headers-6.17.0-1009-aws", "linux-tools-6.17.0-1009-aws", "libssl3", "openssl")
+	for _, c := range []struct {
+		name, pm  string
+		list      []report.Finding
+		installed map[string]bool
+		want      string
+		note      string
+	}{
+		{"ubuntu aws kernel only", "dpkg", []report.Finding{awsKernel}, aws,
+			"sudo apt-get update && sudo apt-get install --only-upgrade linux-aws linux-headers-aws linux-image-aws", "metapackage (linux-aws, linux-headers-aws, linux-image-aws)"},
+		{"ubuntu aws mixed", "dpkg", []report.Finding{awsKernel, openssl}, aws,
+			"sudo apt-get update && sudo apt-get install --only-upgrade libssl3 linux-aws linux-headers-aws linux-image-aws openssl", "Reboot afterwards"},
+		{"ubuntu generic", "dpkg", []report.Finding{{Package: "linux", Fixed: "6.8.0-47.47", Binaries: []string{"linux-image-6.8.0-45-generic", "linux-libc-dev"}}},
+			set("linux-generic", "linux-image-generic", "linux-image-6.8.0-45-generic", "linux-libc-dev"),
+			"sudo apt-get update && sudo apt-get install --only-upgrade linux-generic linux-image-generic linux-libc-dev", "Reboot afterwards"},
+		{"ubuntu hwe", "dpkg", []report.Finding{{Package: "linux-hwe-6.11", Fixed: "6.11.0-31.31~24.04.1", Binaries: []string{"linux-hwe-6.11-headers-6.11.0-29"}}},
+			set("linux-generic-hwe-24.04", "linux-image-generic-hwe-24.04", "linux-hwe-6.11-headers-6.11.0-29"),
+			"sudo apt-get update && sudo apt-get install --only-upgrade linux-generic-hwe-24.04 linux-image-generic-hwe-24.04", "Reboot afterwards"},
+		{"debian", "dpkg", []report.Finding{{Package: "linux", Fixed: "6.1.115-1", Binaries: []string{"linux-image-6.1.0-26-amd64"}}},
+			set("linux-image-amd64", "linux-image-6.1.0-26-amd64"),
+			"sudo apt-get update && sudo apt-get install --only-upgrade linux-image-amd64", "linux-image-amd64"},
+		{"no metapackage", "dpkg", []report.Finding{awsKernel, openssl}, set("linux-modules-6.17.0-1009-aws", "libssl3", "openssl"),
+			"sudo apt-get update && sudo apt-get upgrade", "no kernel metapackage"},
+		{"no kernel", "dpkg", []report.Finding{openssl}, aws, "sudo apt-get update && sudo apt-get install --only-upgrade libssl3 openssl", ""},
+		{"rocky", "rpm", []report.Finding{{Package: "kernel", Fixed: "5.14.0-503.14.1.el9_5", Binaries: []string{"kernel", "kernel-core", "kernel-modules"}}},
+			set("kernel", "kernel-core", "kernel-modules"), "sudo dnf upgrade --refresh kernel kernel-core kernel-modules", "Reboot afterwards"},
+		{"alpine", "apk", []report.Finding{{Package: "linux-lts", Fixed: "6.6.58-r0", Binaries: []string{"linux-lts"}}},
+			set("linux-lts"), "sudo apk update && sudo apk upgrade linux-lts", "Reboot afterwards"},
+	} {
+		cmd, _, _ := fixCommand(c.pm, c.list, c.installed)
+		if cmd == nil || cmd.Text != c.want {
+			t.Errorf("%s: %+v, want %q", c.name, cmd, c.want)
+			continue
+		}
+		if (c.note == "") != (cmd.Note == "") || !strings.Contains(cmd.Note, c.note) {
+			t.Errorf("%s: note %q, want %q", c.name, cmd.Note, c.note)
+		}
 	}
 }
 

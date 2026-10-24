@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+
+	"github.com/chrisreedio/heimdall/internal/kernel"
 )
 
 // Result is the validated, advisory-only output of a run.
@@ -194,6 +196,10 @@ func checkCommand(cmd string, h HostAllowed) string {
 	if cmd == RebootCommand {
 		return cmd
 	}
+	// A Debian/Ubuntu kernel fix on a host with no kernel metapackage.
+	if h.PM == "dpkg" && cmd == kernel.DpkgFullUpgrade {
+		return cmd
+	}
 	if rest, ok := strings.CutPrefix(cmd, "composer update "); ok {
 		rest = strings.TrimSuffix(rest, " --with-dependencies")
 		if pkgs := strings.Fields(rest); len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && allIn(pkgs, composerName, h.Composer) {
@@ -203,13 +209,20 @@ func checkCommand(cmd string, h HostAllowed) string {
 	}
 	for _, prefix := range commandPrefixes[h.PM] {
 		if rest, ok := strings.CutPrefix(cmd, prefix+" "); ok {
-			if pkgs := strings.Fields(rest); len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && allIn(pkgs, safePackage, h.Packages) {
+			if pkgs := strings.Fields(rest); len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && allIn(pkgs, safePackage, h.Packages) &&
+				noABIKernel(h.PM, pkgs) {
 				return cmd
 			}
 			return ""
 		}
 	}
 	return ""
+}
+
+// noABIKernel rejects Debian/Ubuntu packages named for one kernel ABI:
+// upgrading them never installs a kernel fix (the metapackage does).
+func noABIKernel(pm string, pkgs []string) bool {
+	return !slices.ContainsFunc(pkgs, func(p string) bool { return kernel.ABIPackage(pm, p) })
 }
 
 func allIn(pkgs []string, shape *regexp.Regexp, known map[string]bool) bool {
@@ -223,18 +236,19 @@ func allIn(pkgs []string, shape *regexp.Regexp, known map[string]bool) bool {
 
 // commandShapeOK checks a stored command's shape (not the package list).
 func commandShapeOK(cmd string) bool {
-	if cmd == RebootCommand {
+	if cmd == RebootCommand || cmd == kernel.DpkgFullUpgrade {
 		return true
 	}
 	if rest, ok := strings.CutPrefix(cmd, "composer update "); ok {
 		pkgs := strings.Fields(strings.TrimSuffix(rest, " --with-dependencies"))
 		return len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && all(pkgs, composerName)
 	}
-	for _, prefixes := range commandPrefixes {
+	for pm, prefixes := range commandPrefixes {
 		for _, prefix := range prefixes {
 			if rest, ok := strings.CutPrefix(cmd, prefix+" "); ok {
 				pkgs := strings.Fields(rest)
-				return len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && all(pkgs, safePackage) && strings.Join(pkgs, " ") == rest
+				return len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && all(pkgs, safePackage) && strings.Join(pkgs, " ") == rest &&
+					noABIKernel(pm, pkgs)
 			}
 		}
 	}

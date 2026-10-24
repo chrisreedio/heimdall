@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/chrisreedio/heimdall/internal/kernel"
 	"github.com/chrisreedio/heimdall/internal/report"
 )
 
@@ -57,8 +58,11 @@ type findingsView struct {
 // fixCommand builds an upgrade command for the packages that fix the
 // given findings, using the binary package names the package manager
 // installs. nil when nothing shown can be fixed, or the package manager
-// isn't one we write commands for.
-func fixCommand(pm string, list []report.Finding) (*command, int, int) {
+// isn't one we write commands for. Kernel fixes are special (see
+// internal/kernel): on Debian and Ubuntu they go through the installed
+// kernel metapackages, never the ABI-named packages, and all of them need
+// a reboot.
+func fixCommand(pm string, list []report.Finding, installed map[string]bool) (*command, int, int) {
 	if pm == "composer" {
 		var names []string
 		pending := 0
@@ -81,16 +85,16 @@ func fixCommand(pm string, list []report.Finding) (*command, int, int) {
 	if prefix == "" {
 		return nil, 0, 0
 	}
+	has := func(n string) bool { return installed[n] }
 	var names []string
 	pendingPkgs := 0
+	kernelFix := false
 	for _, f := range list {
 		if f.Fixed == "" {
 			continue
 		}
-		bins := f.Binaries
-		if len(bins) == 0 {
-			bins = []string{f.Package}
-		}
+		bins, isKernel := kernel.Split(pm, f.Binaries, f.Package, has)
+		kernelFix = kernelFix || isKernel
 		for _, b := range bins {
 			if safePackage.MatchString(b) && !slices.Contains(names, b) {
 				names = append(names, b)
@@ -100,14 +104,42 @@ func fixCommand(pm string, list []report.Finding) (*command, int, int) {
 			}
 		}
 	}
+	note := ""
+	if kernelFix {
+		note = "Includes a kernel update. Reboot afterwards to run the new kernel."
+		if pm == "dpkg" {
+			var all []string
+			for n := range installed {
+				if safePackage.MatchString(n) {
+					all = append(all, n)
+				}
+			}
+			metas := kernel.Metapackages(pm, all)
+			if len(metas) == 0 {
+				return &command{ID: "cmd-fix", Text: kernel.DpkgFullUpgrade, Note: noMetapackageNote}, len(names) + 1, pendingPkgs
+			}
+			for _, m := range metas {
+				if !slices.Contains(names, m) {
+					names = append(names, m)
+				}
+			}
+			note = "Includes a kernel update through the kernel metapackage (" + strings.Join(metas, ", ") +
+				"), which installs the new kernel beside the running one. Reboot afterwards to run it."
+		}
+	}
 	if len(names) == 0 {
 		return nil, 0, 0
 	}
 	slices.Sort(names)
-	return &command{ID: "cmd-fix", Text: prefix + " " + strings.Join(names, " ")}, len(names), pendingPkgs
+	return &command{ID: "cmd-fix", Text: prefix + " " + strings.Join(names, " "), Note: note}, len(names), pendingPkgs
 }
 
-func buildFindingsView(base, pm string, q url.Values, list []report.Finding) findingsView {
+const noMetapackageNote = "Includes a kernel fix, but no kernel metapackage (such as linux-generic, linux-aws or linux-image-amd64) " +
+	"is installed, so apt won't install a newer kernel by itself. This upgrades every package instead; install your kernel's " +
+	"metapackage to get kernel fixes, then reboot."
+
+// installed is the host's installed package names (nil for Composer).
+func buildFindingsView(base, pm string, q url.Values, list []report.Finding, installed map[string]bool) findingsView {
 	fv := findingsView{View: "packages", PM: pm, Sev: q.Get("sev"), Fixable: q.Get("fix") == "1"}
 	if q.Get("view") == "all" {
 		fv.View = "all"
@@ -140,7 +172,7 @@ func buildFindingsView(base, pm string, q url.Values, list []report.Finding) fin
 		kept = append(kept, f)
 	}
 	fv.Total = len(kept)
-	fv.FixCmd, fv.FixPkgs, fv.FixPending = fixCommand(pm, kept)
+	fv.FixCmd, fv.FixPkgs, fv.FixPending = fixCommand(pm, kept, installed)
 
 	n := len(kept)
 	if fv.View == "packages" {
