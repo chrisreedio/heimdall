@@ -365,3 +365,35 @@ func TestAlertRule(t *testing.T) {
 		t.Errorf("test text = %q", s)
 	}
 }
+
+func TestDiscordPostPayloadFile(t *testing.T) {
+	var ct, payload, file, name string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ct = r.Header.Get("Content-Type")
+		if err := r.ParseMultipartForm(1 << 20); err != nil {
+			t.Error(err)
+		}
+		payload = r.FormValue("payload_json")
+		if fh := r.MultipartForm.File["files[0]"]; len(fh) == 1 {
+			name = fh[0].Filename
+			f, _ := fh[0].Open()
+			b, _ := io.ReadAll(f)
+			file = string(b)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	u, _ := url.Parse(srv.URL)
+	d := &Discord{Label: "discord:agents", URL: "https://discord.com/api/webhooks/1234567890/abcdefghijklmnopqrstuvwxyz",
+		Client: &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+			r = r.Clone(r.Context())
+			r.URL.Scheme, r.URL.Host = u.Scheme, u.Host
+			return http.DefaultTransport.RoundTrip(r)
+		})}, Retry: Retry{Attempts: 1}}
+	if err := d.PostPayloadFile(t.Context(), map[string]any{"content": "hi"}, "a \"b\".json", []byte(`{"x":1}`)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(ct, "multipart/form-data; boundary=") || payload != `{"content":"hi"}` || file != `{"x":1}` || name != `a "b".json` {
+		t.Errorf("ct %q payload %q file %q name %q", ct, payload, file, name)
+	}
+}

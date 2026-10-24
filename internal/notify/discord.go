@@ -58,6 +58,16 @@ func (d *Discord) PostPayload(ctx context.Context, payload any) error {
 	return postJSON(ctx, d.Client, d.Retry, u, d.Label, payload)
 }
 
+// PostPayloadFile is PostPayload with one file attached (payload_json and
+// files[0]). The payload should list it in "attachments" as id 0.
+func (d *Discord) PostPayloadFile(ctx context.Context, payload any, name string, data []byte) error {
+	u, err := DiscordURL(d.URL)
+	if err != nil {
+		return fmt.Errorf("notify: %s: %w", d.Label, err)
+	}
+	return postMultipart(ctx, d.Client, d.Retry, u, d.Label, payload, name, data)
+}
+
 // DiscordHost is the one host Discord webhooks are sent to.
 const DiscordHost = "discord.com"
 

@@ -15,14 +15,18 @@
     </form>{{else}}<strong>{{.Agent}}</strong>{{end}}</dd></div>
     <div><dt>Site</dt><dd><a href="{{.SiteURL}}">{{with .Site}}{{.}}{{else}}{{$.Body.Root}}{{end}}</a> <span class="muted small">on {{.Host}}</span><br><code class="path">{{pathBreak .Root}}</code></dd></div>
     <div><dt>Repository</dt><dd>{{with .Repo}}{{with $.Body.RepoWeb}}<a href="{{.}}" rel="noopener noreferrer"><code class="path">{{$.Body.Repo}}</code></a>{{else}}<code class="path">{{.}}</code>{{end}} <span class="muted small">{{if $.Body.RepoManual}}set by an operator{{else}}found by the collector{{end}}</span>{{else}}<span class="pill warn">repo unknown</span> <span class="small">The agent will be told the repository is unknown. <a href="{{$.Body.SiteURL}}#repo">Set it on the site page</a> first if you can.</span>{{end}}</dd></div>
-    <div><dt>Packages</dt><dd>{{.Packages}} to update{{if .Omitted}} <span class="muted small">({{.Omitted}} more didn't fit Discord's 2,000-character limit; the agent is told so)</span>{{end}}</dd></div>
+    <div><dt>Packages</dt><dd>{{.Packages}} to update{{if .Omitted}} <span class="muted small">({{.Omitted}} more didn't fit Discord's 2,000-character limit; the attached file lists them all)</span>{{end}}</dd></div>
   </dl>
 
   <h2 class="handoff-h">The message</h2>
   <pre class="handoff-msg" id="handoff-msg">{{.Content}}</pre>
+  <details class="handoff-file">
+    <summary>Attached file: <code>{{.FileName}}</code> <span class="muted small">every package and advisory, the site's runtime and the steps</span></summary>
+    <pre class="handoff-msg" id="handoff-file">{{.File}}</pre>
+  </details>
 
   <div class="handoff-note small">
-    <p><strong>What this shares:</strong> the package names, installed and fixed versions and advisory IDs above, plus the host and site names, the site's path and repository, and your display name. That's more than Heimdall's alerts, which carry counts only. Everyone and every bot in that Discord channel can read it.</p>
+    <p><strong>What this shares:</strong> the package names, installed and fixed versions and advisories above (in the attached file: with their CVEs, severity and known-exploited status), the site's framework and PHP versions, plus the host and site names, the site's path and repository, and your display name. That's more than Heimdall's alerts, which carry counts only. Everyone and every bot in that Discord channel can read it.</p>
     <p><strong>Who it pings:</strong> only {{.Agent}}. The message allows no other mentions.</p>
     <p><strong>The agent acts on it.</strong> The wording is fixed and every value comes from Heimdall's own data, never from the AI triage text.</p>
   </div>

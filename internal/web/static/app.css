@@ -893,6 +893,7 @@ details.repo-pick form { flex-wrap: wrap; align-items: flex-end; max-width: 560p
   background: var(--code-bg); font-size: 12.5px; line-height: 1.5;
   white-space: pre-wrap; overflow-wrap: anywhere; max-height: 60vh; overflow: auto;
 }
+.handoff-file summary { cursor: pointer; font-size: 13.5px; margin-bottom: 6px; }
 .handoff-note { display: grid; gap: 6px; padding: 10px 12px; border-radius: 8px; border-left: 4px solid var(--accent); background: var(--code-bg); }
 .handoff-note p { margin: 0; max-width: 95ch; }
 .handoff-send { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0; }

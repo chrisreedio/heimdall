@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"html"
 	"io"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -37,9 +38,21 @@ type fakeDiscord struct {
 func newFakeDiscord(t *testing.T) *fakeDiscord {
 	f := &fakeDiscord{status: http.StatusNoContent}
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		b, _ := io.ReadAll(r.Body)
 		var m map[string]any
-		json.Unmarshal(b, &m)
+		if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt == "multipart/form-data" {
+			// payload_json plus files[0], recorded as "_file" and "_filename".
+			if err := r.ParseMultipartForm(1 << 20); err == nil {
+				json.Unmarshal([]byte(r.FormValue("payload_json")), &m)
+				if fh := r.MultipartForm.File["files[0]"]; len(fh) == 1 {
+					fr, _ := fh[0].Open()
+					b, _ := io.ReadAll(fr)
+					m["_file"], m["_filename"] = string(b), fh[0].Filename
+				}
+			}
+		} else {
+			b, _ := io.ReadAll(r.Body)
+			json.Unmarshal(b, &m)
+		}
 		f.mu.Lock()
 		f.bodies, f.paths = append(f.bodies, m), append(f.paths, r.URL.Path)
 		status := f.status
@@ -190,6 +203,24 @@ func TestHandoffSend(t *testing.T) {
 		if !strings.Contains(content, want) {
 			t.Errorf("message lacks %q:\n%s", want, content)
 		}
+	}
+	// The whole request rides along as a file, the same one the confirm
+	// page showed, listed in attachments.
+	file, _ := msg["_file"].(string)
+	if msg["_filename"] != "heimdall-handoff-"+form.Get("request_id")+".json" || !strings.Contains(cp, "Attached file: <code>heimdall-handoff-") {
+		t.Errorf("attachment name %v", msg["_filename"])
+	}
+	att, _ := json.Marshal(msg["attachments"])
+	if !strings.Contains(string(att), `"filename":"heimdall-handoff-`+form.Get("request_id")+`.json"`) || !strings.Contains(string(att), `"id":0`) {
+		t.Errorf("attachments = %s", att)
+	}
+	var fdata handoff.FileData
+	if err := json.Unmarshal([]byte(file), &fdata); err != nil || fdata.Format != handoff.FileFormat || len(fdata.Packages) == 0 ||
+		len(fdata.Advisories) == 0 || fdata.Advisories[0].URL != "https://github.com/advisories/GHSA-test-0000-0001" || len(fdata.Steps) == 0 {
+		t.Errorf("attached file (%v): %s", err, file)
+	}
+	if strings.Contains(file, "<@&1>") || strings.Contains(file, "onerror") {
+		t.Errorf("display name or advisory text reached the file unescaped: %s", file)
 	}
 	if strings.Contains(content, "<@&1>") || strings.Contains(content, "onerror") {
 		t.Errorf("display name or advisory text reached the message unescaped: %s", content)

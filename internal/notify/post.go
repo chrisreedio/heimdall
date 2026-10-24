@@ -10,7 +10,10 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"mime"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"strconv"
 	"strings"
@@ -82,10 +85,48 @@ func postJSON(ctx context.Context, hc *http.Client, retry Retry, rawURL, what st
 	if err != nil {
 		return err
 	}
+	return postBody(ctx, hc, retry, rawURL, what, body, "application/json")
+}
+
+// postMultipart sends payload as Discord's payload_json form field with one
+// file attached as files[0], with the same retries as postJSON.
+func postMultipart(ctx context.Context, hc *http.Client, retry Retry, rawURL, what string, payload any, name string, data []byte) error {
+	if hc == nil {
+		return fmt.Errorf("notify: %s: needs an HTTP client", what)
+	}
+	pj, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	h := textproto.MIMEHeader{}
+	h.Set("Content-Disposition", `form-data; name="payload_json"`)
+	h.Set("Content-Type", "application/json")
+	pw, err := mw.CreatePart(h)
+	if err != nil {
+		return err
+	}
+	pw.Write(pj)
+	h = textproto.MIMEHeader{}
+	h.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{"name": "files[0]", "filename": name}))
+	h.Set("Content-Type", "application/json")
+	fw, err := mw.CreatePart(h)
+	if err != nil {
+		return err
+	}
+	fw.Write(data)
+	if err := mw.Close(); err != nil {
+		return err
+	}
+	return postBody(ctx, hc, retry, rawURL, what, buf.Bytes(), mw.FormDataContentType())
+}
+
+func postBody(ctx context.Context, hc *http.Client, retry Retry, rawURL, what string, body []byte, contentType string) error {
 	var last error
 	n := retry.attempts()
 	for i := range n {
-		retryAfter, retryable, err := postOnce(ctx, hc, rawURL, body)
+		retryAfter, retryable, err := postOnce(ctx, hc, rawURL, body, contentType)
 		if err == nil {
 			return nil
 		}
@@ -114,14 +155,14 @@ func (e *statusError) Error() string {
 	return fmt.Sprintf("HTTP %d", e.Status)
 }
 
-func postOnce(ctx context.Context, hc *http.Client, rawURL string, body []byte) (retryAfter time.Duration, retryable bool, err error) {
+func postOnce(ctx context.Context, hc *http.Client, rawURL string, body []byte, contentType string) (retryAfter time.Duration, retryable bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, attemptTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, rawURL, bytes.NewReader(body))
 	if err != nil {
 		return 0, false, errors.New("bad webhook URL")
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("User-Agent", "heimdall-notify")
 	resp, err := hc.Do(req)
 	if err != nil {
