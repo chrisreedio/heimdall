@@ -51,7 +51,7 @@
 {{with .FixCmd}}<div class="cmd fix-cmd">
   <div class="cmd-label">{{if eq $.PM "composer"}}Update {{$.FixPkgs}} Composer package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}} <span class="muted small">· run in the site root</span>{{else}}Patch {{$.FixPkgs}} package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}}{{end}}{{if $.FixPending}} <span class="muted small">· {{$.FixPending}} already have the update downloaded and pending</span>{{end}}</div>
   <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
-  <p class="muted small">Upgrades only these packages. Filter by severity above to patch, say, just the critical ones first. Heimdall never runs it for you.</p>
+  <p class="muted small">{{if .Note}}{{.Note}}{{else}}Upgrades only these packages. Filter by severity above to patch, say, just the critical ones first.{{end}} Heimdall never runs it for you.</p>
 </div>{{end}}
 {{if eq .View "packages"}}
   {{if .Groups}}

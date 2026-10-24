@@ -86,7 +86,7 @@ Researched on Microsoft Learn in October 2026:
 This is **exactly** what leaves the hub, as one JSON document per run. It's built in [`internal/ai/facts.go`](../internal/ai/facts.go), and that file and this list are kept in sync. Free text is trimmed to one line and a fixed length. Nothing else is sent: no raw snapshots, full package lists, IP addresses, tokens, user names or emails, audit log, or config.
 
 **Explain this host** (one host):
-- **Host:** its name and environment; its OS name and OS lifecycle (product, cycle, end-of-life flag and date); when it last reported and whether it's stale; whether a reboot is required; its package manager; and its pending update and pending security update counts.
+- **Host:** its name and environment; its OS name and OS lifecycle (product, cycle, end-of-life flag and date); when it last reported and whether it's stale; whether a reboot is required (or unknown); the running kernel release (`uname -r` from its latest report) and the newest kernel installed, when the package list shows it; its package manager; and its pending update and pending security update counts.
 - **Finding counts:** total, KEV, by severity, fixable, fix pending and no fix yet, plus how many findings are in the news.
 - **Top findings:** up to 25, ranked like Patch first (KEV, in the news, fixable, severity, EPSS, CVSS). Each one has:
   - the package, installed version and fixed-in version, and whether the fix is already pending;
@@ -103,7 +103,7 @@ This is **exactly** what leaves the hub, as one JSON document per run. It's buil
 - **Open anomalies:** up to 30, each with its rule, severity, summary and when it was detected.
 - **News:** the titles, severities and status of incidents that affect this host.
 - **Plans and windows:** whether the host is in an open patch plan, and its current maintenance windows, described in a line each.
-- **Suggested commands:** the commands Heimdall itself would offer for this host, built from the host's own package names. They cover the fixable OS findings, pending security updates, each site's fixable Composer packages, and a reboot if one is required.
+- **Suggested commands:** the commands Heimdall itself would offer for this host, built from the host's own package names. They cover the fixable OS findings, pending security updates, each site's fixable Composer packages, and a reboot if one is required or a kernel fix will need one. A kernel fix on Debian or Ubuntu upgrades the installed kernel metapackage (such as `linux-aws`, `linux-generic` or `linux-image-amd64`), never the ABI-named packages like `linux-image-6.17.0-1009-aws`, because the fix ships as a new package; with no metapackage installed it falls back to `sudo apt-get update && sudo apt-get upgrade` and says why. RPM (`kernel`, `kernel-core`…) and Alpine (`linux-lts`, `linux-virt`) kernels keep their names, so they upgrade by name.
 
 **Daily brief** (one org):
 - **Org and totals:** the org's slug, the period length, and the fleet totals: hosts reporting, KEV and critical findings, hosts with fixes, hosts on end-of-life software, reboots, stale hosts, pending security updates, and findings that appeared or were resolved in the period.
@@ -126,7 +126,8 @@ When the input budget is tight, the less important parts go first: fewer finding
   - The answer must parse as the schema's JSON object (`summary`, up to 8 `actions` of `{title, why, host, command}`, and `notes`). Text is stripped of control and bidi characters and trimmed to fixed lengths.
   - An action's `host` must be a hostname from the data. Otherwise both the host and its command are dropped.
   - A `command` is kept only if it's exactly one of these shapes, naming only packages that host has installed (or has in its sites' Composer lockfiles), with no duplicates and at most 60 packages:
-    - `sudo apt-get [update && sudo apt-get] install --only-upgrade <pkgs>`
+    - `sudo apt-get [update && sudo apt-get] install --only-upgrade <pkgs>`, never naming an ABI-versioned kernel package (`linux-image-6.17.0-1009-aws` and the like)
+    - `sudo apt-get update && sudo apt-get upgrade`, exactly, on dpkg hosts (the kernel fallback above)
     - `sudo dnf upgrade [--refresh] <pkgs>`
     - `sudo apk [update && sudo apk] upgrade <pkgs>`, all matching the host's package manager
     - `composer update <vendor/pkg…> [--with-dependencies]`

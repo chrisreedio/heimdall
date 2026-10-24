@@ -400,6 +400,7 @@ type SnapshotSummary struct {
 	PendingUpdates   int
 	PendingSecurity  int
 	RebootRequired   *bool
+	Kernel           string // the running kernel release (uname -r), "" if unknown
 }
 
 // LatestSnapshot summarizes the host's most recent snapshot.
@@ -409,13 +410,13 @@ func (s *Store) LatestSnapshot(ctx context.Context, hostID int64) (SnapshotSumma
 	var os sql.NullString
 	var reboot sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT s.id, s.source, coalesce(h.last_seen_at, s.received_at), s.collector_version, coalesce(s.os_pretty, s.os_id), s.reboot_required,
+		SELECT s.id, s.source, coalesce(h.last_seen_at, s.received_at), s.collector_version, coalesce(s.os_pretty, s.os_id), s.reboot_required, coalesce(s.kernel, ''),
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id),
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id AND p.pending_version IS NOT NULL),
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id AND p.pending_security = 1)
 		FROM hosts h JOIN snapshots s ON s.id = h.last_snapshot_id
 		WHERE h.id = ?`, hostID).
-		Scan(&sum.ID, &sum.Source, &received, &sum.CollectorVersion, &os, &reboot,
+		Scan(&sum.ID, &sum.Source, &received, &sum.CollectorVersion, &os, &reboot, &sum.Kernel,
 			&sum.Packages, &sum.PendingUpdates, &sum.PendingSecurity)
 	if errors.Is(err, sql.ErrNoRows) {
 		return SnapshotSummary{}, ErrNotFound

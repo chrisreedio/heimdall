@@ -151,6 +151,15 @@ type hostBody struct {
 
 type command struct {
 	Label, ID, Text string
+	Note            string // shown under the command, if set
+}
+
+func installedNames(inv store.HostInventory) map[string]bool {
+	m := make(map[string]bool, len(inv.Packages))
+	for _, p := range inv.Packages {
+		m[p.Name] = true
+	}
+	return m
 }
 
 var safePackage = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]*$`)
@@ -272,7 +281,7 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	body.ShowAll = r.URL.Query().Get("findings") == "all"
 	body.PackageMgr = packageManager(inv)
 	body.Commands = upgradeCommands(body.PackageMgr, body.Pending)
-	body.OSView = buildFindingsView("/hosts/"+url.PathEscape(host.OrgSlug)+"/"+url.PathEscape(host.Name), packageManager(inv), r.URL.Query(), body.OSFindings)
+	body.OSView = buildFindingsView("/hosts/"+url.PathEscape(host.OrgSlug)+"/"+url.PathEscape(host.Name), packageManager(inv), r.URL.Query(), body.OSFindings, installedNames(inv))
 	if v := strings.TrimSpace(sum.CollectorVersion); v != "" && releaseTag.MatchString(s.cfg.Version) {
 		body.CollectorKnown = true
 		body.CollectorBehind = updates.Newer(s.cfg.Version, "v"+strings.TrimPrefix(v, "v"))
@@ -816,7 +825,7 @@ func (s *server) sitePage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		}
 	}
 	base := "/hosts/" + url.PathEscape(host.OrgSlug) + "/" + url.PathEscape(host.Name) + "/site?root=" + url.QueryEscape(root)
-	body.View = buildFindingsView(base, "composer", r.URL.Query(), fs)
+	body.View = buildFindingsView(base, "composer", r.URL.Query(), fs, nil)
 	if r.URL.Query().Get("labeled") == "1" {
 		body.Notice = "Label saved."
 	}

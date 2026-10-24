@@ -149,6 +149,9 @@ if [ "$upgrade" = 1 ]; then
 	rm -f "$db.pre-upgrade"
 	runuser -u heimdall-hub -- sh -c "umask 077 && cp -p '$db' '$db.pre-upgrade'"
 	install -m 0755 "$work/heimdall-linux-$arch" /usr/local/bin/heimdall
+	# migrate appends config sections for new features (off); keep the old
+	# file for a rollback, since older binaries reject keys they don't know.
+	cp -p /etc/heimdall/heimdall.toml "$work/heimdall.toml.previous"
 	# Keep local additions to the unit (e.g. SSO's LoadCredential line).
 	grep -E '^LoadCredential=' "$work/heimdall.service.previous" >"$work/creds" || true
 	if [ -s "$work/creds" ]; then
@@ -164,6 +167,7 @@ if [ "$upgrade" = 1 ]; then
 		systemctl stop heimdall 2>/dev/null || true
 		install -m 0755 /usr/local/bin/heimdall.previous /usr/local/bin/heimdall
 		install -m 0644 "$work/heimdall.service.previous" /etc/systemd/system/heimdall.service
+		cp -p "$work/heimdall.toml.previous" /etc/heimdall/heimdall.toml
 		systemctl daemon-reload
 		runuser -u heimdall-hub -- cp -p "$db.pre-upgrade" "$db"
 		rm -f "$db-wal" "$db-shm"
