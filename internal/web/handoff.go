@@ -150,14 +150,24 @@ func aiHandoffs(view *aiView, org, host string, sites []siteSection, h report.Ho
 			continue
 		}
 		pkgs := strings.Fields(strings.TrimSuffix(rest, " --with-dependencies"))
-		var links []handoffLink
+		var links, named []handoffLink
+		text := strings.ToLower(a.Title + " " + a.Why)
 		for _, site := range sites {
 			hit := slices.ContainsFunc(handoffFindings(h, site.Root), func(f handoff.Finding) bool {
 				return f.Ecosystem == "composer" && slices.Contains(pkgs, f.Package)
 			})
-			if hit {
-				links = append(links, handoffLink{Site: cmp.Or(siteName(site.Site), site.Root), URL: handoffURL(org, host, site.Root, "")})
+			if !hit {
+				continue
 			}
+			l := handoffLink{Site: cmp.Or(siteName(site.Site), site.Root), URL: handoffURL(org, host, site.Root, "")}
+			links = append(links, l)
+			// A step about one site names it (its domain or root): offer only that one.
+			if n := strings.ToLower(siteName(site.Site)); (n != "" && strings.Contains(text, n)) || strings.Contains(text, strings.ToLower(site.Root)) {
+				named = append(named, l)
+			}
+		}
+		if len(named) > 0 {
+			links = named
 		}
 		if len(links) == 1 {
 			links[0].Site = ""

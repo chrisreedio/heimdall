@@ -15,7 +15,9 @@ import (
 	"github.com/chrisreedio/heimdall/internal/composer"
 	"github.com/chrisreedio/heimdall/internal/feeds/eol"
 	"github.com/chrisreedio/heimdall/internal/findings"
+	"github.com/chrisreedio/heimdall/internal/kernel"
 	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/chrisreedio/heimdall/internal/version"
 )
 
 type Report struct {
@@ -35,7 +37,11 @@ type Host struct {
 	Findings   []Finding   `json:"findings"`
 	Sites      []Site      `json:"sites"`
 	Containers []Container `json:"containers"`
-	Lockfiles  []string    `json:"lockfiles"` // allowlisted npm/PyPI manifests (findings carry the path as site)
+	Lockfiles  []string    `json:"lockfiles"`        // allowlisted npm/PyPI manifests (findings carry the path as site)
+	Kernel     string      `json:"kernel,omitempty"` // the running kernel release (uname -r)
+	// OldKernels are installed Debian/Ubuntu kernel packages for releases
+	// older than the running one: on disk, not in use (see kernel.Older).
+	OldKernels []string `json:"old_kernels,omitempty"`
 }
 
 type Container struct {
@@ -113,6 +119,9 @@ type Finding struct {
 	Site          string    `json:"site,omitempty"`    // app root for Composer findings
 	EPSS          float64   `json:"epss,omitempty"`    // exploit probability (0-1), when known
 	InNews        bool      `json:"in_news,omitempty"` // named by a live threat-news incident
+	// NotRunning: every package is part of an older kernel that's
+	// installed but not running, so removing it (not upgrading) clears it.
+	NotRunning bool `json:"not_running,omitempty"`
 }
 
 // Filter narrows a report. Scope is required: hosts outside it are never
@@ -192,6 +201,13 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 		if host.OS == "" {
 			host.OS = strings.TrimSpace(inv.OSID + " " + inv.OSVersion)
 		}
+		host.Kernel = sum.Kernel
+		pm := hostPM(inv)
+		names := make([]string, 0, len(inv.Packages))
+		for _, p := range inv.Packages {
+			names = append(names, p.Name)
+		}
+		host.OldKernels = kernel.Older(pm, host.Kernel, names)
 
 		if info, ok := findings.HostEcosystem(inv); ok {
 			host.Ecosystem = info.OSV
@@ -228,6 +244,7 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 					KEV: f.KEV, KEVRansomware: f.KEVRansomware, Package: f.Package, Version: f.Version,
 					Binaries: nonNil(f.Binaries), Fixed: f.FixedVersion, FixPending: f.FixPending,
 					Summary: f.Summary, FirstSeen: f.FirstSeen, Site: f.SiteRoot, EPSS: f.EPSS, InNews: f.InNews,
+					NotRunning: f.SiteRoot == "" && kernel.NotRunning(pm, host.Kernel, f.Binaries),
 				})
 				host.Counts.add(f)
 				c := siteCounts[f.SiteRoot]
@@ -245,6 +262,24 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 		r.Hosts = append(r.Hosts, host)
 	}
 	return r, nil
+}
+
+// hostPM is the host's package manager (dpkg, rpm, apk), or "".
+func hostPM(inv store.HostInventory) string {
+	if inv.PackageManager != "" {
+		return inv.PackageManager
+	}
+	if info, ok := findings.HostEcosystem(inv); ok {
+		switch info.Scheme {
+		case version.Dpkg:
+			return "dpkg"
+		case version.RPM:
+			return "rpm"
+		case version.APK:
+			return "apk"
+		}
+	}
+	return ""
 }
 
 func buildSite(s store.InventorySite, counts Counts, lifecycle func(product, cycle string) (*Lifecycle, error)) (Site, error) {

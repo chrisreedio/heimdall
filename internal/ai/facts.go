@@ -41,6 +41,7 @@ type findingFact struct {
 	KEV        bool     `json:"kev,omitempty"`
 	EPSS       float64  `json:"epss,omitempty"`
 	InNews     bool     `json:"in_news,omitempty"`
+	NotRunning bool     `json:"not_running,omitempty"`
 	Summary    string   `json:"summary,omitempty"`
 }
 
@@ -85,14 +86,18 @@ type commandFact struct {
 }
 
 type hostFact struct {
-	Name            string        `json:"name"`
-	Env             string        `json:"env,omitempty"`
-	OS              string        `json:"os"`
-	OSLife          *lifeFact     `json:"os_lifecycle,omitempty"`
-	LastReport      string        `json:"last_report"`
-	Stale           bool          `json:"stale,omitempty"`
-	RebootRequired  *bool         `json:"reboot_required"`
-	RunningKernel   string        `json:"running_kernel,omitempty"`
+	Name           string    `json:"name"`
+	Env            string    `json:"env,omitempty"`
+	OS             string    `json:"os"`
+	OSLife         *lifeFact `json:"os_lifecycle,omitempty"`
+	LastReport     string    `json:"last_report"`
+	Stale          bool      `json:"stale,omitempty"`
+	RebootRequired *bool     `json:"reboot_required"`
+	RunningKernel  string    `json:"running_kernel,omitempty"`
+	// OldKernels counts installed kernel packages older than the running
+	// one; NotRunning counts findings that are only on them.
+	OldKernels      int           `json:"old_kernel_packages,omitempty"`
+	NotRunning      int           `json:"findings_on_old_kernels,omitempty"`
 	NewestKernel    string        `json:"newest_installed_kernel,omitempty"`
 	PackageManager  string        `json:"package_manager,omitempty"`
 	PendingUpdates  int           `json:"pending_updates"`
@@ -213,7 +218,7 @@ func life(l *report.Lifecycle) *lifeFact {
 func finding(f report.Finding, summary bool) findingFact {
 	ff := findingFact{Package: clip(f.Package, 100), Installed: clip(f.Version, 80), FixedIn: clip(f.Fixed, 80),
 		FixPending: f.FixPending, Advisory: clip(f.Advisory, 60), Severity: f.Severity, KEV: f.KEV,
-		EPSS: float64(int(f.EPSS*1000)) / 1000, InNews: f.InNews}
+		EPSS: float64(int(f.EPSS*1000)) / 1000, InNews: f.InNews, NotRunning: f.NotRunning}
 	for i, c := range f.CVEs {
 		if i == 3 {
 			break
@@ -324,7 +329,10 @@ func packageManager(inv store.HostInventory) string {
 }
 
 func (d hostData) allowed() HostAllowed {
-	a := HostAllowed{PM: d.pm, Packages: map[string]bool{}, Composer: map[string]bool{}}
+	a := HostAllowed{PM: d.pm, Packages: map[string]bool{}, Composer: map[string]bool{}, OldKernels: map[string]bool{}}
+	for _, p := range d.rep.OldKernels {
+		a.OldKernels[p] = true
+	}
 	for _, p := range d.inv.Packages {
 		a.Packages[p.Name] = true
 	}
@@ -352,6 +360,7 @@ func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 		inst = append(inst, kernel.Installed{Name: p.Name, Version: p.Version, Arch: p.Arch})
 	}
 	hf.NewestKernel = clip(kernel.Newest(d.pm, inst), 100)
+	hf.OldKernels = len(d.rep.OldKernels)
 	if d.changes != nil {
 		n, r := d.changes.New, d.changes.Resolved
 		hf.NewFindings, hf.Resolved = &n, &r
@@ -366,7 +375,10 @@ func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 			continue
 		}
 		osf = append(osf, f)
-		if f.Fixed != "" {
+		if f.NotRunning {
+			hf.NotRunning++
+		}
+		if f.Fixed != "" && !f.NotRunning { // an old kernel's fix is removing it
 			fixable = append(fixable, f)
 		} else {
 			nf := noFix[f.Package]
@@ -392,6 +404,7 @@ func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 		if cmd != "" {
 			hf.Commands = append(hf.Commands, commandFact{Label: label, Command: cmd})
 		}
+		hf.Commands = append(hf.Commands, oldKernelCommand(d.pm, d.rep.OldKernels, hf.NotRunning)...)
 		hf.Commands = append(hf.Commands, rebootCommand(reboot, kernelFix && cmd != "")...)
 		return hf
 	}
@@ -449,6 +462,7 @@ func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 				Command: "composer update " + strings.Join(names, " ") + " --with-dependencies"})
 		}
 	}
+	hf.Commands = append(hf.Commands, oldKernelCommand(d.pm, d.rep.OldKernels, hf.NotRunning)...)
 	hf.Commands = append(hf.Commands, rebootCommand(reboot, kernelFix && cmd != "")...)
 	return hf
 }
@@ -514,6 +528,22 @@ func fixCommand(pm string, fixable []report.Finding, a HostAllowed) (cmd, label 
 		label += ", including the kernel. Reboot afterwards to run the new kernel"
 	}
 	return prefix[0] + " " + strings.Join(names, " "), label, isKernel
+}
+
+// oldKernelCommand removes the kernels older than the running one, when
+// findings are on them: upgrading never clears those (see kernel.Older).
+func oldKernelCommand(pm string, pkgs []string, findings int) []commandFact {
+	var names []string
+	for _, p := range pkgs {
+		if safePackage.MatchString(p) && kernel.ABIPackage(pm, p) {
+			names = append(names, p)
+		}
+	}
+	if pm != "dpkg" || findings == 0 || len(names) == 0 || len(names) > maxCommandPkgs {
+		return nil
+	}
+	return []commandFact{{Label: "Remove the older kernels that are installed but not running (their findings clear; no reboot needed, " +
+		"but afterwards there's no older kernel to boot)", Command: kernel.PurgePrefix + " " + strings.Join(names, " ")}}
 }
 
 // rebootCommand is the reboot suggestion, when one is or will be needed.
