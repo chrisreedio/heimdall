@@ -14,7 +14,10 @@ import (
 
 // rootCommands need root themselves; everything else runs as the hub user.
 var rootCommands = map[string]bool{"upgrade": true, "restart": true, "sso": true, "ingest": true, "version": true,
-	"ai set-key": true, "ai test": true} // "ai test" reads the root-owned key file
+	"ai set-key": true, "ai test": true, // "ai test" reads the root-owned key file
+	// set-webhook adds a LoadCredential line to the unit; test reads the
+	// root-owned files it stores.
+	"notify set-webhook": true, "notify test": true}
 
 // Seams for tests.
 var (
