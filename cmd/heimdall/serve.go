@@ -197,6 +197,7 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger) (*http.Ser
 		IngestURL:    cfg.Ingest.PublicURL,
 		Updates:      updateChecker(cfg, log),
 		News:         cfg.News.Enabled,
+		MCP:          web.MCPSetup{Enabled: cfg.MCP.Enabled, BaseURL: cfg.MCP.BaseURL},
 	}, s, authn, searchFn, log.With("component", "ui"), time.Now)
 	if err != nil {
 		return nil, err

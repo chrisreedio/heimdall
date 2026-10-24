@@ -63,6 +63,8 @@ type Config struct {
 	EntraTenants []string // allowed tenant IDs, offered when an admin adds an Entra user
 
 	News bool // threat news is on: show the News page, dashboard strip and host card
+
+	MCP MCPSetup // [mcp]: the AI assistants page and Desktop extension; zero = off
 }
 
 // CSP is the Content-Security-Policy sent with every response.
@@ -102,6 +104,7 @@ type server struct {
 	secure     bool
 	cookieName string
 	pages      map[string]*template.Template
+	tokenLimit tokenLimiter // MCP token creation, per user
 }
 
 // New returns the UI handler.
@@ -155,6 +158,11 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /plans/{id}/{action}", s.requireAuth(s.planAction))
 	mux.HandleFunc("GET /admin/users", s.requireAuth(s.requireAdmin(s.adminUsers)))
 	mux.HandleFunc("POST /admin/users/{action}", s.requireAuth(s.requireAdmin(s.adminAction)))
+	mux.HandleFunc("GET /account/assistants", s.requireAuth(s.assistantsPage))
+	mux.HandleFunc("POST /account/assistants", s.requireAuth(s.assistantCreate))
+	mux.HandleFunc("POST /account/assistants/revoke", s.requireAuth(s.assistantRevoke))
+	mux.HandleFunc("GET /account/assistants/heimdall.mcpb", s.requireAuth(s.assistantBundle))
+	mux.HandleFunc("POST /admin/users/mcp-revoke", s.requireAuth(s.requireAdmin(s.adminTokenRevoke)))
 	mux.HandleFunc("GET /static/{file}", s.static)
 	mux.HandleFunc("/", s.requireAuth(func(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
 		s.notFound(w, r, v)
@@ -371,6 +379,7 @@ type page struct {
 	Refresh string           // same-site path for a meta refresh (SSO hand-off), or ""
 	Update  *updates.Release // a newer release, shown to admins
 	News    bool             // threat news is on (shows the nav item)
+	MCP     bool             // MCP is on (shows the AI assistants link)
 	Body    any
 }
 
@@ -402,6 +411,7 @@ func (s *server) renderPage(w http.ResponseWriter, r *http.Request, status int, 
 	}
 	p.Version = s.cfg.Version
 	p.News = s.cfg.News
+	p.MCP = s.cfg.MCP.Enabled
 	if p.Viewer != nil {
 		p.CSRF = auth.CSRFToken(p.Viewer.SessionToken)
 	}
@@ -436,6 +446,7 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, v *auth.Viewer, er
 func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
 		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "site", "news"}
+	names = append(names, "assistants") // AI assistants (MCP tokens)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/"+n+".html")

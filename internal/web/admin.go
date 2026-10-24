@@ -15,8 +15,9 @@ import (
 
 type adminUser struct {
 	store.User
-	Roles []store.Membership
-	Self  bool
+	Roles  []store.Membership
+	Self   bool
+	Tokens []tokenRow // active MCP tokens, when MCP is on
 }
 
 type adminBody struct {
@@ -26,6 +27,7 @@ type adminBody struct {
 	Roles   []store.Role
 	Notice  string
 	Error   string
+	MCP     bool // MCP is on: show each user's tokens
 }
 
 // adminNotices are the only messages a redirect can ask the page to show,
@@ -36,6 +38,8 @@ var adminNotices = map[string]string{
 	"revoked":  "Role revoked.",
 	"disabled": "User disabled; their sessions have ended.",
 	"enabled":  "User enabled.",
+
+	"token-revoked": "MCP token revoked.",
 }
 
 func (s *server) adminUsers(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
@@ -55,14 +59,23 @@ func (s *server) renderAdmin(w http.ResponseWriter, r *http.Request, v *auth.Vie
 		return
 	}
 	body := adminBody{Orgs: orgs, Tenants: s.cfg.EntraTenants, Notice: notice, Error: errMsg,
-		Roles: []store.Role{store.RoleViewer, store.RoleOperator, store.RoleAdmin}}
+		Roles: []store.Role{store.RoleViewer, store.RoleOperator, store.RoleAdmin}, MCP: s.cfg.MCP.Enabled}
 	for _, u := range users {
 		ms, err := s.st.Memberships(ctx, u.ID)
 		if err != nil {
 			s.fail(w, r, v, err)
 			return
 		}
-		body.Users = append(body.Users, adminUser{User: u, Roles: ms, Self: u.ID == v.UserID})
+		au := adminUser{User: u, Roles: ms, Self: u.ID == v.UserID}
+		if body.MCP {
+			ts, err := s.st.ListMCPTokens(ctx, u.ID)
+			if err != nil {
+				s.fail(w, r, v, err)
+				return
+			}
+			au.Tokens = activeTokens(ts)
+		}
+		body.Users = append(body.Users, au)
 	}
 	s.render(w, r, status, "admin_users", v, "Users", "users", body)
 }

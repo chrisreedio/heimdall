@@ -58,7 +58,8 @@ keep_snapshots_min = 30        # per host, whatever their age
 # Read-only endpoint for AI assistants (Claude Code, Claude Desktop…).
 # Expose over the tailnet with `tailscale serve --bg --https 8443 8090` (or
 # similar) and set base_url to that https address. Users authenticate with
-# their own tokens: `heimdall user mcp-token create <email>`.
+# their own tokens, from the UI's "AI assistants" page or with
+# `heimdall user mcp-token create <email>`.
 enabled  = false
 listen   = "127.0.0.1:8090"
 base_url = "http://127.0.0.1:8090"

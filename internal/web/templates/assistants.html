@@ -1,0 +1,110 @@
+{{define "content"}}{{$csrf := .CSRF}}{{$admin := .Viewer.IsAdmin}}{{with .Body}}
+<div class="assistants">
+<h1>AI assistants</h1>
+<p class="lede">Ask Claude about your fleet: <em>"what should I patch first?"</em>, <em>"which sites still run Laravel 10?"</em>. Assistants connect with a personal token over the tailnet. They get read-only access to what you can see in Heimdall, and nothing they do can reach a server.</p>
+{{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+
+{{if not .Enabled}}
+<section class="card">
+  <h2>MCP is off on this hub</h2>
+  {{if $admin}}
+  <p class="muted">To let people connect AI assistants, turn on the read-only MCP endpoint and publish it on the tailnet only. Add this to <code>/etc/heimdall/heimdall.toml</code>, with your hub's tailnet name:</p>
+  <div class="codebox"><pre id="mcp-config">[mcp]
+enabled  = true
+listen   = "127.0.0.1:8090"
+base_url = "https://hub.your-tailnet.ts.net:8444"</pre><button type="button" class="copy" data-copy="mcp-config" hidden>Copy</button></div>
+  <p class="muted">Then publish it to the tailnet (never the internet) and restart:</p>
+  <div class="codebox"><pre id="mcp-serve">sudo tailscale serve --bg --https 8444 http://127.0.0.1:8090
+sudo systemctl restart heimdall</pre><button type="button" class="copy" data-copy="mcp-serve" hidden>Copy</button></div>
+  <p class="muted">See <a href="https://github.com/chrisreedio/heimdall/blob/main/docs/mcp.md" rel="noopener">docs/mcp.md</a>.</p>
+  {{else}}<p class="muted">Ask an admin to turn on the MCP endpoint.</p>{{end}}
+</section>
+{{else}}
+
+{{if .NewToken}}
+<section class="card token-new" aria-labelledby="new-token-h">
+  <h2 id="new-token-h">Your new token: {{.NewName}}</h2>
+  <p><strong>Copy it now. You won't see it again</strong>: Heimdall keeps only a hash. If you lose it, revoke it and create another.</p>
+  <div class="codebox"><code id="new-token">{{.NewToken}}</code><button type="button" class="copy" data-copy="new-token" hidden>Copy</button></div>
+  <p class="hint">Treat it like a password. It grants the same read access as your sign-in, and it's never shown or logged anywhere else.</p>
+</section>
+{{end}}
+
+<section class="card">
+  <h2>Your tokens</h2>
+  {{if .Tokens}}
+  <div class="scroll"><table class="tokens">
+    <thead><tr><th>Name</th><th class="created">Created</th><th>Last used</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>{{range .Tokens}}<tr>
+      <td class="token-name">{{.Name}}</td>
+      <td class="created" title="{{fullDate .Created}}">{{dayAgo .Created}}</td>
+      <td>{{if .LastUsed}}<span title="{{fullDate .LastUsed}}">{{dayAgo .LastUsed}}</span>{{else}}<span class="muted">never</span>{{end}}</td>
+      <td class="token-act"><form method="post" action="/account/assistants/revoke" class="inline">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="id" value="{{.ID}}">
+        <button type="submit" class="link" aria-label="Revoke {{.Name}}">Revoke</button>
+      </form></td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">No tokens yet. Create one for each device or assistant, so you can revoke them one at a time.</p>{{end}}
+
+  {{if .Full}}<p class="muted">You have {{.Max}} tokens, the most allowed. Revoke one to create another.</p>
+  {{else}}
+  <form method="post" action="/account/assistants" class="row token-form">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <label>Name <input type="text" name="name" required maxlength="100" placeholder="MacBook Claude Desktop" autocomplete="off" value="{{if not .NewToken}}{{.NewName}}{{end}}"></label>
+    <button type="submit">Create token</button>
+  </form>
+  {{end}}
+</section>
+
+<section class="card">
+  <h2>Connect an assistant</h2>
+  <p class="muted">This computer must be on the tailnet: <code>{{.Endpoint}}</code> answers only there.</p>
+  <div class="tabs">
+    <input type="radio" name="client" id="cl-desktop" checked><label for="cl-desktop">Claude Desktop</label>
+    <input type="radio" name="client" id="cl-code"><label for="cl-code">Claude Code</label>
+    <input type="radio" name="client" id="cl-other"><label for="cl-other">Other clients</label>
+
+    <div class="panel" id="panel-desktop">
+      <p><a class="button" href="/account/assistants/heimdall.mcpb" download>Download the Heimdall extension</a></p>
+      <ol class="setup-steps">
+        <li>Double-click <code>heimdall.mcpb</code> to open it in Claude Desktop (or drag it into the window, or use <strong>Settings → Extensions → Advanced settings → Install Extension…</strong>), then click <strong>Install</strong>.</li>
+        <li>Paste your token into the extension's <strong>Token</strong> setting. The Heimdall URL is already filled in with <code>{{.BaseURL}}</code>. Claude Desktop keeps the token in your system keychain.</li>
+        <li>With this computer on the tailnet, ask Claude something like <em>"what should I patch first?"</em></li>
+      </ol>
+      <p class="hint">The extension is a small bridge that runs on your computer with Claude Desktop's built-in Node.js. It has no dependencies, and it sends your token only to this hub.</p>
+      <details>
+        <summary>Without the extension: <code>claude_desktop_config.json</code></summary>
+        <p class="muted">Add this to <code>claude_desktop_config.json</code> (Settings → Developer → Edit Config), with your token in place of <code>&lt;your token&gt;</code>, then restart Claude Desktop. It needs Node.js installed, and it runs <a href="https://www.npmjs.com/package/mcp-remote" rel="noopener">mcp-remote</a> from npm.</p>
+        <div class="codebox"><pre id="desktop-json">{{.Desktop}}</pre><button type="button" class="copy" data-copy="desktop-json" hidden>Copy</button></div>
+        <p class="hint">Keep <code>Authorization:${AUTH_HEADER}</code> with no space, and <code>Bearer …</code> in <code>env</code>: on Windows, Claude Desktop splits arguments at spaces.</p>
+      </details>
+    </div>
+
+    <div class="panel" id="panel-code">
+      <p class="muted">Run this in a terminal. <code>read -rs</code> asks for the token without echoing it, so it never lands in your shell history.</p>
+      <div class="codebox"><pre id="code-sh">{{.Code}}</pre><button type="button" class="copy" data-copy="code-sh" hidden>Copy</button></div>
+      <details>
+        <summary>Windows PowerShell</summary>
+        <div class="codebox"><pre id="code-ps">{{.CodePS}}</pre><button type="button" class="copy" data-copy="code-ps" hidden>Copy</button></div>
+        <p class="hint"><code>-MaskInput</code> needs PowerShell 7.1 or later.</p>
+      </details>
+      <p class="hint">Claude Code saves the header in <code>~/.claude.json</code>. Check it with <code>claude mcp list</code>; remove it with <code>claude mcp remove heimdall</code>.</p>
+    </div>
+
+    <div class="panel" id="panel-other">
+      <p class="muted">Any MCP client that supports the Streamable HTTP transport and custom headers.</p>
+      <dl class="conn">
+        <dt>URL</dt><dd><div class="codebox"><code id="other-url">{{.Endpoint}}</code><button type="button" class="copy" data-copy="other-url" hidden>Copy</button></div></dd>
+        <dt>Header</dt><dd><div class="codebox"><code id="other-header">Authorization: Bearer &lt;your token&gt;</code><button type="button" class="copy" data-copy="other-header" hidden>Copy</button></div></dd>
+        <dt>Transport</dt><dd>Streamable HTTP, JSON responses, no session. No OAuth: the token is the only credential.</dd>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<p class="hint why">Why not a Claude custom connector? Those are reached from Anthropic's cloud, and this hub stays off the internet. Claude Desktop's extension and Claude Code connect from your own computer, over the tailnet.</p>
+{{end}}
+</div>
+{{end}}{{end}}
