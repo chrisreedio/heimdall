@@ -22,16 +22,24 @@ import (
 // X-Heimdall-Triggers header: one state per trigger, e.g.
 //
 //	changes=enabled,active; timer=enabled,active
+//	changes=enabled,ready; task=enabled,running      (Windows)
 //
 // Keys and what their states look like:
 //
 //	timer    heimdall-collect.timer (systemd): "<is-enabled>,<is-active>"
-//	changes  heimdall-collect-changes.path (systemd): same
+//	changes  heimdall-collect-changes.path (systemd): same; on Windows the
+//	         "Heimdall collector (changes)" scheduled task, as for task
 //	cron     /etc/cron.daily or /etc/periodic/daily job: "present" or "absent"
 //	hook     apk commit hook or apt hook: "present" or "absent"
+//	task     the "Heimdall collector" scheduled task (Windows):
+//	         "<enabled|disabled|missing|unknown>,<state>", the state being
+//	         the Task Scheduler's (ready, running, queued, disabled, unknown),
+//	         "no-triggers" (enabled with every trigger off) or "none" (missing)
 //
 // A state containing "unknown" means the collector couldn't tell (e.g.
-// systemctl couldn't reach D-Bus); it never raises an alert.
+// systemctl couldn't reach D-Bus); it never raises an alert. A Windows
+// collector sends a "task" entry, which is how its "changes" entry is
+// told apart from a systemd one.
 type State map[string]string
 
 // MaxHeader caps the header the hub accepts.
@@ -40,6 +48,8 @@ const MaxHeader = 256
 var (
 	triggerKeyRe   = regexp.MustCompile(`^[a-z]{1,16}$`)
 	triggerStateRe = regexp.MustCompile(`^[a-z-]{1,24}(,[a-z-]{1,24})?$`)
+	// windowsStateRe is every state collect.ps1 can send for a task.
+	windowsStateRe = regexp.MustCompile(`^(enabled|disabled|missing|unknown),(ready|running|queued|disabled|no-triggers|none|unknown)$`)
 )
 
 // Parse validates a header value. Anything malformed is rejected
@@ -67,6 +77,14 @@ func Parse(v string) (State, error) {
 		}
 		t[k] = s
 	}
+	// The Windows collector's entries take only the values it can send.
+	if _, win := t["task"]; win {
+		for k, s := range t {
+			if (k == "task" || k == "changes") && !windowsStateRe.MatchString(s) {
+				return nil, fmt.Errorf("invalid Windows triggers entry %q", truncate(k+"="+s, 40))
+			}
+		}
+	}
 	return t, nil
 }
 
@@ -83,13 +101,21 @@ func (t State) String() string {
 }
 
 // On reports whether a state means the trigger will fire: a systemd
-// unit that is enabled (or static) and active, or a hook file that exists.
+// unit that is enabled (or static) and active, a hook file that exists, or
+// an enabled Windows scheduled task with a trigger (ready, running or
+// queued).
 func On(state string) bool {
 	if state == "present" {
 		return true
 	}
 	en, act, ok := strings.Cut(state, ",")
-	return ok && act == "active" && slices.Contains([]string{"enabled", "enabled-runtime", "static", "indirect", "generated", "alias", "linked"}, en)
+	if !ok {
+		return false
+	}
+	if en == "enabled" && slices.Contains([]string{"ready", "running", "queued"}, act) {
+		return true
+	}
+	return act == "active" && slices.Contains([]string{"enabled", "enabled-runtime", "static", "indirect", "generated", "alias", "linked"}, en)
 }
 
 // triggerKnown: the collector could tell the state (it isn't "unknown").
@@ -115,6 +141,12 @@ var triggerNames = map[string]struct{ what, unit string }{
 	"changes": {"Change reporting", "heimdall-collect-changes.path"},
 	"cron":    {"Scheduled reporting", "the daily cron job"},
 	"hook":    {"Change reporting", "the package manager hook"},
+}
+
+// windowsNames are the Windows collector's scheduled tasks.
+var windowsNames = map[string]struct{ what, unit string }{
+	"task":    {"Scheduled reporting", `the "Heimdall collector" scheduled task`},
+	"changes": {"Change reporting", `the "Heimdall collector (changes)" scheduled task`},
 }
 
 // Check compares a report's trigger state with the host's own
@@ -146,7 +178,11 @@ func Check(ctx context.Context, st *store.Store, hostID, snapshotID int64, heade
 		if !On(was) || On(state) {
 			continue
 		}
-		name, ok := triggerNames[k]
+		names := triggerNames
+		if _, win := cur["task"]; win {
+			names = windowsNames
+		}
+		name, ok := names[k]
 		if !ok {
 			name.what, name.unit = "A collector trigger", k
 		}

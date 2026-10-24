@@ -103,6 +103,38 @@ func TestTriggerDisabled(t *testing.T) {
 	}
 }
 
+func TestTriggerDisabledWindows(t *testing.T) {
+	e := newEnv(t, func(c *config.Ingest) { c.RatePerHost.N = 100 })
+	on := "task=enabled,running; changes=enabled,ready"
+	e.expect(req{triggers: on}, http.StatusCreated)
+	e.now = e.now.Add(time.Hour)
+	e.expect(req{body: e.report(60), triggers: "task=enabled,ready; changes=enabled,running"}, http.StatusOK)
+	// The Task Scheduler couldn't be asked: never alerts, keeps the last state.
+	e.now = e.now.Add(time.Hour)
+	e.expect(req{body: e.report(120), triggers: "task=unknown,unknown; changes=enabled,unknown"}, http.StatusOK)
+	if a := e.anomalies(); len(a) != 0 {
+		t.Fatalf("anomalies = %v", a)
+	}
+	if got, _ := e.st.HostTriggers(t.Context(), e.host.ID); got != "changes=enabled,running; task=enabled,ready" {
+		t.Fatalf("stored = %q", got)
+	}
+
+	// Disable-ScheduledTask on the change task.
+	e.now = e.now.Add(time.Hour)
+	e.expect(req{body: e.report(180), triggers: "task=enabled,running; changes=disabled,disabled"}, http.StatusOK)
+	as, err := e.st.Anomalies(t.Context(), e.host.ID)
+	if err != nil || len(as) != 1 || as[0].Rule != "trigger_disabled" ||
+		as[0].Summary != `Change reporting disabled: the "Heimdall collector (changes)" scheduled task is now disabled,disabled (was enabled,running)` {
+		t.Fatalf("anomalies = %+v %v", as, err)
+	}
+	// Unregister-ScheduledTask on the hourly task.
+	e.now = e.now.Add(time.Hour)
+	e.expect(req{body: e.report(240), triggers: "task=missing,none; changes=disabled,disabled"}, http.StatusOK)
+	if a := e.anomalies(); len(a) != 2 {
+		t.Fatalf("anomalies = %v, want two trigger_disabled", a)
+	}
+}
+
 func TestNoTriggerAlertWithoutHistory(t *testing.T) {
 	e := newEnv(t, nil)
 	// A host that never had the path unit (or only now starts reporting

@@ -650,8 +650,23 @@ details.head-pick[open] form { position: absolute; top: 26px; left: 0; z-index: 
 }
 .news-strip:hover, .news-strip:focus-visible { text-decoration: none; border-color: var(--crit-fg); }
 .news-strip > span[aria-hidden] { margin-left: auto; color: var(--muted); }
-.badge.news { background: var(--low-bg); color: var(--low-fg); }
-a.badge.news:hover { text-decoration: none; filter: brightness(.97); }
+/* "In the news": a filled violet badge with a live dot, distinct from the
+   severity colors and KEV's red, because it means "exploited this week". */
+.badge.news {
+  display: inline-flex; align-items: center; gap: 5px;
+  background: linear-gradient(135deg, #7c3aed, #c026d3); color: #fff;
+  font-weight: 600; box-shadow: 0 0 0 1px rgb(192 38 211 / .35), 0 1px 6px rgb(124 58 237 / .35);
+}
+.badge.news::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 0 0 rgb(255 255 255 / .7); animation: news-pulse 2s ease-out infinite;
+}
+@keyframes news-pulse {
+  0% { box-shadow: 0 0 0 0 rgb(255 255 255 / .7); }
+  70%, 100% { box-shadow: 0 0 0 5px rgb(255 255 255 / 0); }
+}
+@media (prefers-reduced-motion: reduce) { .badge.news::before { animation: none; } }
+a.badge.news:hover { text-decoration: none; filter: brightness(1.1); }
 .news-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
 .news-item.card { margin-top: 0; padding: 14px 16px; border-left: 4px solid var(--border); min-width: 0; }
 .news-item.affects { border-left-color: var(--crit-fg); }
@@ -675,3 +690,18 @@ a.badge.news:hover { text-decoration: none; filter: brightness(.97); }
 .news-mini a { font-weight: 600; margin-right: 6px; }
 .news-card p { margin: 8px 0 0; }
 @media (max-width: 560px) { .news-date { margin-left: 0; flex-basis: 100%; } }
+
+/* Host page: a site's facts in one compact row (label over value),
+   wrapping as whole items instead of mid-value. */
+.site-root { margin: 0 0 12px; color: var(--text); overflow-wrap: anywhere; }
+.site-facts { list-style: none; margin: 0 0 16px; padding: 0; display: flex; flex-wrap: wrap; gap: 10px 32px; }
+.site-facts li { display: grid; gap: 2px; min-width: 0; }
+.site-facts .k { font-size: 12px; color: var(--muted); }
+.site-facts .k.cap { text-transform: capitalize; }
+.site-facts .v { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 440px) { .site-facts .v { white-space: normal; flex-wrap: wrap; } }
+/* Findings tables: KEV / in-the-news badges sit under the severity, so
+   no column is spent on them (most rows have neither). */
+.find-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+/* The severity and its score stay on one line in findings tables. */
+table.findings td:first-child { white-space: nowrap; }

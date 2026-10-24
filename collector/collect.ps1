@@ -7,13 +7,19 @@
   -Print    write the snapshot (JSON) to stdout, to review or for `heimdall import`
   -Push     send it to $env:HEIMDALL_URL using the token in $env:HEIMDALL_TOKEN_FILE
             (default C:\ProgramData\Heimdall\token)
+  -Push -AfterChanges
+            first wait until no install, removal or Windows Update install
+            has been logged for 60 seconds, so a burst of them is one report
+            (the "Heimdall collector (changes)" task runs this)
   -Version  print the collector version
 
   Read-only and unprivileged (install-windows.ps1 runs it as LocalService):
-  it reads the Uninstall registry keys, OS details, pending Windows updates
-  and reboot flags; it never changes the system, makes one HTTPS request in
-  -Push mode and ignores the response body. Works on Windows PowerShell 5.1
-  and PowerShell 7.
+  it reads the Uninstall registry keys, OS details, pending Windows updates,
+  reboot flags, the state of its own two scheduled tasks and (with
+  -AfterChanges) the times of recent install events in the Application and
+  System logs; it never changes the system, makes one HTTPS request per
+  report in -Push mode and reads only the status code and the hub's version
+  header from the response. Works on Windows PowerShell 5.1 and PowerShell 7.
 
 .NOTES
   SPDX-License-Identifier: AGPL-3.0-or-later
@@ -22,12 +28,13 @@
 param(
     [Parameter(ParameterSetName = 'Print')][switch]$Print,
     [Parameter(ParameterSetName = 'Push')][switch]$Push,
+    [Parameter(ParameterSetName = 'Push')][switch]$AfterChanges,
     [Parameter(ParameterSetName = 'Version')][switch]$Version
 )
 
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
-$script:CollectorVersion = '0.4.13'
+$script:CollectorVersion = '0.4.14'
 $script:Format = 'heimdall.snapshot/v3'
 
 # Drop control characters, quotes and backslashes; cap the length. The hub
@@ -108,6 +115,204 @@ function ConvertTo-HeimdallJson($snapshot) {
     return ($snapshot | ConvertTo-Json -Depth 8 -Compress)
 }
 
+# --- When it reports -------------------------------------------------------
+# install-windows.ps1 registers two tasks from Get-HeimdallTaskXml: hourly
+# and after boot, and after software changes. They live here, next to the
+# code that reports their state, so both always agree.
+$script:TaskName = 'Heimdall collector'
+$script:ChangesTaskName = 'Heimdall collector (changes)'
+
+# The events that mean installed software or updates changed: Windows
+# Installer installs and removals (11707/11724 succeeded, 1033/1034
+# installed/removed with a status) and Windows Update installs. EXE
+# installers that don't use Windows Installer log nothing reliable; the
+# hourly report covers those.
+$script:ChangeEvents = @(
+    @{ Log = 'Application'; Provider = 'MsiInstaller'; Ids = @(11707, 11724, 1033, 1034) },
+    @{ Log = 'System'; Provider = 'Microsoft-Windows-WindowsUpdateClient'; Ids = @(19) }
+)
+
+# An event-log query (XPath QueryList) for those events, optionally only the
+# ones logged in the last $WithinMs milliseconds.
+function Get-HeimdallEventQuery([int64]$WithinMs = 0) {
+    $selects = foreach ($e in $script:ChangeEvents) {
+        $ids = (@($e.Ids) | ForEach-Object { "EventID=$_" }) -join ' or '
+        $time = ''
+        if ($WithinMs -gt 0) { $time = " and TimeCreated[timediff(@SystemTime) &lt;= $WithinMs]" }
+        "<Select Path=`"$($e.Log)`">*[System[Provider[@Name='$($e.Provider)'] and ($ids)$time]]</Select>"
+    }
+    return '<QueryList><Query Id="0">' + ($selects -join '') + '</Query></QueryList>'
+}
+
+# Task Scheduler XML (schema 1.2, Windows 7 / Server 2008 R2 and later) for
+# one of the two tasks. Both run collect.ps1 as LocalService (UserId
+# S-1-5-19, which the Task Scheduler runs as a service account; the schema
+# has no LogonType for it) with the least privilege, on battery too, never two at once; the task's security
+# descriptor lets LocalService read it, so the collector can report its state.
+# Pure, so it's tested on Linux too.
+function Get-HeimdallTaskXml {
+    param(
+        [Parameter(Mandatory)][ValidateSet('schedule', 'changes')][string]$Kind,
+        [Parameter(Mandatory)][string]$PowerShell,
+        [Parameter(Mandatory)][string]$Script,
+        [datetime]$Start = (Get-Date).Date
+    )
+    $x = { param($s) [Security.SecurityElement]::Escape([string]$s) }
+    $arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$Script`" -Push"
+    if ($Kind -eq 'schedule') {
+        $description = 'Reports installed programs and updates to Heimdall: hourly, and 3 minutes after boot.'
+        $limit = 'PT10M'
+        # Repetition without a Duration repeats indefinitely.
+        $triggers = @"
+    <TimeTrigger>
+      <Repetition>
+        <Interval>PT1H</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+      <StartBoundary>$($Start.ToString('yyyy-MM-ddTHH:mm:ss'))</StartBoundary>
+      <Enabled>true</Enabled>
+      <RandomDelay>PT15M</RandomDelay>
+    </TimeTrigger>
+    <BootTrigger>
+      <Enabled>true</Enabled>
+      <Delay>PT3M</Delay>
+    </BootTrigger>
+"@
+    } else {
+        $description = 'Reports to Heimdall about a minute after programs or Windows updates are installed or removed.'
+        $arguments += ' -AfterChanges'
+        $limit = 'PT1H' # up to 3 reports, each after waiting up to 10 minutes for installs to settle
+        $triggers = @"
+    <EventTrigger>
+      <Enabled>true</Enabled>
+      <Subscription>$(& $x (Get-HeimdallEventQuery))</Subscription>
+    </EventTrigger>
+"@
+    }
+    return @"
+<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Author>Heimdall</Author>
+    <Description>$(& $x $description)</Description>
+    <SecurityDescriptor>D:(A;;FA;;;BA)(A;;FA;;;SY)(A;;FR;;;LS)</SecurityDescriptor>
+  </RegistrationInfo>
+  <Triggers>
+$triggers  </Triggers>
+  <Principals>
+    <Principal id="LocalService">
+      <UserId>S-1-5-19</UserId>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <AllowHardTerminate>true</AllowHardTerminate>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <RunOnlyIfNetworkAvailable>false</RunOnlyIfNetworkAvailable>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+    <Enabled>true</Enabled>
+    <Hidden>false</Hidden>
+    <RunOnlyIfIdle>false</RunOnlyIfIdle>
+    <WakeToRun>false</WakeToRun>
+    <ExecutionTimeLimit>$limit</ExecutionTimeLimit>
+    <Priority>7</Priority>
+  </Settings>
+  <Actions Context="LocalService">
+    <Exec>
+      <Command>$(& $x $PowerShell)</Command>
+      <Arguments>$(& $x $arguments)</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+"@
+}
+
+# One task's entry in the X-Heimdall-Triggers header: "<enabled>,<state>".
+#   enabled  enabled | disabled, or missing (no such task) | unknown (couldn't ask)
+#   state    the Task Scheduler's: ready | running | queued | disabled | unknown,
+#            or no-triggers (enabled, but every trigger removed or disabled),
+#            none (missing)
+# A state with "unknown" in it never alerts on the hub.
+function Format-HeimdallTaskState([string]$Found, [bool]$Enabled = $false, [int]$State = 0, [int]$EnabledTriggers = 0) {
+    if ($Found -eq 'missing') { return 'missing,none' }
+    if ($Found -ne 'found') { return 'unknown,unknown' }
+    $en = 'disabled'
+    if ($Enabled) { $en = 'enabled' }
+    $st = switch ($State) { 1 { 'disabled' } 2 { 'queued' } 3 { 'ready' } 4 { 'running' } default { 'unknown' } }
+    if ($Enabled -and $EnabledTriggers -eq 0 -and $st -ne 'unknown') { $st = 'no-triggers' }
+    return "$en,$st"
+}
+
+function Get-HeimdallHResult($ex) {
+    for (; $null -ne $ex; $ex = $ex.InnerException) {
+        if ($ex.HResult -in -2147024894, -2147024893) { return $ex.HResult } # file / path not found
+    }
+    return 0
+}
+
+# Asks the Task Scheduler (COM, read-only) about one of the collector's tasks.
+function Get-HeimdallTaskState([string]$Name) {
+    try {
+        $svc = New-Object -ComObject Schedule.Service
+        $svc.Connect()
+        $task = $svc.GetFolder('\').GetTask($Name)
+    } catch {
+        if ((Get-HeimdallHResult $_.Exception) -ne 0) { return (Format-HeimdallTaskState 'missing') }
+        return (Format-HeimdallTaskState 'unknown') # e.g. access denied
+    }
+    try {
+        $on = @(foreach ($t in $task.Definition.Triggers) { if ($t.Enabled) { $t } }).Count
+        return (Format-HeimdallTaskState 'found' ([bool]$task.Enabled) ([int]$task.State) $on)
+    } catch { return (Format-HeimdallTaskState 'unknown') }
+}
+
+function Get-HeimdallTriggers {
+    return "task=$(Get-HeimdallTaskState $script:TaskName); changes=$(Get-HeimdallTaskState $script:ChangesTaskName)"
+}
+
+# Waits until no change event has been logged for $Quiet seconds (at most
+# $Max seconds in all). $Newest returns the time of the newest change event
+# in the last N seconds, or $null; it throws if the logs can't be read.
+function Wait-HeimdallQuiet([scriptblock]$Newest, [scriptblock]$Sleep, [scriptblock]$Now, [int]$Quiet = 60, [int]$Max = 600) {
+    $waited = 0
+    while ($true) {
+        $last = & $Newest $Quiet
+        if ($null -eq $last) { return }
+        $left = [int][Math]::Ceiling($Quiet - ((& $Now) - $last).TotalSeconds)
+        if ($left -le 0 -or $waited + $left -gt $Max) { return }
+        & $Sleep $left
+        $waited += $left
+    }
+}
+
+function Get-HeimdallNewestChange([int]$WithinSeconds) {
+    try {
+        $events = @(Get-WinEvent -FilterXml ([xml](Get-HeimdallEventQuery ([int64]$WithinSeconds * 1000))) -ErrorAction Stop)
+    } catch {
+        if ($_.FullyQualifiedErrorId -like 'NoMatchingEventsFound*') { return $null }
+        throw
+    }
+    return ($events | Sort-Object TimeCreated -Descending | Select-Object -First 1).TimeCreated
+}
+
+# Is release $Hub (e.g. "v0.4.14") newer than collector version $Mine?
+function Test-HeimdallNewer([string]$Hub, [string]$Mine) {
+    if ($Hub -notmatch '^v(\d+)(\.(\d+))?(\.(\d+))?$') { return $false }
+    $h = @([int]$matches[1], [int]('0' + $matches[3]), [int]('0' + $matches[5]))
+    $m = @(($Mine -split '\.') + @('0', '0', '0') | Select-Object -First 3 | ForEach-Object { [int]('0' + ($_ -replace '\D', '')) })
+    for ($i = 0; $i -lt 3; $i++) {
+        if ($h[$i] -ne $m[$i]) { return ($h[$i] -gt $m[$i]) }
+    }
+    return $false
+}
+
 # Reads the real system. Each source that fails is reported as unavailable
 # (null) rather than failing the whole run.
 function Get-WindowsInventory {
@@ -159,30 +364,57 @@ function Send-HeimdallSnapshot([string]$json) {
     $url = $env:HEIMDALL_URL
     $urlFile = 'C:\ProgramData\Heimdall\hub-url' # written by install-windows.ps1
     if (-not $url -and (Test-Path -LiteralPath $urlFile)) { $url = (Get-Content -LiteralPath $urlFile -Raw).Trim() }
-    if (-not $url -or -not $url.StartsWith('https://')) { throw 'HEIMDALL_URL must be an https:// URL' }
+    # Plain http only to this machine (a local proxy or tests), as on Linux.
+    if (-not $url -or -not ($url.StartsWith('https://') -or $url -match '^http://(127\.0\.0\.1|localhost|\[::1\])([:/]|$)')) {
+        throw 'HEIMDALL_URL must be an https:// URL'
+    }
     $tokenFile = $env:HEIMDALL_TOKEN_FILE
     if (-not $tokenFile) { $tokenFile = 'C:\ProgramData\Heimdall\token' }
     $token = (Get-Content -LiteralPath $tokenFile -Raw).Trim()
     if ($token -notmatch '^hmd_ingest_[A-Za-z0-9_-]{43}$') { throw "$tokenFile does not contain a valid ingest token" }
 
+    # gzip the body, as collect.sh does.
+    $raw = [System.Text.Encoding]::UTF8.GetBytes($json)
+    $buf = New-Object System.IO.MemoryStream
+    $gz = New-Object System.IO.Compression.GZipStream($buf, [System.IO.Compression.CompressionMode]::Compress)
+    $gz.Write($raw, 0, $raw.Length)
+    $gz.Close()
+    $body = $buf.ToArray()
+
+    $headers = @{ Authorization = "Bearer $token"; 'Content-Encoding' = 'gzip' }
+    # The machine's hostname names a host added without one (on the hub).
+    $hn = ([System.Net.Dns]::GetHostName() -replace '[^A-Za-z0-9._-]', '')
+    if ($hn) { $headers['X-Heimdall-Hostname'] = $hn.Substring(0, [Math]::Min($hn.Length, 253)) }
+    # The state of this collector's own two scheduled tasks.
+    $tr = (Get-HeimdallTriggers) -replace '[^a-z,=; -]', ''
+    if ($tr) { $headers['X-Heimdall-Triggers'] = $tr.Substring(0, [Math]::Min($tr.Length, 240)) }
+
     # Windows PowerShell defaults to old TLS versions; require 1.2+.
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.ServicePointManager]::SecurityProtocol
-    try {
-        # The machine's hostname names a host added without one (on the hub).
-        $headers = @{ Authorization = "Bearer $token" }
-        $hn = ([System.Net.Dns]::GetHostName() -replace '[^A-Za-z0-9._-]', '')
-        if ($hn) { $headers['X-Heimdall-Hostname'] = $hn.Substring(0, [Math]::Min($hn.Length, 253)) }
-        $resp = Invoke-WebRequest -UseBasicParsing -Method Post -Uri ($url.TrimEnd('/') + '/api/v1/ingest') `
-            -ContentType 'application/json' -Headers $headers `
-            -Body ([System.Text.Encoding]::UTF8.GetBytes($json)) -TimeoutSec 120 -MaximumRedirection 0
-        $code = [int]$resp.StatusCode
-    } catch {
-        $code = 0
-        if ($_.Exception.PSObject.Properties['Response'] -and $_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
+    # Two retries, 10 seconds apart, when the hub can't be reached or fails.
+    for ($try = 0; $try -lt 3; $try++) {
+        if ($try -gt 0) { Start-Sleep -Seconds 10 }
+        $resp = $null
+        try {
+            $resp = Invoke-WebRequest -UseBasicParsing -Method Post -Uri ($url.TrimEnd('/') + '/api/v1/ingest') `
+                -ContentType 'application/json' -Headers $headers -Body $body -TimeoutSec 120 -MaximumRedirection 0
+            $code = [int]$resp.StatusCode
+        } catch {
+            $code = 0
+            if ($_.Exception.PSObject.Properties['Response'] -and $_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
+        }
+        if ($code -ne 0 -and $code -lt 500) { break }
     }
-    # Only the status code matters; the body is never read.
+    # Only the status code and the hub's release are read; the body never is.
     switch ($code) {
-        { $_ -ge 200 -and $_ -lt 300 } { return }
+        { $_ -ge 200 -and $_ -lt 300 } {
+            $hub = ''
+            try { $hub = [string](@($resp.Headers['X-Heimdall-Version'])[0]) } catch { $hub = '' }
+            if (Test-HeimdallNewer $hub $script:CollectorVersion) {
+                [Console]::Error.WriteLine("heimdall-collect: the hub runs $hub and this collector is $($script:CollectorVersion); update with: install-windows.ps1 from the $hub release, as Administrator")
+            }
+            return
+        }
         { $_ -in 401, 403 } { throw "hub rejected the token (HTTP $code); check $tokenFile" }
         409 { throw 'hub rejected a duplicate snapshot (HTTP 409)' }
         413 { throw 'snapshot too large for the hub (HTTP 413)' }
@@ -190,6 +422,25 @@ function Send-HeimdallSnapshot([string]$json) {
         429 { throw 'rate limited by the hub (HTTP 429)' }
         0 { throw "could not reach $url" }
         default { throw "hub returned HTTP $code" }
+    }
+}
+
+# -Push -AfterChanges: report once installs have settled, and again if more
+# were logged while that report ran (up to 3 reports). If the logs can't be
+# read, wait a minute and report once.
+function Send-HeimdallAfterChanges {
+    for ($i = 0; $i -lt 3; $i++) {
+        try {
+            Wait-HeimdallQuiet -Newest ${function:Get-HeimdallNewestChange} -Sleep { param($s) Start-Sleep -Seconds $s } -Now { Get-Date }
+        } catch {
+            Start-Sleep -Seconds 60
+            $i = 2
+        }
+        $started = Get-Date
+        Send-HeimdallSnapshot (ConvertTo-HeimdallJson (ConvertTo-HeimdallSnapshot (Get-WindowsInventory)))
+        if ($i -ge 2) { return }
+        try { $last = Get-HeimdallNewestChange ([int]((Get-Date) - $started).TotalSeconds + 2) } catch { return }
+        if ($null -eq $last -or $last -lt $started) { return }
     }
 }
 
@@ -202,8 +453,12 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
     exit 1
 }
 try {
-    $json = ConvertTo-HeimdallJson (ConvertTo-HeimdallSnapshot (Get-WindowsInventory))
-    if ($Push) { Send-HeimdallSnapshot $json } else { $json }
+    if ($Push -and $AfterChanges) {
+        Send-HeimdallAfterChanges
+    } else {
+        $json = ConvertTo-HeimdallJson (ConvertTo-HeimdallSnapshot (Get-WindowsInventory))
+        if ($Push) { Send-HeimdallSnapshot $json } else { $json }
+    }
 } catch {
     Write-Error "heimdall-collect: $($_.Exception.Message)"
     exit 1
