@@ -100,7 +100,8 @@ func handoffFindings(h report.Host, root string) []handoff.Finding {
 		if f.Fixed == "" || f.Site == "" {
 			continue
 		}
-		hf := handoff.Finding{Package: f.Package, Installed: f.Version, Fixed: f.Fixed, Advisory: f.Advisory}
+		hf := handoff.Finding{Package: f.Package, Installed: f.Version, Fixed: f.Fixed, Advisory: f.Advisory,
+			Severity: f.Severity, CVEs: f.CVEs, KEV: f.KEV, EPSS: f.EPSS}
 		switch {
 		case f.Site == root:
 			hf.Ecosystem = "composer"
@@ -191,6 +192,7 @@ type handoffBody struct {
 	Content               string
 	Digest, RequestID     string
 	Packages, Omitted     int
+	File, FileName        string // the attached JSON, shown for review
 	Notice                string
 	Sent                  bool
 }
@@ -266,8 +268,18 @@ func (s *server) handoffMessage(t handoffTarget, v *auth.Viewer, requestID strin
 		Version: s.cfg.Version, Org: t.host.OrgSlug, Host: t.host.Name, Site: siteName(t.site),
 		SitePath: t.site.Root, Repo: t.repo.Repo(), Findings: handoffFindings(t.h, t.site.Root),
 		RequestID: requestID, RequestedBy: v.DisplayName,
-		Link: strings.TrimSuffix(s.cfg.BaseURL, "/") + siteURL(t.host.OrgSlug, t.host.Name, t.site.Root),
+		Link:  strings.TrimSuffix(s.cfg.BaseURL, "/") + siteURL(t.host.OrgSlug, t.host.Name, t.site.Root),
+		Facts: siteFacts(t.site),
 	})
+}
+
+func siteFacts(site report.Site) handoff.SiteFacts {
+	f := handoff.SiteFacts{DocumentRoot: site.DocumentRoot, ServerNames: site.ServerNames, Framework: site.Framework,
+		FrameworkVersion: site.FrameworkVersion, PHP: site.PHPFPM, PHPRequirement: site.PHPRequirement}
+	if site.DeployedAt != nil {
+		f.DeployedAt = site.DeployedAt.UTC().Format(time.RFC3339)
+	}
+	return f
 }
 
 func (s *server) handoffBody(t handoffTarget, msg handoff.Message, requestID string) handoffBody {
@@ -279,6 +291,7 @@ func (s *server) handoffBody(t handoffTarget, msg handoff.Message, requestID str
 		Repo: repo, RepoWeb: handoff.WebURL(repo), RepoManual: t.repo.Manual != "",
 		Content: msg.Content, Digest: msg.Digest, RequestID: requestID,
 		Packages: msg.Packages, Omitted: msg.Omitted,
+		File: string(msg.File), FileName: msg.FileName,
 	}
 }
 
@@ -340,7 +353,7 @@ func (s *server) handoffSend(w http.ResponseWriter, r *http.Request, v *auth.Vie
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), handoffPostTimeout)
 	defer cancel()
-	postErr := t.agent.Poster.PostPayload(ctx, msg.Payload)
+	postErr := t.agent.Poster.PostPayloadFile(ctx, msg.Payload, msg.FileName, msg.File)
 	detail := map[string]any{"agent": t.agent.Name, "host": t.host.Name, "site": t.site.Root, "request_id": id,
 		"packages": msg.Packages, "omitted": msg.Omitted, "repo": t.repo.Repo(), "ok": postErr == nil}
 	if postErr != nil {
