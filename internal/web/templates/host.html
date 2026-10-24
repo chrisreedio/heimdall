@@ -92,16 +92,15 @@
   {{range .Sites}}
   <div class="card site">
     <h3><a href="{{siteURL $.Body.Org $.Body.Name .Root}}">{{with first .ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}}</a> {{with .Label}}<span class="site-label label-{{.}}">{{.}}</span>{{end}} {{template "sitebadges" .Site}}</h3>
-    <dl>
-      <div class="wide"><dt>Root</dt><dd><code class="path">{{pathBreak .Root}}</code>{{if and .DocumentRoot (ne .DocumentRoot .Root)}} <span class="muted">serving</span> <code class="path">{{pathBreak (relPath .Root .DocumentRoot)}}</code>{{end}}</dd></div>
-      {{if gt (len .ServerNames) 1}}<div><dt>Server names</dt><dd>{{join .ServerNames ", "}}</dd></div>{{end}}
-      <div><dt>Web server</dt><dd>{{with .WebServer}}{{.}}{{else}}<span class="muted">listed in HEIMDALL_SITES</span>{{end}}</dd></div>
-      <div><dt>PHP-FPM</dt><dd>{{with .PHPFPM}}{{.}}{{else}}<span class="muted">unknown</span>{{end}}{{with .PHPLife}} · {{template "life" .}}{{end}}</dd></div>
-      {{if .PHPRequirement}}<div><dt>Requires PHP</dt><dd>{{.PHPRequirement}}</dd></div>{{end}}
-      {{if .Framework}}<div><dt>{{.Framework}}</dt><dd>{{.FrameworkVersion}}{{with .FrameworkLife}} · {{template "life" .}}{{end}}</dd></div>{{end}}
-      {{with .DeployedAt}}<div><dt>Last deploy</dt><dd>{{date .}}</dd></div>{{end}}
-      {{if .Readable}}<div><dt>Composer packages</dt><dd>{{.Packages}}</dd></div>{{end}}
-    </dl>
+    <p class="site-root"><code class="path">{{pathBreak .Root}}</code>{{if and .DocumentRoot (ne .DocumentRoot .Root)}} <span class="muted">serving</span> <code class="path">{{pathBreak (relPath .Root .DocumentRoot)}}</code>{{end}}{{if gt (len .ServerNames) 1}} <span class="muted">· also</span> {{join (slice .ServerNames 1) ", "}}{{end}}</p>
+    <ul class="site-facts">
+      <li><span class="k">Web server</span><span class="v">{{with .WebServer}}{{.}}{{else}}<span class="muted">listed in HEIMDALL_SITES</span>{{end}}</span></li>
+      <li><span class="k">PHP-FPM</span><span class="v">{{with .PHPFPM}}{{.}}{{else}}<span class="muted">unknown</span>{{end}}{{with .PHPLife}} {{template "lifepill" .}}{{end}}</span></li>
+      {{if .PHPRequirement}}<li><span class="k">Requires PHP</span><span class="v">{{.PHPRequirement}}</span></li>{{end}}
+      {{if .Framework}}<li><span class="k cap">{{.Framework}}</span><span class="v">{{.FrameworkVersion}}{{with .FrameworkLife}} {{template "lifepill" .}}{{end}}</span></li>{{end}}
+      {{with .DeployedAt}}<li><span class="k">Last deploy</span><span class="v" title="{{fullDate .}}">{{dayAgo .}}</span></li>{{end}}
+      {{if .Readable}}<li><span class="k">Composer packages</span><span class="v">{{.Packages}}</span></li>{{end}}
+    </ul>
     {{if .Findings}}
     {{with .Command}}
     <div class="cmd">

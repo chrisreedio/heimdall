@@ -9,12 +9,11 @@
 {{/* findings renders a findings table ([]report.Finding). */}}
 {{define "findings"}}
 <div class="scroll"><table class="findings">
-  <thead><tr><th></th><th>Severity</th><th>Vulnerability</th><th>Package</th><th>Installed</th><th>Fixed in</th><th>First seen</th></tr></thead>
+  <thead><tr><th>Severity</th><th>Vulnerability</th><th>Package</th><th>Installed</th><th>Fixed in</th><th>First seen</th></tr></thead>
   <tbody>
   {{range .}}
   <tr>
-    <td>{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}</td>
-    <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}</td>
+    <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}{{if or .KEV .InNews}}<div class="find-badges">{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}</div>{{end}}</td>
     <td><span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</td>
     <td>{{.Package}}{{if gt (len .Binaries) 1}}<div class="muted small">{{join .Binaries ", "}}</div>{{end}}</td>
     <td class="ver">{{.Version}}</td>
