@@ -98,7 +98,9 @@ Opt-in per server with `install.sh --watch-privilege` (see [collector.md](collec
 - **Privileged access** (`privileged_access`, medium): events outside a maintenance window. One anomaly per host per day (UTC) with a count by kind, such as "4 privileged accesses outside a maintenance window on Oct 23, 2026 (UTC): 3 sudo, 1 root SSH". Later events that day add to the open anomaly; after you acknowledge it, new events raise a fresh one. Events inside a window that covers the host (org, env or host scope) never count. Collectors resend recent events on every push, and the hub dedupes them, so a resend never alerts twice.
 - **Privilege watch disabled** (`privilege_watch_disabled`, high): the host reported the watch `on` before and now reports `off` or `partial` (a PAM line, the hook or its events file is missing) while still checking in. It's compared with the host's own previous report, so hosts that never turned it on never alert. A push without the header (an older collector) changes nothing.
 
-Both use the usual [suppression](#keeping-the-noise-down): `heimdall anomaly suppress --rule privileged_access ...`.
+- **Privileged access from an unknown address** (`privilege_unknown_source`, high) and **SSH from outside the tailnet** (`privilege_off_tailnet`, high, only with an org's tailnet-only policy): where sessions came from. See [IP awareness](ip-awareness.md#alerts).
+
+All of them use the usual [suppression](#keeping-the-noise-down): `heimdall anomaly suppress --rule privileged_access ...`.
 
 ---
 

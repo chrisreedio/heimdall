@@ -149,7 +149,7 @@ func (h *Handler) recordPrivilege(ctx context.Context, log *slog.Logger, host st
 		log.Error("could not store privilege events", "err", err)
 		return
 	}
-	e := &privilege.Rules{Store: h.store, Now: h.acc.Now}
+	e := &privilege.Rules{Store: h.store, Now: h.acc.Now, IPs: h.IPs}
 	raised, err := e.OnReport(ctx, host, snapshotID, fresh, prev, state)
 	if err != nil {
 		log.Error("privilege watch rules failed", "err", err)

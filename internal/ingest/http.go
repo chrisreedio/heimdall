@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/chrisreedio/heimdall/internal/config"
+	"github.com/chrisreedio/heimdall/internal/ipinfo"
 	"github.com/chrisreedio/heimdall/internal/secret"
 	"github.com/chrisreedio/heimdall/internal/store"
 	"github.com/chrisreedio/heimdall/internal/triggers"
@@ -65,6 +66,8 @@ type Handler struct {
 	// OnSeen, if set, is called after an unchanged report is recorded as a
 	// heartbeat (e.g. to run the reboot rules). It must not block.
 	OnSeen func(store.IngestHost)
+	// IPs, if set, says what's known about privilege sessions' sources.
+	IPs *ipinfo.Resolver
 
 	// TrustedEdge, if set, reports whether an address is a CDN edge in
 	// front of the local proxy (Cloudflare's; see internal/cloudflare). Only

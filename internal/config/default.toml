@@ -12,6 +12,10 @@ listen       = "127.0.0.1:8080"
 base_url     = "http://127.0.0.1:8080"
 session_idle = "30m"
 session_max  = "12h"
+# Behind `tailscale serve`, every sign-in comes from 127.0.0.1. true takes
+# the client address (and tailnet user) from tailscale serve's headers, on
+# requests from loopback only. Leave false behind anything else.
+behind_tailscale_serve = false
 
 [auth]
 # Break-glass local accounts (password + TOTP). Set false once SSO works.
@@ -118,6 +122,18 @@ brief_every       = "24h"         # "0" = on demand only
 max_output_tokens = 8000          # includes reasoning tokens
 max_input_tokens  = 24000         # per run (estimated); facts are trimmed to fit
 timeout           = "2m"
+
+[tailscale]
+# Names the person and device behind each tailnet address (100.x, fd7a:…),
+# so a privilege session from the tailnet shows "alice@example.com's
+# laptop-01". Read only: Heimdall lists the tailnet's devices with the
+# Tailscale API and never changes anything there. The credential (an OAuth
+# client with the devices:core:read scope, or an API access token) is never
+# in this file: run `sudo heimdall tailscale set-key`, then
+# `heimdall tailscale sync`. See docs/tailscale.md.
+enabled    = false
+tailnet    = "-"     # "-" = the credential's tailnet
+sync_every = "15m"
 
 # Coding agents for "Hand off to agent" (off unless listed). Each is a
 # Discord bot that reads a channel and can open pull requests. Heimdall

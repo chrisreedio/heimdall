@@ -80,6 +80,7 @@ func (s *server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		s.render(w, r, status, "login", nil, "Sign in", "", body)
 		return
 	}
+	s.noteTailscaleUser(r, token) // tsproxy.go
 	s.setSession(w, token, int(s.cfg.SessionMax.Seconds()))
 	http.Redirect(w, r, next, http.StatusSeeOther)
 }
@@ -147,6 +148,8 @@ type hostBody struct {
 	News            []newsRow // incidents in the news affecting this host
 	ChangeWatch     string    // "on", "off", or "" if the collector doesn't report its triggers
 	AI              *aiView   // AI triage card (nil when [ai] is off); see ai.go
+
+	Tailnet *tailnetView // the host's tailnet device (nil when [tailscale] is off); see tailscale.go
 }
 
 type command struct {
@@ -303,11 +306,15 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		}
 		body.News = newsRows(entries)
 	}
-	if body.Privilege, err = s.privilegeFor(ctx, host.ID, body.PackageMgr); err != nil {
+	if body.Privilege, err = s.privilegeFor(ctx, host, body.PackageMgr); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}
 	if body.AI, err = s.aiHostFor(r, v, host); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if body.Tailnet, err = s.tailnetFor(ctx, host.ID, host.Name); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}

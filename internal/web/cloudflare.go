@@ -164,7 +164,7 @@ func (s *server) cloudflarePage(w http.ResponseWriter, r *http.Request, v *auth.
 	}
 	body := cloudflareBody{Admin: v.Scope.Admin}
 	if d == nil {
-		s.render(w, r, http.StatusOK, "cloudflare", v, "Cloudflare", "", body)
+		s.render(w, r, http.StatusOK, "cloudflare", v, "Cloudflare", "cloudflare", body)
 		return
 	}
 	body.LastSync, body.SyncError, body.EdgeSync = d.syncs["zones"].At, d.syncs["zones"].Error, d.syncs["edge"].At
@@ -202,7 +202,7 @@ func (s *server) cloudflarePage(w http.ResponseWriter, r *http.Request, v *auth.
 			body.Sites = append(body.Sites, sd)
 		}
 	}
-	s.render(w, r, http.StatusOK, "cloudflare", v, "Cloudflare", "", body)
+	s.render(w, r, http.StatusOK, "cloudflare", v, "Cloudflare", "cloudflare", body)
 }
 
 // visibleTo drops the hosts and sites of orgs the viewer can't see.

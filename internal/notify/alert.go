@@ -67,6 +67,8 @@ var ruleLabels = map[string]string{
 	"trigger_disabled":         "change reporting disabled",
 	"privilege_watch_disabled": "privilege watch disabled",
 	"privileged_access":        "privileged access outside a maintenance window",
+	"privilege_unknown_source": "privileged access from an unknown address",
+	"privilege_off_tailnet":    "SSH from outside the tailnet",
 	"collector_changed":        "collector changed",
 	"collector_downgrade":      "collector downgraded",
 	"package_downgrade":        "package downgraded",

@@ -140,3 +140,14 @@ func TestCloudflareSiteCard(t *testing.T) {
 		t.Errorf("viewer card wrong")
 	}
 }
+
+func TestCloudflareNavLink(t *testing.T) {
+	for _, on := range []bool{false, true} {
+		e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.Cloudflare = on })
+		e.seed()
+		w := e.get("/", signedIn(e))
+		if got := strings.Contains(w.Body.String(), `<a href="/cloudflare"`); got != on {
+			t.Errorf("cloudflare on=%v: link shown=%v", on, got)
+		}
+	}
+}
