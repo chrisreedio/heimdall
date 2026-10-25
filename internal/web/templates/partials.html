@@ -149,3 +149,6 @@
 {{- if .CollectorBehind}}<span class="pill muted" title="On the server: sudo heimdall-collect upgrade">collector behind</span>{{end}}
 {{- if eq .ChangeWatch "off"}}<span class="pill warn" title="Changes are only reported on the schedule">change watch off</span>{{end}}
 </span>{{end}}
+
+{{/* ipbadge: what's known about an address (ipBadge, ips.go) */}}
+{{define "ipbadge"}}{{if .Href}}<a class="pill {{.Class}}" href="{{.Href}}"{{with .Title}} title="{{.}}"{{end}}>{{.Text}}</a>{{else}}<span class="pill {{.Class}}"{{with .Title}} title="{{.}}"{{end}}>{{.Text}}</span>{{end}}{{end}}

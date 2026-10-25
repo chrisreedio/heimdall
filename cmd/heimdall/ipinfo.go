@@ -17,6 +17,7 @@ func newIPResolver(cfg config.Config, s *store.Store, log *slog.Logger) (*ipinfo
 	log = log.With("component", "ipinfo")
 	r := &ipinfo.Resolver{Store: s, Log: log, Sources: []ipinfo.Source{ipinfo.Hosts{Store: s}}}
 	var syncers []ipinfo.Syncer
+	r.Sources = append(r.Sources, ipinfo.SignIns{Store: s}) // Heimdall sign-ins from the same address (signin.go)
 	_ = cfg
 
 	// ── sources: keep one block per source, in this order ──

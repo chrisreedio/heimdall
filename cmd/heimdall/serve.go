@@ -87,6 +87,7 @@ func cmdServe(a *app, args []string) error {
 
 	ips, ipSyncers := newIPResolver(cfg, s, log) // what's known about IP addresses (ipinfo.go)
 	ipinfo.Run(a.ctx, log, ipSyncers...)
+	h.IPs = ips // privilege sessions' sources (internal/privilege/source.go)
 
 	aiSvc := newAIService(cfg, s, log) // nil when [ai] is off
 	if aiSvc != nil {
@@ -211,6 +212,7 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.
 		IPs:          ips,
 		Tailnet:      cfg.Tailscale.Enabled,
 	}
+	wcfg.BehindTailscaleServe = cfg.UI.BehindTailscaleServe // tailscale serve's client headers (web/tsproxy.go)
 	if aiSvc != nil {
 		wcfg.AI = aiSvc
 	}

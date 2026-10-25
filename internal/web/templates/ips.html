@@ -1,0 +1,70 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<h1>IP addresses</h1>
+{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+<p class="muted">What Heimdall knows about an address: whose it is. Privileged sessions from addresses nobody knows raise an alert, so label the ones that are yours: an office, a VPN, a person's home connection. Ranges a source keeps in sync (a deploy service, the tailnet) are listed with their source and can't be changed here. <a href="https://github.com/chrisreedio/heimdall/blob/main/docs/ip-awareness.md">How it works</a>.</p>
+
+{{if or .Admin .AllOrgs}}
+<section class="card">
+  <h2>Label an address</h2>
+  <form method="post" action="/ips/labels" class="row">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <label>Address or range <input name="prefix" required maxlength="64" value="{{.Prefill}}" placeholder="203.0.113.7 or 203.0.113.0/24" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+    <label>Kind <select name="kind">{{range .Kinds}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
+    <label>Name <input name="name" required maxlength="100" placeholder="Office"></label>
+    <label>Person <input name="person" maxlength="200" placeholder="alice@example.com"></label>
+    <label>Note <input name="note" maxlength="500"></label>
+    <label>Org <select name="org">{{range .Admin}}<option value="{{.Slug}}">{{.Name}}</option>{{end}}{{if .AllOrgs}}<option value="">All orgs</option>{{end}}</select></label>
+    <button type="submit">Add label</button>
+  </form>
+</section>
+{{end}}
+
+{{range .Orgs}}{{$org := .Org.Slug}}
+<section class="card" id="org-{{.Org.Slug}}" aria-labelledby="org-h-{{.Org.Slug}}">
+  <h2 id="org-h-{{.Org.Slug}}">{{.Org.Name}}</h2>
+  <form method="post" action="/ips/policy" class="row">
+    <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.Org.Slug}}">
+    <label class="check"><input type="checkbox" name="tailnet_only"{{if .Policy.TailnetOnly}} checked{{end}}> SSH only from the tailnet</label>
+    <label class="check" title="Forge, Ploi and the like deploy over the public internet from published ranges"><input type="checkbox" name="allow_services"{{if .Policy.AllowServices}} checked{{end}}> except deploy services</label>
+    <button type="submit" class="secondary">Save policy</button>
+  </form>
+  <p class="muted small">With the policy on, a privileged session from anywhere but the tailnet, a private network or the server itself raises an alert, even from a labeled address.{{if not .Policy.UpdatedAt.IsZero}} Last changed {{dayAgo (timep .Policy.UpdatedAt)}} by {{.Policy.UpdatedBy}}.{{end}}</p>
+  <h3>Manual labels</h3>
+  {{if .Manual}}<div class="scroll"><table>
+    <thead><tr><th>Address or range</th><th>Kind</th><th>Name</th><th>Person</th><th>Note</th><th>Added by</th><th></th></tr></thead>
+    <tbody>{{range .Manual}}<tr>
+      <td><code>{{.Prefix}}</code></td><td>{{.Kind}}</td><td>{{.Name}}</td><td>{{.Person}}</td><td class="muted">{{.Note}}</td>
+      <td class="muted small">{{.CreatedBy}}</td>
+      <td><form method="post" action="/ips/labels/{{.ID}}/remove" class="inline">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{$org}}">
+        <button type="submit" class="link" aria-label="Remove label {{.Name}}">remove</button>
+      </form></td>
+    </tr>{{end}}</tbody>
+  </table></div>{{else}}<p class="empty">No manual labels yet.</p>{{end}}
+  {{range .Synced}}
+  <h3>From {{.Source}} <span class="muted small">updated {{dayAgo (timep .Updated)}}</span></h3>
+  <div class="scroll"><table>
+    <thead><tr><th>Address or range</th><th>Kind</th><th>Name</th><th>Person</th></tr></thead>
+    <tbody>{{range .Labels}}<tr><td><code>{{.Prefix}}</code></td><td>{{.Kind}}</td><td>{{.Name}}</td><td>{{.Person}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{end}}
+</section>
+{{end}}
+
+{{if .Global}}
+<section class="card" aria-labelledby="ips-global">
+  <h2 id="ips-global">Every org</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Address or range</th><th>Kind</th><th>Name</th><th>Person</th><th>Source</th><th>Updated</th><th></th></tr></thead>
+    <tbody>{{range .Global}}<tr>
+      <td><code>{{.Prefix}}</code></td><td>{{.Kind}}</td><td>{{.Name}}</td><td>{{.Person}}</td>
+      <td>{{if eq .Source "manual"}}manual{{else}}{{.Source}}{{end}}</td><td class="muted small">{{dayAgo (timep .UpdatedAt)}}</td>
+      <td>{{if and (eq .Source "manual") $.Body.AllOrgs}}<form method="post" action="/ips/labels/{{.ID}}/remove" class="inline">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="">
+        <button type="submit" class="link" aria-label="Remove label {{.Name}}">remove</button>
+      </form>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+</section>
+{{end}}
+{{end}}{{end}}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/chrisreedio/heimdall/internal/ipinfo"
 	"github.com/chrisreedio/heimdall/internal/privilege"
 	"github.com/chrisreedio/heimdall/internal/store"
 )
@@ -20,6 +21,9 @@ type privilegeView struct {
 	State    string
 	Recent   []privilegeEvent // newest first, when the server records who
 	Coverage privilegeCoverage
+	// Sessions in the last 24 hours from addresses nothing is known about.
+	UnknownSessions int
+	Unknown         []ipLink
 }
 
 // privilegeCoverage is how fully a server's privilege watch records
@@ -59,16 +63,19 @@ func coverageOf(pm, state, detail string) (c privilegeCoverage, ok bool) {
 }
 
 type privilegeEvent struct {
-	At   time.Time
-	Kind string // "sudo", "root SSH"
-	Who  string // "chris from 203.0.113.7"
+	At     time.Time
+	Kind   string // "sudo", "root SSH"
+	User   string
+	Source string   // where from: an address or host name, "" if unknown or local
+	Href   string   // the source's IP page, when it's an address
+	Badge  *ipBadge // what's known about the source (ips.go)
 }
 
 // recentPrivilege is how many events the host page lists.
 const recentPrivilege = 8
 
-func (s *server) privilegeFor(ctx context.Context, hostID int64, pm string) (*privilegeView, error) {
-	sum, err := s.st.PrivilegeSummary(ctx, hostID, s.now().Add(-24*time.Hour))
+func (s *server) privilegeFor(ctx context.Context, host store.IngestHost, pm string) (*privilegeView, error) {
+	sum, err := s.st.PrivilegeSummary(ctx, host.ID, s.now().Add(-24*time.Hour))
 	if err != nil {
 		return nil, err
 	}
@@ -81,13 +88,40 @@ func (s *server) privilegeFor(ctx context.Context, hostID int64, pm string) (*pr
 	if !sum.Last.IsZero() {
 		v.Last = &sum.Last
 	}
-	evs, err := s.st.RecentPrivilege(ctx, hostID, recentPrivilege)
+	evs, err := s.st.RecentPrivilege(ctx, host.ID, recentPrivilege)
 	if err != nil {
 		return nil, err
 	}
+	var resolve func(ip, user string, at time.Time) ipinfo.Verdict
 	for _, ev := range evs {
-		if ev.User != "" || ev.Source != "" {
-			v.Recent = append(v.Recent, privilegeEvent{At: ev.At, Kind: privilege.KindLabel(ev.Kind), Who: privilege.Who(ev)})
+		if ev.Source == "?" {
+			ev.Source = ""
+		}
+		if ev.User == "" && ev.Source == "" {
+			continue
+		}
+		pe := privilegeEvent{At: ev.At, Kind: privilege.KindLabel(ev.Kind), User: ev.User, Source: ev.Source}
+		if ev.Source != "" {
+			if resolve == nil {
+				resolve = s.ips().Batch(ctx, host.OrgID)
+			}
+			b := badgeFor(resolve(ev.Source, ev.User, ev.At))
+			pe.Href, pe.Badge = b.Href, &b
+		}
+		v.Recent = append(v.Recent, pe)
+	}
+	// Sessions in the last day from addresses nothing is known about.
+	srcs, err := s.st.PrivilegeSourcesSince(ctx, store.AllScope, host.ID, s.now().Add(-24*time.Hour))
+	if err != nil {
+		return nil, err
+	}
+	for _, src := range srcs {
+		if resolve == nil {
+			resolve = s.ips().Batch(ctx, host.OrgID)
+		}
+		if vd, ok := unknownSource(resolve, src); ok {
+			v.UnknownSessions += src.Count
+			v.Unknown = append(v.Unknown, ipLink{Addr: src.Source, Href: ipURL(vd)})
 		}
 	}
 	return v, nil

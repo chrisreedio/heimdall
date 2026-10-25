@@ -71,6 +71,7 @@ Commands:
   sso setup                    Set up Entra ID single sign-on (asks, writes, restarts)
   sso set-secret               Store or rotate the Entra client secret (never echoed)
   ai set-key|status|test       AI analysis with your Azure model: store the key (never echoed), show, test
+  ip label|show|policy         IP addresses: label yours (add|list|rm), show what's known, tailnet-only SSH policy
   ip-services status|sync|set-key
                                Deploy services' (Forge, Ploi) published addresses: show, fetch now, store a token
   tailscale set-key|status|sync
@@ -129,6 +130,7 @@ var commands = map[string]command{
 
 	"sso":     group("sso", map[string]command{"setup": cmdSSOSetup, "set-secret": cmdSSOSetSecret}),
 	"ai":      group("ai", map[string]command{"set-key": cmdAISetKey, "status": cmdAIStatus, "test": cmdAITest}),
+	"ip":      group("ip", ipCommands), // ip.go
 	"upgrade": cmdUpgrade,
 	"restart": cmdRestart,
 	"ingest":  group("ingest", map[string]command{"cert": cmdIngestCert}),

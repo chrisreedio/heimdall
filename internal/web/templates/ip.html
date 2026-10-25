@@ -1,0 +1,62 @@
+{{define "content"}}{{with .Body}}
+<nav class="crumbs" aria-label="Breadcrumb">{{if .CanLabel}}<a href="/ips">IP addresses</a>{{else}}IP addresses{{end}} <span aria-hidden="true">/</span> {{.Addr}}</nav>
+<div class="head">
+  <h1><code>{{.Addr}}</code></h1>
+  {{if .CanLabel}}<a class="button secondary head-action" href="/ips?addr={{.Addr}}">Label this address</a>{{end}}
+</div>
+
+<section class="card ip-verdict" aria-labelledby="ip-known">
+  <h2 id="ip-known">What's known</h2>
+  {{$many := gt (len .Verdicts) 1}}
+  {{range .Verdicts}}<div>
+    {{if $many}}<span class="muted small">In {{join .Orgs ", "}}:</span> {{end}}{{template "ipbadge" .Badge}}
+    {{if .Labels}}<ul class="ip-labels small">{{range .Labels}}<li><strong>{{.Kind}}</strong>: {{.Name}}{{with .Person}} ({{.}}){{end}}{{if .Guess}} <span class="muted">(a guess)</span>{{end}} <span class="muted">· {{.Source}}{{if .Prefix.IsValid}} · {{.Prefix}}{{end}}</span></li>{{end}}</ul>
+    {{else}}<p class="muted small">Nothing is known about this address: no label, not the tailnet or a private network, and nobody signed in to Heimdall from it around then.</p>{{end}}
+  </div>{{else}}<p class="empty">You don't have access to any org yet.</p>{{end}}
+</section>
+
+<section class="card" aria-labelledby="ip-priv">
+  <h2 id="ip-priv">Privileged sessions from here</h2>
+  {{if .Events}}<div class="scroll"><table>
+    <thead><tr><th>When</th><th>Host</th><th>User</th><th>Kind</th></tr></thead>
+    <tbody>{{range .Events}}<tr>
+      <td class="nowrap" title="{{time .At}}">{{dayAgo (timep .At)}}</td>
+      <td><a href="{{hostURL .Host.OrgSlug .Host.Name}}#privilege">{{.Host.Name}}</a>{{if $.Body.ShowOrgs}} <span class="muted small">{{.Host.OrgSlug}}</span>{{end}}</td>
+      <td>{{.User}}</td><td>{{.Kind}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>{{else}}<p class="empty">None recorded.</p>{{end}}
+</section>
+
+<section class="card" aria-labelledby="ip-hosts">
+  <h2 id="ip-hosts">Hosts reporting from here</h2>
+  {{if .Hosts}}<p>{{range $i, $h := .Hosts}}{{if $i}}, {{end}}<a href="{{hostURL $h.OrgSlug $h.Name}}">{{$h.Name}}</a>{{if $.Body.ShowOrgs}} <span class="muted small">{{$h.OrgSlug}}</span>{{end}}{{end}}</p>
+  {{else}}<p class="empty">None of your hosts' last reports came from this address.</p>{{end}}
+</section>
+
+{{if .ShowSignIns}}
+<section class="card" aria-labelledby="ip-signins">
+  <h2 id="ip-signins">Heimdall sign-ins from here</h2>
+  {{if .SignIns}}<div class="scroll"><table>
+    <thead><tr><th>Signed in</th><th>User</th><th>Tailnet user</th><th>Session</th></tr></thead>
+    <tbody>{{range .SignIns}}<tr>
+      <td class="nowrap" title="{{time .At}}">{{dayAgo (timep .At)}}</td>
+      <td>{{.Who}}{{if and .Name .Email}} <span class="muted small">{{.Email}}</span>{{end}}</td>
+      <td>{{.TailscaleUser}}</td>
+      <td>{{if .Open}}open, last active <span title="{{time .Until}}">{{ago .Until}}</span>{{else}}<span class="muted">ended</span>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>{{else}}<p class="empty">Nobody has signed in from this address.</p>{{end}}
+</section>
+{{end}}
+
+{{if .ShowAudit}}
+<section class="card" aria-labelledby="ip-audit">
+  <h2 id="ip-audit">Audit log entries from here</h2>
+  {{if .Audit}}<div class="scroll"><table>
+    <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Target</th></tr></thead>
+    <tbody>{{range .Audit}}<tr>
+      <td class="nowrap" title="{{time .At}}">{{dayAgo (timep .At)}}</td><td>{{.Actor}}</td><td><code>{{.Action}}</code></td><td>{{.Target}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>{{else}}<p class="empty">No audited actions from this address.</p>{{end}}
+</section>
+{{end}}
+{{end}}{{end}}

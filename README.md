@@ -132,6 +132,7 @@ Heimdall looks for patterns in the snapshots it already collects that are hard t
 - The collector's version or checksum changing unexpectedly
 - New services, runtimes or packages that a host's peers don't have
 - [Reports that don't add up](docs/anomaly-signals.md#reports-that-dont-add-up) against the host's own history: uptime growing faster than time passes, an inventory reverting to an older one, a sudden big drop in packages, a collector downgrade, or a different OS
+- [IP awareness](docs/ip-awareness.md): who each privileged session's address belongs to (a person, a deploy service, your own servers, the tailnet), an alert for addresses nobody knows, and an optional "SSH only from the tailnet" policy per org
 
 See [docs/anomaly-signals.md](docs/anomaly-signals.md) for what each signal means, its innocent explanations, and what to do when one fires.
 

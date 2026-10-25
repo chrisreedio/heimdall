@@ -26,6 +26,7 @@
 
 <section aria-labelledby="attention">
   <div class="section-head"><h2 id="attention">Needs attention</h2>{{if .Attention}}<a class="small" href="/hosts?sort=priority">All hosts by priority →</a>{{end}}</div>
+  {{with .UnknownIPs}}<p class="ip-attn"><span class="pill warn">unknown addresses</span> {{.Sessions}} privileged session{{if ne .Sessions 1}}s{{end}} in the last 7 days came from addresses Heimdall doesn't know, on {{range $i, $h := .Hosts}}{{if $i}}, {{end}}<a href="{{hostURL $h.OrgSlug $h.Name}}#privilege">{{$h.Name}}</a>{{end}}.</p>{{end}}
   {{if .Attention}}
   <div class="scroll"><table class="attn cards-sm">
     <thead><tr><th>Host</th><th>Why</th><th class="num" title="Fixable findings rated critical or high">Crit/high fix</th><th class="num" title="Findings an update fixes">Fixable</th><th class="num" title="No fix released yet, but known-exploited, in the news or likely to be exploited (EPSS {{watchEPSS}} or more)">To watch</th><th>Last report</th></tr></thead>
