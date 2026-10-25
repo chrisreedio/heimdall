@@ -150,6 +150,7 @@ type hostBody struct {
 	AI              *aiView   // AI triage card (nil when [ai] is off); see ai.go
 
 	Tailnet *tailnetView // the host's tailnet device (nil when [tailscale] is off); see tailscale.go
+	Logins  *loginsView  // failed logins (nil on Windows); see logins.go
 	Surface surfaceHTML  // "public as ..." line, or "" (surface.go)
 }
 
@@ -316,6 +317,10 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		return
 	}
 	if body.Tailnet, err = s.tailnetFor(ctx, host.ID, host.Name); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if body.Logins, err = s.loginsFor(ctx, v, host, body.PackageMgr); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}

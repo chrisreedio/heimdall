@@ -80,6 +80,8 @@ Commands:
                                Name the people and devices behind tailnet addresses (read-only Tailscale API)
   cloudflare set-token|status|sync
                                Read-only Cloudflare (DNS, security events): store the token (never echoed), check, sync now
+  offenders [--since 24h] [--json]
+                               Addresses failing SSH logins across your hosts, ranked (login watch)
   surface [--org X] [--json] [--changes]
                                Attack-surface map: every public name, the host and site behind it, worst first
   upgrade [--check]            Upgrade this hub to the latest release (sudo)
@@ -150,6 +152,7 @@ var commands = map[string]command{
 	"version": func(a *app, _ []string) error { _, err := fmt.Fprintln(a.stdout, version); return err },
 
 	"tailscale": group("tailscale", map[string]command{"set-key": cmdTailscaleSetKey, "status": cmdTailscaleStatus, "sync": cmdTailscaleSync}),
+	"offenders": cmdOffenders, // failed logins (offenders.go)
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {

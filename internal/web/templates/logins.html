@@ -1,0 +1,26 @@
+{{define "loginscard"}}{{with .}}{{/* the opt-in login watch (Linux only): failed SSH logins in the last 24 hours */}}
+<section class="facts card" id="logins">
+  <div class="fact">{{template "icon" "globe"}}<div><div class="k">Failed logins</div><div class="v">{{if not .Watched}}Not watched{{else if .Problem}}Not counting{{else if .Failures}}{{num .Failures}} in the last 24 hours, from {{.Addresses}} address{{if ne .Addresses 1}}es{{end}}{{else}}None in the last 24 hours{{end}}</div><div class="pills">{{if .Watched}}{{if .Problem}}<span class="pill warn" title="{{.Problem}}">login watch can't count</span>{{else}}<span class="pill ok" title="{{with .Source}}Read from {{.}}{{end}}{{with .Counted}}, last counted {{time .}}{{end}}">watched</span>{{end}}{{else}}<span class="pill muted">login watch off</span>{{end}}</div>
+    {{if not .Watched}}<p class="muted small">To count failed SSH logins per address (counts only, never usernames), run on the server: <code>{{.Fix}}</code> (<a href="https://github.com/chrisreedio/heimdall/blob/main/docs/failed-logins.md">what it records</a>)</p>{{else if .Problem}}<p class="muted small">{{.Problem}}</p>{{end}}{{with .Top}}
+    <ul class="priv-recent small">{{range .}}<li><a href="{{.Href}}">{{.IP}}</a> {{template "ipbadge" .Badge}} {{num .Failures}} failure{{if ne .Failures 1}}s{{end}}{{if .Usernames}}, {{.Usernames}} username{{if ne .Usernames 1}}s{{end}}{{end}} <span class="muted" title="{{time .Last}}">last {{ago .Last}}</span>{{with .Network}} <span class="muted">· {{.}}</span>{{end}}{{if .OtherHosts}} <span class="pill warn" title="Failed on other hosts you can see in the last 24 hours">also {{.OtherHosts}} other host{{if ne .OtherHosts 1}}s{{end}}</span>{{end}}{{if .Succeeded}} <span class="pill bad" title="A login from this address succeeded after it failed">then succeeded</span>{{end}}{{if .Known}} <span class="muted">(known, not an offender)</span>{{end}}</li>{{end}}</ul>
+    <p class="muted small"><a href="/offenders">Repeat offenders across your hosts</a></p>{{end}}</div></div>
+</section>
+{{end}}{{end}}
+
+{{define "iplogins"}}
+<section class="card" aria-labelledby="ip-logins">
+  <h2 id="ip-logins">Failed logins from here</h2>
+  {{if .Logins}}<div class="scroll"><table>
+    <thead><tr><th>Host</th><th class="num">Failures</th><th class="num">Usernames</th><th>First</th><th>Last</th><th></th></tr></thead>
+    <tbody>{{range .Logins}}<tr>
+      <td><a href="{{hostURL .Host.OrgSlug .Host.Name}}#logins">{{.Host.Name}}</a>{{if $.ShowOrgs}} <span class="muted small">{{.Host.OrgSlug}}</span>{{end}}</td>
+      <td class="num">{{num .Failures}}</td><td class="num">{{.Usernames}}</td>
+      <td class="nowrap" title="{{time .First}}">{{dayAgo (timep .First)}}</td>
+      <td class="nowrap" title="{{time .Last}}">{{dayAgo (timep .Last)}}</td>
+      <td>{{if .Succeeded}}<span class="pill bad" title="A login from this address succeeded after it failed">then succeeded</span>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  <p class="muted small">The last 30 days, from servers with the login watch on. <a href="/offenders">Repeat offenders</a></p>
+  {{else}}<p class="empty">None recorded in the last 30 days.</p>{{end}}
+</section>
+{{end}}
