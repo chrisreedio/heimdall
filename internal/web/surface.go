@@ -105,9 +105,17 @@ func (s *server) surfacePage(w http.ResponseWriter, r *http.Request, v *auth.Vie
 	}
 	if len(m.Zones) > 0 {
 		body.ZoneOpts = append(body.ZoneOpts, surfaceChip{Label: "All zones", Href: surfaceHref(body.View, ""), Current: body.Zone == ""})
+		// Only zones with names in this view: a chip that shows nothing is noise.
 		for _, z := range m.Zones {
-			body.ZoneOpts = append(body.ZoneOpts, surfaceChip{Label: z.Name, Href: surfaceHref(body.View, z.Name),
-				Count: z.Proxied + z.Unproxied, Current: z.Name == body.Zone})
+			n := 0
+			for _, row := range m.Rows {
+				if row.Match(body.View, z.Name) {
+					n++
+				}
+			}
+			if n > 0 || z.Name == body.Zone {
+				body.ZoneOpts = append(body.ZoneOpts, surfaceChip{Label: z.Name, Href: surfaceHref(body.View, z.Name), Count: n, Current: z.Name == body.Zone})
+			}
 		}
 	}
 	for _, row := range m.Rows {
