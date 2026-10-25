@@ -43,6 +43,9 @@ make build        # → bin/heimdall (a single static file you can copy anywhere
 | `heimdall host show <hostname>` | Latest snapshot summary and open anomalies |
 | `heimdall host token --rotate <hostname>` | Revoke a host's token and print a new one |
 | `heimdall host rm --yes <hostname>` | Delete a host **and all its history** |
+| `heimdall enroll create [--env <env>] [--tag t] [--expires 24h] [--uses N] [--no-approval]` | Print an expiring enrollment key that adds many servers, each with its own token (see [Many servers](collector.md#many-servers-enrollment-keys)) |
+| `heimdall enroll list` / `enroll revoke <id>` | List enrollment keys with their uses and status; stop one early |
+| `heimdall enroll pending` / `enroll approve <hostname>...` | Servers enrolled with a key that requires approval, and letting them report (reject with `host rm`) |
 | `heimdall serve` | Run the ingest listener that collectors push to |
 | `heimdall import [--check] <file.json>` | Store a snapshot collected by hand, or just validate it |
 | `heimdall collector trust --version <v> <sha256>` / `collector list` | Mark collector releases as known-good, and see which hosts run what |

@@ -2,7 +2,7 @@
 <div class="head">
   <h1>Hosts</h1>
   <span class="muted head-sub">{{if or .Env .Tag .Only}}{{len .Hosts}} of {{.Total}}{{else}}{{.Total}}{{end}}</span>
-  <a class="button head-action" href="/hosts/new">Add a host</a>
+  <span class="head-action head-actions"><a class="button secondary" href="/hosts/enroll">Add servers</a> <a class="button" href="/hosts/new">Add a host</a></span>
   {{if .ShowOrgs}}
   <form method="get" action="/hosts" class="filter">
     {{with .Only}}<input type="hidden" name="only" value="{{.}}">{{end}}{{with .Sort}}<input type="hidden" name="sort" value="{{.}}">{{end}}
@@ -62,7 +62,8 @@
     <td class="h-coll" data-label="Collector"><span class="ver">{{.Collector}}</span>{{if .CollectorBehind}} <span class="pill muted" title="On the server: sudo heimdall-collect upgrade">behind</span>{{end}}{{if eq .ChangeWatch "off"}} <span class="pill warn" title="Changes are only reported on the schedule">watch off</span>{{end}}{{if and .HasPrivilege (not .Privilege.Full)}} <span class="pill muted" title="{{.Privilege.Why}} On the server: {{.Privilege.Fix}}">{{.Privilege.Label}}</span>{{end}}</td>
     <td class="num{{if not .Anomalies}} zero{{end}}" data-label="Anomalies">{{if .Anomalies}}<a class="pill {{if eq .AnomalyWorst "high"}}bad{{else}}warn{{end}}" href="/anomalies">{{.Anomalies}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
     {{else}}
-    <td colspan="12" class="muted h-wait full">waiting for first report{{if not .LastSeenAt.IsZero}} · checked in {{ago .LastSeenAt}}{{end}}</td>
+    {{if .Awaiting}}<td colspan="12" class="muted h-wait full"><span class="pill warn">waiting for approval</span> enrolled {{ago .CreatedAt}} · <a href="/hosts/enroll#waiting">approve or reject</a></td>
+    {{else}}<td colspan="12" class="muted h-wait full">waiting for first report{{if not .LastSeenAt.IsZero}} · checked in {{ago .LastSeenAt}}{{end}}</td>{{end}}
     {{end}}
   </tr>
   {{end}}

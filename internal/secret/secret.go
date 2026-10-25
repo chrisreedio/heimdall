@@ -18,6 +18,9 @@ import (
 // recognize them.
 const IngestPrefix = "hmd_ingest_"
 
+// EnrollPrefix marks enrollment keys, which add servers but never report.
+const EnrollPrefix = "hmd_enroll_"
+
 // MCPPrefix marks per-user MCP tokens.
 const MCPPrefix = "hmd_mcp_"
 

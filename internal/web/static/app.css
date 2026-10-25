@@ -356,6 +356,25 @@ label.check { display: inline-flex; gap: .35rem; align-items: center; }
 .tabs .panel { display: none; }
 #os-linux:checked ~ #panel-linux, #os-windows:checked ~ #panel-windows, #os-cloud:checked ~ #panel-cloud { display: block; }
 
+/* Add servers (/hosts/enroll): enrollment keys and hosts awaiting approval */
+.wizard.enroll { max-width: 900px; }
+#en-each:checked ~ #panel-each, #en-many:checked ~ #panel-many, #en-cloud:checked ~ #panel-cloud, #en-win:checked ~ #panel-win { display: block; }
+.enroll .panel .codebox + .hint { margin-top: 10px; }
+.enroll .tabs + .actions { margin-top: 18px; }
+.field-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.field label.check { font-weight: 600; margin: 0; gap: 8px; }
+.field label.check input { width: auto; padding: 0; margin: 0; }
+.enroll .token-new .hint { margin-top: 10px; }
+.enroll-list td { vertical-align: middle; }
+.enroll-list .wrap { overflow-wrap: anywhere; }
+.enroll-list .h-meta { margin-top: 4px; }
+.enroll-list .enroll-hosts { max-width: 260px; overflow-wrap: anywhere; font-size: 13px; }
+.enroll-list .enroll-act { text-align: right; width: 1%; white-space: nowrap; }
+.enroll-list .enroll-act form.inline { display: inline; margin: 0 0 0 6px; }
+.enroll-list .enroll-act button:not(.link) { padding: 5px 12px; font-size: 13px; font-weight: 600; }
+.enroll .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 560px) { .field-row { grid-template-columns: minmax(0, 1fr); } }
+
 /* Page rhythm: sections and cards never sit flush against each other. */
 .card { margin-top: 16px; }
 .card > h2:first-child, .card > h3:first-child, .card > form:first-child { margin-top: 0; }
@@ -365,6 +384,7 @@ section > .scroll + .card, .scroll + .card, .scroll + form { margin-top: 16px; }
 .head { margin-bottom: 14px; }
 .head-action { margin-left: auto; }
 .head .filter + .head-action, .head .filter { margin-left: auto; }
+.head-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
 main > .crumbs, .crumbs { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
 
 /* Forms in cards: labels above their controls. */
