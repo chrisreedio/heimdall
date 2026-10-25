@@ -25,18 +25,19 @@ type IngestHost struct {
 	TokenID  int64 // 0 for imports
 	AutoName bool  // takes the hostname its collector reports
 	EnvSlug  string
+	Awaiting bool // enrolled, waiting for approval: its reports aren't stored
 }
 
 // HostByToken resolves a live (unrevoked) token hash to its host.
 func (s *Store) HostByToken(ctx context.Context, hash [32]byte) (IngestHost, error) {
 	var h IngestHost
 	err := s.db.QueryRowContext(ctx, `
-		SELECT h.id, h.org_id, o.slug, h.name, t.id, h.auto_name
+		SELECT h.id, h.org_id, o.slug, h.name, t.id, h.auto_name, h.awaiting_approval
 		FROM ingest_tokens t
 		JOIN hosts h ON h.id = t.host_id
 		JOIN organizations o ON o.id = h.org_id
 		WHERE t.token_hash = ? AND t.revoked_at IS NULL`, hash[:]).
-		Scan(&h.ID, &h.OrgID, &h.OrgSlug, &h.Name, &h.TokenID, &h.AutoName)
+		Scan(&h.ID, &h.OrgID, &h.OrgSlug, &h.Name, &h.TokenID, &h.AutoName, &h.Awaiting)
 	if errors.Is(err, sql.ErrNoRows) {
 		return IngestHost{}, ErrNotFound
 	}

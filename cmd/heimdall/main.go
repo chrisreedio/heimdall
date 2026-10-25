@@ -53,6 +53,8 @@ Commands:
   anomaly list|ack|suppress    Tripwire alerts: review, acknowledge, mute a rule
   window add|list|rm           Maintenance windows (changes inside don't alert)
   host token --rotate          Issue a new ingest token for a host
+  enroll create|list|revoke    Expiring keys that add many servers (each gets its own token)
+  enroll pending|approve       Hosts enrolled with a key, waiting for an admin's approval
   user create|list|disable|enable|reset-totp|passwd
                                Manage web UI accounts (password + TOTP, or --entra)
   user grant|revoke            Give or remove a role (viewer, operator, admin) in an org
@@ -109,6 +111,8 @@ var commands = map[string]command{
 		"add": cmdHostAdd, "list": cmdHostList, "show": cmdHostShow, "rm": cmdHostRm, "token": cmdHostToken, "rename": cmdHostRename,
 		"diff": cmdHostDiff, "history": cmdHostHistory,
 	}),
+	"enroll": group("enroll", map[string]command{"create": cmdEnrollCreate, "list": cmdEnrollList, "revoke": cmdEnrollRevoke,
+		"pending": cmdEnrollPending, "approve": cmdEnrollApprove}),
 	"collector": group("collector", map[string]command{"trust": cmdCollectorTrust, "list": cmdCollectorList}),
 	"feeds":     group("feeds", map[string]command{"sync": cmdFeedsSync, "status": cmdFeedsStatus}),
 	"report":    cmdReport,

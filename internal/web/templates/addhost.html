@@ -2,7 +2,7 @@
 <div class="wizard">
 <nav class="crumbs" aria-label="Breadcrumb"><a href="/hosts">Hosts</a> <span aria-hidden="true">/</span> Add a host</nav>
 <h1>Add a host</h1>
-<p class="lede">Register a server here, then run one command on it. The collector reports installed software and versions, never secrets or file contents.</p>
+<p class="lede">Register a server here, then run one command on it. The collector reports installed software and versions, never secrets or file contents. Adding several servers? <a href="/hosts/enroll">Use an enrollment key</a>.</p>
 <ol class="steps" aria-label="Progress">
   <li class="{{if .Added}}done{{else}}current{{end}}"{{if not .Added}} aria-current="step"{{end}}><span>1</span>Register</li>
   <li class="{{if .Added}}current{{end}}"{{if .Added}} aria-current="step"{{end}}><span>2</span>Install on the server</li>
