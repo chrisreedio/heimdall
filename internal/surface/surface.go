@@ -11,6 +11,7 @@ package surface
 import (
 	"cmp"
 	"net/netip"
+	"path"
 	"slices"
 	"strings"
 	"time"
@@ -70,6 +71,15 @@ type Site struct {
 	Counts   Sev    `json:"counts"`
 }
 
+// Label is the site's last path element ("app.example.com" for
+// /home/forge/app.example.com), what people call it.
+func (s Site) Label() string {
+	if l := path.Base(strings.TrimRight(s.Root, "/")); l != "." && l != "/" {
+		return l
+	}
+	return s.Root
+}
+
 // Flag levels.
 const (
 	High   = "high"
@@ -114,6 +124,21 @@ type Row struct {
 
 // Vulnerable: a critical or high finding behind the name.
 func (r Row) Vulnerable() bool { return r.Worst.Critical+r.Worst.High > 0 }
+
+// ViaWildcard: only a wildcard record covers the name (the wildcard's own
+// row carries a wildcard flag instead).
+func (r Row) ViaWildcard() bool { return r.Wildcard && !strings.HasPrefix(r.Name, "*.") }
+
+// LooseSites are the sites on none of the row's hosts.
+func (r Row) LooseSites() []Site {
+	var out []Site
+	for _, s := range r.Sites {
+		if !slices.ContainsFunc(r.Hosts, func(h Host) bool { return h.Name == s.Host && h.Org == s.Org }) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
 
 // Unmatched: the name leads to none of our hosts or sites.
 func (r Row) Unmatched() bool { return len(r.Hosts) == 0 && len(r.Sites) == 0 }

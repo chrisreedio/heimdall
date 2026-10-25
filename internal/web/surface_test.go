@@ -13,7 +13,7 @@ import (
 
 func cfOn(c *Config) { c.Cloudflare = true }
 
-func idCell(name string) string { return `<td class="id">` + name + `</td>` }
+func idCell(name string) string { return `<td class="sf-name"><span class="id">` + name + `</span>` }
 
 func TestSurfacePageCloudflareOff(t *testing.T) {
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
@@ -55,8 +55,8 @@ func TestSurfacePageCloudflareOn(t *testing.T) {
 
 	b := e.get("/surface", signedIn(e)).Body.String()
 	for _, want := range []string{idCell("example.com"), idCell("www.example.com"), idCell("other.example.com"), idCell("old.example.com"),
-		"origin exposed", "dangling", "Pro Website", "ssl-flexible", "no permission", "proxy turned off", "203.0.113.21",
-		"no record in example.com", `aria-current="page">Surface`} {
+		"origin exposed", "dangling", "Pro Website", "zone setting to fix", "no permission", "proxy turned off", "203.0.113.21",
+		`pill muted">no record<`, `aria-current="page">Surface`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("admin page missing %q", want)
 		}

@@ -11,18 +11,20 @@
 {{if .ZoneOpts}}<nav class="filter-chips quick" aria-label="Zone">{{range .ZoneOpts}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Label}}{{if .Count}} <span>{{.Count}}</span>{{end}}</a>{{end}}</nav>{{end}}
 
 {{if .Rows}}
-<div class="scroll"><table>
-  <thead><tr><th>Name</th><th>Zone</th><th>Record</th><th>Host</th><th>Site</th><th>Findings</th><th>Flags</th></tr></thead>
+<div class="scroll"><table class="surface-map">
+  <thead><tr><th>Name</th><th>Record</th><th>Serves</th><th>Findings</th></tr></thead>
   <tbody>{{range .Rows}}
   <tr>
-    <td class="id">{{.Name}}</td>
-    <td>{{with .Zone}}{{.}}{{else}}<span class="muted">—</span>{{end}}{{with .Plan}}<div class="muted small">{{.}}</div>{{end}}{{range .ZoneFlags}} <span class="pill {{if eq .Level "high"}}bad{{else}}warn{{end}}" title="{{.Note}}">{{.Kind}}</span>{{end}}</td>
-    <td>{{if eq .Status "proxied"}}<span class="pill ok">proxied</span>{{else if eq .Status "unproxied"}}<span class="pill warn" title="Grey cloud: visitors reach the target directly">not proxied</span>{{else if eq .Status "no-record"}}<span class="pill muted">no record in {{.Zone}}</span>{{else}}<span class="pill muted" title="No synced Cloudflare zone covers this name">not on Cloudflare</span>{{end}}{{if .Exposed}} <span class="pill bad" title="Not proxied and points straight at one of your hosts: its address is public">origin exposed</span>{{end}}{{if .Wildcard}} <span class="pill muted">wildcard</span>{{end}}
-      {{range .Targets}}<div class="muted small">{{.}}</div>{{end}}</td>
-    <td>{{range .Hosts}}<div><a href="{{hostURL .Org .Name}}">{{.Name}}</a>{{with .OS}} <span class="muted small">{{.}}</span>{{end}}{{if or .Counts.Critical .Counts.High}} <span class="muted small">OS: {{.Counts.Critical}} critical, {{.Counts.High}} high</span>{{end}}</div>{{else}}<span class="muted">none of yours</span>{{end}}</td>
-    <td>{{range .Sites}}<div><a href="{{siteURL .Org .Host .Root}}">{{.Root}}</a>{{with .Software}}<div class="muted small">{{.}}</div>{{end}}</div>{{else}}<span class="muted">—</span>{{end}}</td>
-    <td>{{if .Worst.KEV}}<span class="badge kev" title="known exploited">KEV {{.Worst.KEV}}</span> {{end}}{{if .Worst.Critical}}<span class="badge sev sev-critical">{{.Worst.Critical}} critical</span> {{end}}{{if .Worst.High}}<span class="badge sev sev-high">{{.Worst.High}} high</span> {{end}}{{if .Worst.Medium}}<span class="badge sev sev-medium">{{.Worst.Medium}} medium</span> {{end}}{{if .Worst.Low}}<span class="badge sev sev-low">{{.Worst.Low}} low</span>{{end}}{{if not .Worst.Total}}<span class="muted">none</span>{{end}}</td>
-    <td>{{range .Flags}}<span class="pill {{if eq .Level "high"}}bad{{else if eq .Level "medium"}}warn{{else}}info{{end}}" title="{{.Note}}">{{.Kind}}</span> {{end}}</td>
+    <td class="sf-name"><span class="id">{{.Name}}</span>
+      <div class="muted small">{{with .Zone}}{{.}}{{else}}no zone{{end}}{{with .Plan}} · {{.}}{{end}}{{with .ZoneFlags}} · <a href="#zones" title="{{range $i, $f := .}}{{if $i}}; {{end}}{{$f.Note}}{{end}}">{{len .}} zone setting{{if ne (len .) 1}}s{{end}} to fix</a>{{end}}</div>
+      {{if or .Flags .Exposed .ViaWildcard}}<div class="pills">{{if .Exposed}}<span class="pill bad" title="Not proxied and points straight at one of your hosts: its address is public">origin exposed</span>{{end}}{{if .ViaWildcard}}<span class="pill muted" title="Only a wildcard record covers this name">via wildcard</span>{{end}}{{range .Flags}}<span class="pill {{if eq .Level "high"}}bad{{else if eq .Level "medium"}}warn{{else}}info{{end}}" title="{{.Note}}">{{.Kind}}</span>{{end}}</div>{{end}}</td>
+    <td class="sf-record">{{if eq .Status "proxied"}}<span class="pill ok">proxied</span>{{else if eq .Status "unproxied"}}<span class="pill warn" title="Grey cloud: visitors reach the target directly">not proxied</span>{{else if eq .Status "no-record"}}<span class="pill muted">no record</span>{{else}}<span class="pill muted" title="No synced Cloudflare zone covers this name">not on Cloudflare</span>{{end}}
+      {{range .Targets}}<div class="muted small id">{{.}}</div>{{end}}</td>
+    <td class="sf-serves">{{$sites := .Sites}}{{range .Hosts}}{{$h := .}}<div class="sf-host"><a href="{{hostURL .Org .Name}}">{{.Name}}</a>{{with .OS}} <span class="muted small">{{.}}</span>{{end}}
+        {{range $sites}}{{if and (eq .Host $h.Name) (eq .Org $h.Org)}}<div class="sf-site"><a href="{{siteURL .Org .Host .Root}}" title="{{.Root}}">{{.Label}}</a>{{with .Software}} <span class="muted small">{{.}}</span>{{end}}</div>{{end}}{{end}}</div>{{end}}
+      {{range .LooseSites}}<div class="sf-host"><a href="{{siteURL .Org .Host .Root}}" title="{{.Root}} on {{.Host}}">{{.Label}}</a> <span class="muted small">on {{.Host}}{{with .Software}} · {{.}}{{end}}</span></div>{{end}}
+      {{if not (or .Hosts .Sites)}}<span class="muted">none of yours</span>{{end}}</td>
+    <td class="sf-findings">{{if .Worst.Total}}<div class="pills">{{if .Worst.KEV}}<span class="badge kev" title="known exploited">KEV {{.Worst.KEV}}</span>{{end}}{{if .Worst.Critical}}<span class="badge sev sev-critical">{{.Worst.Critical}} critical</span>{{end}}{{if .Worst.High}}<span class="badge sev sev-high">{{.Worst.High}} high</span>{{end}}{{if and (not .Worst.Critical) (not .Worst.High)}}{{if .Worst.Medium}}<span class="badge sev sev-medium">{{.Worst.Medium}} medium</span>{{end}}{{if .Worst.Low}}<span class="badge sev sev-low">{{.Worst.Low}} low</span>{{end}}{{end}}</div>{{else}}<span class="muted">none</span>{{end}}</td>
   </tr>{{end}}
   </tbody>
 </table></div>
