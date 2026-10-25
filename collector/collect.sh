@@ -724,7 +724,8 @@ EOF
 
 # ── Privilege watch (opt-in, install.sh --watch-privilege) ─────────────────
 # Recent privileged-access events (time and kind, plus the username and
-# source only with --watch-privilege-users) and whether the PAM hook is intact, as curl
+# source only with --watch-privilege-users), whether the PAM hook is intact,
+# and what it records, as curl
 # config header lines. Headers, not snapshot fields, so collectors and hubs
 # of different versions still accept each other. Nothing is kept here: the
 # last 7 days are resent each time and the hub dedupes.
@@ -747,6 +748,18 @@ privilege_config() {
 		watch=partial
 	fi
 	echo "header = \"X-Heimdall-Privilege-Watch: $watch\""
+	# What the installed hook records: kinds only, the user too
+	# (--watch-privilege-users), or the user and source (hooks from 0.4.23).
+	if [ -r "$hook" ]; then
+		if ! grep -q '^RECORD_USERS=1' "$hook" 2>/dev/null; then
+			detail=kinds
+		elif grep -q '^source_of()' "$hook" 2>/dev/null; then
+			detail=sources
+		else
+			detail=users
+		fi
+		echo "header = \"X-Heimdall-Privilege-Detail: $detail\""
+	fi
 	[ -r "$events" ] || return 0
 	now=$(date +%s)
 	list=$(awk -v since=$((now - 7 * 86400)) -v now="$now" '
@@ -899,10 +912,20 @@ newer() {
 		END { for (i = 1; i <= 3; i++) { if (a[i] > b[i]) exit 0; if (a[i] < b[i]) exit 1 } exit 1 }'
 }
 
-# upgrade [vX.Y.Z]: reinstall this collector from the release the hub runs
-# (or the one given), keeping its hub, token and settings. Root only: it
-# replaces /usr/local/bin/heimdall-collect.
+# upgrade [vX.Y.Z] [--watch-privilege-users | --watch-privilege |
+# --no-watch-privilege]: reinstall this collector from the release the hub
+# runs (or the one given), keeping its hub, token and settings, and
+# changing the privilege watch when asked (even when already up to date).
+# Root only: it replaces /usr/local/bin/heimdall-collect.
 upgrade() {
+	given='' priv=''
+	for a in "$@"; do
+		case $a in
+		--watch-privilege | --watch-privilege-users | --no-watch-privilege) priv=$a ;;
+		v[0-9]*) given=$a ;;
+		*) usage ;;
+		esac
+	done
 	[ "$(id -u)" -eq 0 ] || die "run it as root: sudo heimdall-collect upgrade"
 	have curl || die "curl is required"
 	env_file=
@@ -918,7 +941,7 @@ upgrade() {
 	lockfiles=$(setting HEIMDALL_LOCKFILES)
 	if [ -z "$url" ] || [ ! -r "$token_file" ]; then die "$env_file doesn't name a hub and a readable token"; fi
 
-	want=${1:-}
+	want=$given
 	if [ -z "$want" ]; then
 		token=$(tr -d ' \t\r\n' <"$token_file")
 		answer=$(printf 'header = "Authorization: Bearer %s"\n' "$token" |
@@ -931,7 +954,7 @@ upgrade() {
 	v[0-9]*.[0-9]*.[0-9]*) ;;
 	*) die "the hub didn't report a release version; give one: heimdall-collect upgrade vX.Y.Z" ;;
 	esac
-	if [ -z "${1:-}" ] && ! newer "${want#v}" "$VERSION"; then
+	if [ -z "$given" ] && [ -z "$priv" ] && ! newer "${want#v}" "$VERSION"; then
 		echo "heimdall-collect: already up to date ($VERSION; the hub runs $want)" >&2
 		return 0
 	fi
@@ -947,6 +970,7 @@ upgrade() {
 	set -- --hub "$url" --token-file "$token_file" --version "$want"
 	[ -z "$sites" ] || set -- "$@" --sites "$sites"
 	[ -z "$lockfiles" ] || set -- "$@" --lockfiles "$lockfiles"
+	[ -z "$priv" ] || set -- "$@" "$priv"
 	sh "$work/install.sh" "$@"
 }
 
@@ -955,7 +979,8 @@ upgrade() {
 usage() {
 	cat >&2 <<'EOF'
 usage: heimdall-collect --print | --push | --site-repos | --version
-       sudo heimdall-collect upgrade [vX.Y.Z]
+       sudo heimdall-collect upgrade [vX.Y.Z] [--watch-privilege-users |
+                                     --watch-privilege | --no-watch-privilege]
 
   --print       write a snapshot to stdout (for review or 'heimdall import')
   --push        send a snapshot to $HEIMDALL_URL using $HEIMDALL_TOKEN_FILE
@@ -963,13 +988,15 @@ usage: heimdall-collect --print | --push | --site-repos | --version
   --version     print the collector version
   upgrade       reinstall from the release the hub runs (or the one given),
                 keeping the hub, token and settings; checked against the
-                release's SHA256SUMS
+                release's SHA256SUMS. A privilege watch option changes it
+                (see install.sh --help), even when already up to date
 EOF
 	exit 2
 }
 
-if [ "${1:-}" = upgrade ] && [ $# -le 2 ]; then
-	upgrade "${2:-}"
+if [ "${1:-}" = upgrade ] && [ $# -le 3 ]; then
+	shift
+	upgrade "$@"
 	exit 0
 fi
 [ $# -eq 1 ] || usage
