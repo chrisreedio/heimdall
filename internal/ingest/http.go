@@ -57,6 +57,7 @@ type Handler struct {
 	behindProxy bool
 	perHost     *limiter
 	authFail    *limiter
+	enrolls     *limiter
 
 	// OnStored, if set, is called after a new snapshot is stored (e.g. to
 	// recompute the host's findings). It must not block.
@@ -75,6 +76,7 @@ func NewHandler(st *store.Store, cfg config.Ingest, log *slog.Logger, now func()
 		behindProxy: cfg.BehindProxy,
 		perHost:     newLimiter(cfg.RatePerHost.N, cfg.RatePerHost.Per, maxLimiterKeys, now),
 		authFail:    newLimiter(authFailuresPerMinute, time.Minute, maxLimiterKeys, now),
+		enrolls:     newLimiter(enrollsPerMinute, time.Minute, maxLimiterKeys, now),
 	}
 	for _, c := range cfg.AllowCIDRs {
 		_, n, err := net.ParseCIDR(c)
@@ -122,6 +124,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if key, ok := enrollKey(r); ok {
+		h.enroll(w, r, ip, key, log) // enroll.go
+		return
+	}
 	host, ok := h.authenticate(r)
 	if !ok {
 		h.authFail.allow(ip.String())
@@ -134,6 +140,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(VersionHeader, h.Version)
 	}
 	if r.Method == http.MethodGet {
+		if host.Awaiting { // install.sh asks, re-run on an enrolled server
+			w.Header().Set(PendingHeader, "1")
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, "{\"version\":%q}\n", h.Version)
@@ -143,6 +152,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !h.perHost.allow(strconv.FormatInt(host.ID, 10)) {
 		log.Warn("ingest rejected: rate limited")
 		respond(w, http.StatusTooManyRequests, "rate limited")
+		return
+	}
+
+	// Enrolled and waiting for an admin's approval: answered, so the
+	// collector stays quiet, but nothing it sends is stored.
+	if host.Awaiting {
+		io.Copy(io.Discard, http.MaxBytesReader(w, r.Body, h.maxBody))
+		log.Info("ingest ignored: host waiting for approval")
+		w.Header().Set(PendingHeader, "1")
+		respond(w, http.StatusAccepted, "waiting for approval")
 		return
 	}
 
@@ -192,9 +211,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Warn("anomaly", "rule", a.Rule, "severity", a.Severity, "summary", a.Summary)
 		}
 	}
-	if res.Status < 300 { // opt-in privilege watch (privilege.go)
-		h.recordPrivilege(r.Context(), log, host, res.SnapshotID, r)
-		h.recordSiteRepos(r.Context(), log, host, r) // repos.go
+	if res.Status < 300 {
+		if err := h.store.RecordMachine(r.Context(), host.ID, r.Header.Get(MachineHeader)); err != nil { // enroll.go
+			log.Warn("machine ID not recorded", "err", err)
+		}
+		h.recordPrivilege(r.Context(), log, host, res.SnapshotID, r) // opt-in privilege watch (privilege.go)
+		h.recordSiteRepos(r.Context(), log, host, r)                 // repos.go
 	}
 	if res.Status == http.StatusCreated && h.OnStored != nil {
 		h.OnStored(host)

@@ -785,6 +785,15 @@ privilege_config() {
 
 # ── Push ────────────────────────────────────────────────────────────────────
 
+# machine_hash: a hash of the machine ID, as install.sh computes it (sent
+# as X-Heimdall-Machine). Empty without a machine ID or sha256sum.
+machine_hash() {
+	id=$(cat /etc/machine-id 2>/dev/null || cat /var/lib/dbus/machine-id 2>/dev/null || true)
+	case $id in *[!0-9a-f]* | '') return 0 ;; esac
+	[ ${#id} -eq 32 ] && have sha256sum || return 0
+	printf 'heimdall-machine:%s' "$id" | sha256sum | cut -c1-64
+}
+
 # triggers_state: what makes this collector run, for the hub to notice one
 # being switched off (sent as X-Heimdall-Triggers, never in the snapshot):
 #   systemd: timer=<is-enabled>,<is-active>; changes=<is-enabled>,<is-active>
@@ -860,6 +869,11 @@ push() {
 	hostname_header=
 	hn=$(uname -n 2>/dev/null | tr -cd 'A-Za-z0-9._-' | cut -c1-253)
 	[ -z "$hn" ] || hostname_header="header = \"X-Heimdall-Hostname: $hn\""
+	# A hash of the machine ID (never the ID itself), so the hub won't
+	# enroll this server a second time as a new host.
+	machine_header=
+	machine=$(machine_hash)
+	[ -z "$machine" ] || machine_header="header = \"X-Heimdall-Machine: $machine\""
 	# The state of this collector's own timer and change watch.
 	triggers_header=
 	tr_state=$(triggers_state | tr -cd 'a-z,=; -' | cut -c1-240)
@@ -873,7 +887,7 @@ push() {
 	status=$(printf '%s\n' \
 		"header = \"Authorization: Bearer $token\"" \
 		'header = "Content-Type: application/json"' \
-		"$encoding" "$cacert" "$hostname_header" "$triggers_header" "$repos_header" "$(privilege_config)" |
+		"$encoding" "$cacert" "$hostname_header" "$machine_header" "$triggers_header" "$repos_header" "$(privilege_config)" |
 		curl --config - --silent --show-error \
 			--proto '=https,http' --tlsv1.2 \
 			--connect-timeout 10 --max-time 120 \

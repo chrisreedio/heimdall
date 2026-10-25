@@ -152,6 +152,11 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("GET /news", s.requireAuth(s.withScope(s.newsPage)))
 	mux.HandleFunc("GET /hosts/new", s.requireAuth(s.addHostPage))
 	mux.HandleFunc("POST /hosts/new", s.requireAuth(s.addHostSubmit))
+	mux.HandleFunc("GET /hosts/enroll", s.requireAuth(s.enrollPage)) // enrollment keys (enroll.go)
+	mux.HandleFunc("POST /hosts/enroll", s.requireAuth(s.enrollSubmit))
+	mux.HandleFunc("POST /hosts/enroll/revoke", s.requireAuth(s.enrollRevoke))
+	mux.HandleFunc("POST /hosts/enroll/approve", s.requireAuth(s.enrollDecide(true)))
+	mux.HandleFunc("POST /hosts/enroll/reject", s.requireAuth(s.enrollDecide(false)))
 	mux.HandleFunc("POST /hosts/{org}/{host}/rename", s.requireAuth(s.hostRename))
 	mux.HandleFunc("POST /hosts/{org}/{host}/tags", s.requireAuth(s.hostTags))
 	mux.HandleFunc("POST /drift/tag", s.requireAuth(s.driftTag))
@@ -461,7 +466,7 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, v *auth.Viewer, er
 
 func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
-		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "site", "news", "handoff"}
+		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "enroll", "site", "news", "handoff"}
 	names = append(names, "assistants") // AI assistants (MCP tokens)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {

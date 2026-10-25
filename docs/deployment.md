@@ -21,6 +21,8 @@ It downloads the verified release, creates the `heimdall-hub` user, config and d
 curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/v0.4.0/install.sh && sudo sh install.sh --hub https://ingest.acme.example.com
 #   paste the token when asked (never echoed or put on a command line)
 ```
+**Many servers:** **Hosts → Add servers** creates an expiring enrollment key instead; run the same installer with `--enroll` on each server (or over ssh with `--enroll-stdin`) and each one gets its own token. See [Many servers](collector.md#many-servers-enrollment-keys).
+
 The installers always come from the signed GitHub release, never from the hub, so a compromised hub can't push code to your servers. Set `ingest.public_url` (the installer does this for you) so the page shows the right address.
 
 The sections below explain what the installers set up, if you'd rather do it by hand.

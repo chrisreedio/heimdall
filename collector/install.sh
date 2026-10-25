@@ -5,7 +5,9 @@
 #   curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/vX.Y.Z/install.sh &&
 #     sudo sh install.sh --hub https://ingest.example.com
 #   (then paste the token when asked; it's never echoed, logged or put on a
-#   command line)
+#   command line). For many servers, use an enrollment key instead of a
+#   token: --enroll (prompt) or --enroll-stdin. Each server gets its own
+#   token from the hub.
 #
 # What it does (as root):
 #   1. downloads collect.sh and the systemd units from the SAME GitHub
@@ -32,7 +34,8 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 usage() {
 	cat >&2 <<'EOF'
-usage: install.sh --hub https://ingest.example.com [--token-stdin | --token-file FILE]
+usage: install.sh --hub https://ingest.example.com [--token-stdin | --token-file FILE |
+                                                    --enroll | --enroll-stdin]
                   [--version vX.Y.Z] [--from-dir DIR] [--no-push]
                   [--sites "/srv/app ..."] [--lockfiles "/srv/app/package-lock.json ..."]
                   [--watch-privilege [--watch-privilege-users] | --no-watch-privilege]
@@ -41,6 +44,11 @@ usage: install.sh --hub https://ingest.example.com [--token-stdin | --token-file
   (default)      prompt for the ingest token on the terminal, without echo
   --token-stdin  read the ingest token from stdin (for automation, e.g. cloud-init)
   --token-file   read the ingest token from a file
+  --enroll       prompt for an enrollment key (from "heimdall enroll create" or
+                 the Add servers page), without echo; the hub adds this server
+                 and gives it its own token. A server that already has a token
+                 keeps it.
+  --enroll-stdin read the enrollment key from stdin (ssh loops, cloud-init)
   --version      release to install (default: the release this script came from)
   --from-dir     install from a local directory holding the release files (air-gapped)
   --no-push      don't push a first snapshot
@@ -54,12 +62,14 @@ EOF
 	exit 2
 }
 
-token_given=0 hub='' token='' version=$HEIMDALL_VERSION from_dir='' push=1 sites='' lockfiles='' privilege=''
+token_given=0 hub='' token='' enroll='' awaiting=0 name='' version=$HEIMDALL_VERSION from_dir='' push=1 sites='' lockfiles='' privilege=''
 while [ $# -gt 0 ]; do
 	case $1 in
 	--hub) hub=${2:-}; shift ;;
 	--token-stdin) IFS= read -r token || [ -n "$token" ]; token_given=1 ;;
 	--token-file) [ -r "${2:-}" ] || die "cannot read ${2:-}"; token=$(tr -d ' \t\r\n' <"$2"); token_given=1; shift ;;
+	--enroll) enroll=prompt ;;
+	--enroll-stdin) IFS= read -r token || [ -n "$token" ]; enroll=stdin ;;
 	--version) version=${2:-}; shift ;;
 	--from-dir) from_dir=${2:-}; shift ;;
 	--no-push) push=0 ;;
@@ -75,13 +85,20 @@ while [ $# -gt 0 ]; do
 done
 
 [ "$(id -u)" -eq 0 ] || die "run as root (sudo)"
-if [ "$token_given" = 0 ]; then
-	[ -t 0 ] || die "no terminal to ask for the token; use --token-stdin or --token-file"
-	printf 'Ingest token (from "heimdall host add" or the Add host page): ' >&2
+[ -z "$enroll" ] || [ "$token_given" = 0 ] || die "use either a token or an enrollment key, not both"
+ask() { # ask PROMPT: read a secret from the terminal, without echo
+	printf '%s: ' "$1" >&2
 	stty -echo 2>/dev/null || true
 	IFS= read -r token || true
 	stty echo 2>/dev/null || true
 	printf '\n' >&2
+}
+if [ "$enroll" = prompt ]; then
+	[ -t 0 ] || die "no terminal to ask for the enrollment key; use --enroll-stdin"
+	ask 'Enrollment key (from "heimdall enroll create" or the Add servers page)'
+elif [ -z "$enroll" ] && [ "$token_given" = 0 ]; then
+	[ -t 0 ] || die "no terminal to ask for the token; use --token-stdin or --token-file"
+	ask 'Ingest token (from "heimdall host add" or the Add host page)'
 fi
 case $hub in
 https://*) ;;
@@ -89,9 +106,10 @@ http://127.0.0.1[:/]* | http://localhost[:/]*) ;; # tests and local proxies
 *) die "--hub must be an https:// URL" ;;
 esac
 token=$(printf '%s' "$token" | tr -d ' \t\r\n')
-case $token in
-hmd_ingest_*) ;;
-*) die "missing or malformed token (--token-stdin or --token-file)" ;;
+case $enroll:$token in
+:hmd_ingest_* | ?*:hmd_enroll_*) ;;
+:*) die "missing or malformed token (--token-stdin or --token-file)" ;;
+*) die "missing or malformed enrollment key (it starts with hmd_enroll_)" ;;
 esac
 case $token in *[!A-Za-z0-9_-]*) die "malformed token" ;; esac
 case $version in v[0-9]*.[0-9]*.[0-9]* | dev) ;; *) die "bad --version $version" ;; esac
@@ -110,6 +128,64 @@ fetch() { # fetch NAME into $work
 	else
 		die "need curl or wget"
 	fi
+}
+
+# machine_hash: a hash of this server's machine ID (never the ID itself),
+# so the hub enrolls each server once. The same as collect.sh's.
+machine_hash() {
+	id=$(cat /etc/machine-id 2>/dev/null || cat /var/lib/dbus/machine-id 2>/dev/null || true)
+	case $id in *[!0-9a-f]* | '') return 0 ;; esac
+	[ ${#id} -eq 32 ] && have sha256sum || return 0
+	printf 'heimdall-machine:%s' "$id" | sha256sum | cut -c1-64
+}
+
+# enroll_now trades the enrollment key for this server's own ingest token.
+# The key goes to curl on stdin, never in process arguments.
+enroll_now() {
+	have curl || die "enrolling needs curl"
+	say "Enrolling this server with the hub"
+	hn=$(uname -n 2>/dev/null | tr -cd 'A-Za-z0-9._-' | cut -c1-253)
+	hn_header='' machine_header=''
+	[ -z "$hn" ] || hn_header="header = \"X-Heimdall-Hostname: $hn\""
+	machine=$(machine_hash)
+	[ -z "$machine" ] || machine_header="header = \"X-Heimdall-Machine: $machine\""
+	status=$(printf '%s\n' "header = \"Authorization: Bearer $token\"" "$hn_header" "$machine_header" |
+		curl --config - --silent --show-error --proto '=https,http' --tlsv1.2 \
+			--connect-timeout 10 --max-time 60 --data-binary '' \
+			--dump-header "$work/enroll.headers" --output "$work/enroll.body" --write-out '%{http_code}' \
+			"${hub%/}/api/v1/ingest") || die "could not reach $hub"
+	answer=$(head -c 300 "$work/enroll.body" | tr -cd 'A-Za-z0-9 ._,:;()/-')
+	case $status:$answer in
+	201:*) ;;
+	401:*enrollment*) die "the hub rejected the enrollment key (mistyped or revoked)" ;;
+	401:*) die "this hub can't enroll servers yet; upgrade it to the release this installer came from" ;;
+	403:* | 409:*) die "$answer" ;;
+	429:*) die "rate limited by the hub (HTTP 429); try again in a minute" ;;
+	*) die "the hub returned HTTP $status" ;;
+	esac
+	token=$(tr -d ' \t\r\n' <"$work/enroll.body")
+	case $token in hmd_ingest_*) ;; *) die "the hub's answer isn't an ingest token" ;; esac
+	case $token in *[!A-Za-z0-9_-]*) die "the hub's answer isn't an ingest token" ;; esac
+	name=$(tr -d '\r' <"$work/enroll.headers" | sed -n 's/^[Xx]-[Hh]eimdall-[Hh]ost: *\([A-Za-z0-9._-]*\)$/\1/p' | tail -n 1)
+	awaiting_in "$work/enroll.headers"
+	[ "$awaiting" = 1 ] || say "Enrolled as ${name:-a new host}" # else said at the end
+}
+
+# awaiting_in HEADERS: did the hub say this host waits for an admin's
+# approval (X-Heimdall-Pending)? Sets $awaiting.
+awaiting_in() {
+	! tr -d '\r' <"$1" | grep -qi '^x-heimdall-pending: *1$' || awaiting=1
+}
+
+# token_works TOKEN: ask the hub (GET, which only checks the token) whether
+# an existing token is still valid. Only a clear "no" (401) counts as no.
+token_works() {
+	code=$(printf 'header = "Authorization: Bearer %s"\n' "$1" |
+		curl --config - --silent --proto '=https,http' --tlsv1.2 --connect-timeout 10 --max-time 30 \
+			--dump-header "$work/check.headers" --output /dev/null --write-out '%{http_code}' \
+			"${hub%/}/api/v1/ingest") || return 0
+	[ "$code" != 401 ] || return 1
+	awaiting_in "$work/check.headers"
 }
 
 say "Fetching Heimdall collector $version"
@@ -137,6 +213,23 @@ conf=/etc/heimdall
 # Re-runs (and `heimdall-collect upgrade`) keep the privilege watch choice.
 [ -n "$privilege" ] || privilege=$(sed -n 's/^HEIMDALL_PRIVILEGE_WATCH=//p' "$conf/collect.env" 2>/dev/null | tail -n 1)
 case $privilege in on | users | off) ;; *) privilege='' ;; esac
+if [ -n "$enroll" ]; then
+	# Re-running on a server that already reports (e.g. an ssh loop over the
+	# whole fleet) keeps its token: it's an upgrade, not a second host.
+	old=$(tr -d ' \t\r\n' 2>/dev/null <"$conf/token" || true)
+	case $old in
+	hmd_ingest_*[!A-Za-z0-9_-]* | '') ;;
+	hmd_ingest_*)
+		if ! have curl || token_works "$old"; then
+			say "This server already has a token; keeping it (not enrolling it again)"
+			token=$old enroll=
+		else
+			say "This server's token no longer works on the hub (was the host removed?); enrolling it again"
+		fi
+		;;
+	esac
+fi
+[ -z "$enroll" ] || enroll_now
 install -m 0755 "$work/collect.sh" /usr/local/bin/heimdall-collect
 if ! id heimdall >/dev/null 2>&1; then
 	if have useradd; then
@@ -305,7 +398,12 @@ off) sh "$work/privilege-watch.sh" remove ;;
 esac
 have curl || say "WARNING: curl is required for pushing; install it (e.g. apk add curl)"
 
-if [ "$push" = 1 ]; then
+if [ "$awaiting" = 1 ]; then
+	# Its reports are discarded until then, so don't send one now.
+	if [ -n "$name" ]; then wait_msg="Enrolled as $name; waiting"; else wait_msg="This server is waiting"; fi
+	say "$wait_msg for an admin to approve it on the hub (Hosts > Add servers)."
+	say "It reports on its next hourly run after that."
+elif [ "$push" = 1 ]; then
 	say "Sending the first snapshot"
 	run_now || die "first push failed; check the hub URL and token (see docs/collector.md)"
 fi

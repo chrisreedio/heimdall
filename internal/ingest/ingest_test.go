@@ -64,8 +64,8 @@ func newEnv(t *testing.T, mutate func(*config.Ingest)) *env {
 }
 
 type req struct {
-	method, path, token, contentType, encoding, remote, xff, hostname, triggers string
-	body                                                                        []byte
+	method, path, token, contentType, encoding, remote, xff, hostname, triggers, machine string
+	body                                                                                 []byte
 }
 
 func (e *env) do(r req) *httptest.ResponseRecorder {
@@ -102,6 +102,9 @@ func (e *env) do(r req) *httptest.ResponseRecorder {
 	}
 	if r.triggers != "" {
 		hr.Header.Set(TriggersHeader, r.triggers)
+	}
+	if r.machine != "" {
+		hr.Header.Set(MachineHeader, r.machine)
 	}
 	w := httptest.NewRecorder()
 	e.h.ServeHTTP(w, hr)

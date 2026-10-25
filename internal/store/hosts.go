@@ -23,6 +23,7 @@ type Host struct {
 	AutoName   bool // named by its first report (the name is a placeholder until then)
 	CreatedAt  time.Time
 	LastSeenAt time.Time // zero if the host has never checked in
+	Awaiting   bool      // enrolled, waiting for an admin's approval
 }
 
 // AddHost registers a host and issues its first ingest token. The plaintext
@@ -44,39 +45,14 @@ func (s *Store) AddHost(ctx context.Context, actor, orgSlug, envSlug, name strin
 	h := Host{OrgSlug: orgSlug, EnvSlug: envSlug, Name: name, Tags: tags, AutoName: auto}
 	token, hash := newIngestToken()
 	err = s.tx(ctx, func(tx *sql.Tx) error {
-		orgID, err := orgIDBySlug(ctx, tx, orgSlug)
+		orgID, envID, err := orgEnvIDs(ctx, tx, orgSlug, envSlug)
 		if err != nil {
 			return err
 		}
-		var envID int64
-		err = tx.QueryRowContext(ctx, `SELECT id FROM environments WHERE org_id = ? AND slug = ?`,
-			orgID, envSlug).Scan(&envID)
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("env %q in org %q: %w (create it with `heimdall env create`)", envSlug, orgSlug, ErrNotFound)
-		}
-		if err != nil {
-			return err
-		}
-
-		var created string
-		err = tx.QueryRowContext(ctx,
-			`INSERT INTO hosts (org_id, env_id, name, auto_name) VALUES (?, ?, ?, ?) RETURNING id, created_at`,
-			orgID, envID, name, boolInt(auto)).Scan(&h.ID, &created)
-		if isUnique(err) {
-			return fmt.Errorf("host %q in org %q: %w", name, orgSlug, ErrExists)
-		}
-		if err != nil {
-			return err
-		}
-		h.CreatedAt = parseTime(created)
-
-		for _, t := range tags {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO host_tags (host_id, tag) VALUES (?, ?)`, h.ID, t); err != nil {
-				return err
+		if h.ID, h.CreatedAt, err = insertHost(ctx, tx, orgID, envID, name, auto, tags, hash); err != nil {
+			if errors.Is(err, ErrExists) {
+				return fmt.Errorf("host %q in org %q: %w", name, orgSlug, ErrExists)
 			}
-		}
-		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO ingest_tokens (host_id, token_hash) VALUES (?, ?)`, h.ID, hash[:]); err != nil {
 			return err
 		}
 
@@ -92,10 +68,32 @@ func (s *Store) AddHost(ctx context.Context, actor, orgSlug, envSlug, name strin
 	return h, token, nil
 }
 
+// insertHost adds a host row with its tags and first ingest token.
+func insertHost(ctx context.Context, tx *sql.Tx, orgID, envID int64, name string, auto bool, tags []string, tokenHash [32]byte) (int64, time.Time, error) {
+	var id int64
+	var created string
+	err := tx.QueryRowContext(ctx,
+		`INSERT INTO hosts (org_id, env_id, name, auto_name) VALUES (?, ?, ?, ?) RETURNING id, created_at`,
+		orgID, envID, name, boolInt(auto)).Scan(&id, &created)
+	if isUnique(err) {
+		return 0, time.Time{}, ErrExists
+	}
+	if err != nil {
+		return 0, time.Time{}, err
+	}
+	for _, t := range tags {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO host_tags (host_id, tag) VALUES (?, ?)`, id, t); err != nil {
+			return 0, time.Time{}, err
+		}
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO ingest_tokens (host_id, token_hash) VALUES (?, ?)`, id, tokenHash[:])
+	return id, parseTime(created), err
+}
+
 // ListHosts returns hosts in one org, or in all orgs if orgSlug is empty.
 func (s *Store) ListHosts(ctx context.Context, orgSlug string) ([]Host, error) {
 	q := `
-		SELECT h.id, o.slug, e.slug, h.name, h.created_at, h.last_seen_at,
+		SELECT h.id, o.slug, e.slug, h.name, h.created_at, h.last_seen_at, h.awaiting_approval,
 		       coalesce((SELECT group_concat(tag, ',') FROM (SELECT tag FROM host_tags WHERE host_id = h.id ORDER BY tag)), '')
 		FROM hosts h
 		JOIN organizations o ON o.id = h.org_id
@@ -120,7 +118,7 @@ func (s *Store) ListHosts(ctx context.Context, orgSlug string) ([]Host, error) {
 		var h Host
 		var created, tags string
 		var lastSeen sql.NullString
-		if err := rows.Scan(&h.ID, &h.OrgSlug, &h.EnvSlug, &h.Name, &created, &lastSeen, &tags); err != nil {
+		if err := rows.Scan(&h.ID, &h.OrgSlug, &h.EnvSlug, &h.Name, &created, &lastSeen, &h.Awaiting, &tags); err != nil {
 			return nil, err
 		}
 		h.CreatedAt, h.LastSeenAt = parseTime(created), parseNullTime(lastSeen)
@@ -220,22 +218,11 @@ func (s *Store) ClaimHostName(ctx context.Context, hostID int64, reported string
 		if auto == 0 {
 			return nil
 		}
-		for i := 1; i <= 100; i++ {
-			name = base
-			if i > 1 {
-				name = fmt.Sprintf("%s-%d", base, i)
-			}
-			var taken int64
-			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM hosts WHERE org_id = ? AND name = ?`, orgID, name).Scan(&taken); err != nil {
-				return err
-			}
-			if taken == 0 {
-				break
-			}
-			if i == 100 {
-				return fmt.Errorf("no free name for reported hostname %q", base)
-			}
+		n, err := freeHostName(ctx, tx, orgID, base)
+		if err != nil {
+			return err
 		}
+		name = n
 		if _, err := tx.ExecContext(ctx, `UPDATE hosts SET name = ?, auto_name = 0 WHERE id = ? AND auto_name = 1`, name, hostID); err != nil {
 			return err
 		}
@@ -244,6 +231,24 @@ func (s *Store) ClaimHostName(ctx context.Context, hostID int64, reported string
 			Detail: map[string]any{"from": old, "reported": true}})
 	})
 	return name, claimed, err
+}
+
+// freeHostName returns base, or base-2, base-3, ... if it's taken in the org.
+func freeHostName(ctx context.Context, tx *sql.Tx, orgID int64, base string) (string, error) {
+	for i := 1; i <= 100; i++ {
+		name := base
+		if i > 1 {
+			name = fmt.Sprintf("%s-%d", base, i)
+		}
+		var taken int64
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM hosts WHERE org_id = ? AND name = ?`, orgID, name).Scan(&taken); err != nil {
+			return "", err
+		}
+		if taken == 0 {
+			return name, nil
+		}
+	}
+	return "", fmt.Errorf("no free name for reported hostname %q", base)
 }
 
 // RenameHost renames a host. A host renamed this way no longer takes its

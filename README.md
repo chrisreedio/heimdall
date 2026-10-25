@@ -212,7 +212,7 @@ Supported platforms: **Ubuntu 22.04/24.04, Debian 12, Rocky 9, AlmaLinux 9 and A
 - Request bodies are capped (default 5 MB), decompressed with a cap, and parsed with a strict JSON decoder that rejects unknown fields
 - Every field is validated and normalized: lengths, character sets, version formats
 - Rate-limited per token and per IP. Failed authentication attempts are logged.
-- Tokens are 256-bit random values, stored as SHA-256 hashes, scoped to one host, and revocable. Rotate them with `heimdall host token --rotate`.
+- Tokens are 256-bit random values, stored as SHA-256 hashes, scoped to one host, and revocable. Rotate them with `heimdall host token --rotate`. Enrollment keys, which add many servers, can't send reports themselves; they expire, are stored as hashes too, and enroll each server once, waiting for approval by default.
 - Snapshots are append-only, so a host can't edit or delete its own history. A report with an unchanged inventory is stored as a small heartbeat instead of a new snapshot.
 
 ### Web UI
@@ -288,7 +288,7 @@ Direct dependencies: **five** (SQLite, x/crypto, TOML, filippo.io/age for encryp
 
 ## Quick start
 
-**The fast way:** run `install-hub.sh` on a fresh VM, then use **Hosts → Add a host** in the UI to get a one-line install command for each server. See [docs/deployment.md](docs/deployment.md#one-command-install). The manual steps below do the same thing by hand.
+**The fast way:** run `install-hub.sh` on a fresh VM, then use **Hosts → Add a host** in the UI to get a one-line install command for each server (or **Add servers** for an enrollment key that adds many). See [docs/deployment.md](docs/deployment.md#one-command-install). The manual steps below do the same thing by hand.
 
 > The hub and collector below work today (M1). The web UI and user accounts arrive in M3.
 
@@ -577,6 +577,7 @@ Builds on M6 patch plans and M7 history. See [docs/anomaly-signals.md](docs/anom
 
 ### Up next
 - [x] **Splash page on the public ingest host.** `GET /` returns a minimal dark page with the centered logo and no text, instead of a bare 404. Caddy serves it as static HTML with the logo inline, so the hub isn't involved. Headers give nothing away: no `Server` or `Via`, `Cache-Control: no-store`, a strict CSP (`default-src 'none'`, the style pinned by hash), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`. Every other path stays an empty 404, and nothing names Heimdall or a version. Existing hubs pick it up when they re-run `install-hub.sh --ingest-host`.
+- [x] **Enrollment keys:** add many servers with one expiring, optionally use-limited key (Hosts → Add servers, or `heimdall enroll create`), pasted at a prompt or piped over ssh. Each server gets its own token, the key itself can't report, and new servers wait for an admin's approval by default. A server is enrolled once, by a hash of its machine ID. See [Many servers](docs/collector.md#many-servers-enrollment-keys).
 - [x] **Environments that fit:** create one on the fly from Add a host ("New environment…"), move a host between environments from its page, and filter Hosts by environment. Name them after what the servers are (`shared-hosting`, `internal`), not just prod and staging.
 - [x] **Site labels:** each site is Production, Staging or Development, suggested from its name (`staging.`, `dev.`, `test.`…) and overridable by org admins. Sites can be filtered by label, and the host page shows the labels.
 - [x] **Event-driven reports:** a report about a minute after packages change (one per `apt upgrade`, however many packages), 3 minutes after boot so "reboot required" clears quickly, and after deploys with a one-line, sudoers-limited snippet. See [When it reports](docs/collector.md#when-it-reports).

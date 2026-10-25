@@ -35,6 +35,21 @@ type addHostBody struct {
 	Windows  string
 }
 
+// installURLs returns where install commands download the release from,
+// and the hub URL they report to, setting the release tag shown (vX.Y.Z,
+// unpinned, when this build isn't a tagged release).
+func (s *server) installURLs(version *string, unpinned *bool) (base, hub string) {
+	*version = s.cfg.Version
+	if !releaseTag.MatchString(*version) {
+		*version, *unpinned = "vX.Y.Z", true
+	}
+	hub = s.cfg.IngestURL
+	if hub == "" {
+		hub = "https://ingest.example.com"
+	}
+	return Releases + "/" + *version, hub
+}
+
 // adminOrgs lists orgs where the viewer may add hosts.
 func (s *server) adminOrgs(r *http.Request, v *auth.Viewer) ([]store.Org, map[string][]store.Env, error) {
 	all, err := s.st.ListOrgs(r.Context())
@@ -114,15 +129,8 @@ func (s *server) addHostSubmit(w http.ResponseWriter, r *http.Request, v *auth.V
 		s.renderAddHost(w, r, v, http.StatusBadRequest, body)
 		return
 	}
-	body := addHostBody{Added: true, Host: host, Token: token, Version: s.cfg.Version}
-	if !releaseTag.MatchString(body.Version) {
-		body.Version, body.Unpinned = "vX.Y.Z", true
-	}
-	hub := s.cfg.IngestURL
-	if hub == "" {
-		hub = "https://ingest.example.com"
-	}
-	base := Releases + "/" + body.Version
+	body := addHostBody{Added: true, Host: host, Token: token}
+	base, hub := s.installURLs(&body.Version, &body.Unpinned)
 	body.Linux = fmt.Sprintf("curl -fsSLO %s/install.sh && sudo sh install.sh --hub %s", base, hub)
 	body.Cloud = fmt.Sprintf("#cloud-config\nruncmd:\n  - [sh, -c, \"cd /root && curl -fsSLO %s/install.sh && printf '%%s\\\\n' '%s' | sh install.sh --hub %s --token-stdin\"]",
 		base, token, hub)
