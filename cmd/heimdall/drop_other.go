@@ -4,4 +4,4 @@
 
 package main
 
-func asHubUser(string, []string) error { return nil }
+func asHubUser(configPath string, _ []string) (string, error) { return configPath, nil }
