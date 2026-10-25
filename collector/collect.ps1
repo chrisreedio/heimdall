@@ -273,6 +273,21 @@ function Get-HeimdallTaskState([string]$Name) {
     } catch { return (Format-HeimdallTaskState 'unknown') }
 }
 
+# A hash of the machine ID (MachineGuid), never the ID itself, sent as
+# X-Heimdall-Machine so the hub enrolls a server once. '' if unreadable.
+function Get-HeimdallMachineHash {
+    try {
+        $guid = [string](Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Cryptography' -Name MachineGuid -ErrorAction Stop).MachineGuid
+    } catch { return '' }
+    $guid = $guid.Trim().ToLowerInvariant()
+    if ($guid -notmatch '^[0-9a-f-]{32,36}$') { return '' }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = $sha.ComputeHash([System.Text.Encoding]::ASCII.GetBytes("heimdall-machine:$guid"))
+    } finally { $sha.Dispose() }
+    -join ($bytes | ForEach-Object { $_.ToString('x2') })
+}
+
 function Get-HeimdallTriggers {
     return "task=$(Get-HeimdallTaskState $script:TaskName); changes=$(Get-HeimdallTaskState $script:ChangesTaskName)"
 }
@@ -385,6 +400,8 @@ function Send-HeimdallSnapshot([string]$json) {
     # The machine's hostname names a host added without one (on the hub).
     $hn = ([System.Net.Dns]::GetHostName() -replace '[^A-Za-z0-9._-]', '')
     if ($hn) { $headers['X-Heimdall-Hostname'] = $hn.Substring(0, [Math]::Min($hn.Length, 253)) }
+    $machine = Get-HeimdallMachineHash
+    if ($machine) { $headers['X-Heimdall-Machine'] = $machine }
     # The state of this collector's own two scheduled tasks.
     $tr = (Get-HeimdallTriggers) -replace '[^a-z,=; -]', ''
     if ($tr) { $headers['X-Heimdall-Triggers'] = $tr.Substring(0, [Math]::Min($tr.Length, 240)) }

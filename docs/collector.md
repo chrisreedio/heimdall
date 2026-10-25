@@ -56,6 +56,12 @@ OSV has no Windows ecosystem, so Windows hosts get inventory, update and lifecyc
 Start-ScheduledTask -TaskName 'Heimdall collector'    # first push now
 ```
 
+With an [enrollment key](#many-servers-enrollment-keys) instead of a token, add `-Enroll` and paste the key when asked: the hub adds the server and gives it its own token. A server that already has a working token keeps it.
+
+```powershell
+.\install-windows.ps1 -HubUrl https://ingest.example.com -Enroll
+```
+
 The installer sets up two scheduled tasks running as **`NT AUTHORITY\LocalService`**, a built-in low-privilege account, with the least privilege (see [When it reports](#when-windows-reports)). The token goes in `C:\ProgramData\Heimdall\token`, with permissions limited to LocalService (read), SYSTEM and Administrators. It never appears on a command line.
 
 **Upgrading:** download the new release's `install-windows.ps1`, `collect.ps1` and `SHA256SUMS` and run the installer again, the same way. It replaces `collect.ps1` and both tasks (an install from before v0.4.14 has its daily task replaced by the hourly one) and keeps the hub URL; press Enter at the token prompt to keep the current token. There's no `heimdall-collect upgrade` on Windows yet. When the hub runs a newer release, `collect.ps1 -Push` says so on stderr.
@@ -107,7 +113,7 @@ The collector runs on every server you manage, so it's built to be **boring, rea
 - `.env` files, config file contents, environment variables
 - Users, groups, SSH keys, shell history
 - Process lists or process arguments
-- Any file other than `/etc/os-release`, `/proc/uptime`, the package database, `/var/run/reboot-required`, enabled nginx/Apache vhost files, each discovered app's `composer.json` and `composer.lock`, its own script file and the token file (plus, for the opt-in [privilege watch](#privilege-watch), its events file and whether `/etc/pam.d/sudo`, `su` and `sshd` contain its line)
+- Any file other than `/etc/os-release`, `/proc/uptime`, `/etc/machine-id` (only a hash of it is sent, see [Many servers](#many-servers-enrollment-keys)), the package database, `/var/run/reboot-required`, enabled nginx/Apache vhost files, each discovered app's `composer.json` and `composer.lock`, its own script file and the token file (plus, for the opt-in [privilege watch](#privilege-watch), its events file and whether `/etc/pam.d/sudo`, `su` and `sshd` contain its line)
 - Application source code, `vendor/`, logs or storage
 
 ### What it trusts
@@ -120,7 +126,37 @@ The collector runs on every server you manage, so it's built to be **boring, rea
 
 **Quickest:** **Hosts → Add a host** in the UI gives you a one-line command running `install.sh` from the release. It verifies checksums (and the Sigstore signature when `cosign` is installed), creates the user and token, schedules pushes (hourly, after boot and after package changes; see [When it reports](#when-it-reports)) and sends the first report. On the hub's own box it uses `/etc/heimdall-collect`, so the hub's config is never touched.
 
-To install by hand:
+### Many servers: enrollment keys
+
+To add a batch of servers, create one **enrollment key** instead of a host per server: **Hosts → Add servers** in the UI, or `heimdall enroll create`. A key is scoped to one org and environment (and gives each server its tags), expires (after 1 hour to 30 days, 24 hours by default), and can be limited to a number of servers. Each server it enrolls becomes a host named after its hostname, with **its own ingest token**; the key itself can never send reports.
+
+```sh
+# On the hub (or use Hosts → Add servers): only the key goes to stdout
+sudo heimdall enroll create --org acme --env prod --tag web --expires 24h --uses 20 --label "web rollout"
+
+# On each server: paste the key when asked (it isn't echoed or put on a command line)
+curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/vX.Y.Z/install.sh &&
+  sudo sh install.sh --hub https://ingest.example.com --enroll
+
+# Or many at once, from your own machine (needs passwordless sudo, or root login):
+read -rs KEY   # paste the key (it isn't shown), then Enter
+for h in web-01 web-02 web-03; do
+  printf '%s\n' "$KEY" | ssh "$h" 'cd "$(mktemp -d)" && curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/vX.Y.Z/install.sh && sudo sh install.sh --hub https://ingest.example.com --enroll-stdin'
+done
+unset KEY
+```
+
+The Add servers page also gives cloud-init user data for new VMs (it contains the key, so keep that key short-lived and limited) and the Windows command.
+
+- **Approval, on by default.** A server enrolled with a key that requires approval is *waiting for approval*: the hub answers its reports (`202 Accepted`, so the collector stays quiet) but doesn't store them, and nothing about it alerts. Approve or reject it under **Waiting for approval** on the Add servers page, or with `heimdall enroll pending` and `heimdall enroll approve --org acme web-01`; reject removes the host (`heimdall host rm`). Its next hourly report after approval counts. Turn approval off (`--no-approval`, or untick **Require approval**) only for a key you keep to yourself.
+- **Each server once.** The installer and collector send `X-Heimdall-Machine`, the hex SHA-256 of `heimdall-machine:` and `/etc/machine-id` (Windows: the `MachineGuid` registry value). The ID itself never leaves the server. A server already in the org is refused (`already enrolled as web-01`), and re-running `install.sh --enroll` on a server whose token still works keeps that token: it's an upgrade, not a second host. So an ssh loop over the whole fleet is safe.
+- **Same address as reports.** Enrolling is a `POST` to `/api/v1/ingest` with `Authorization: Bearer hmd_enroll_…`, so a reverse proxy that forwards only that path needs no change. The answer is the new token (`text/plain`, `201 Created`) with `X-Heimdall-Host: <name>`, and `X-Heimdall-Pending: 1` when it waits for approval.
+- **Guarded.** Keys are stored only as hashes, audit-logged when created, used and revoked, and rate-limited (wrong keys count toward the per-address failure limit; each key enrolls at most 60 servers a minute). Revoke one early with `heimdall enroll revoke` or the page's **Revoke**; the hosts it added keep their tokens.
+
+The hub must run a release with enrollment keys before servers can enroll; an older hub answers `401`, and the installer says it can't enroll yet.
+
+### By hand
+
 
 ```sh
 # 1. Download collect.sh, the deploy files and SHA256SUMS from a tagged release, then verify
@@ -363,6 +399,11 @@ sudo setfacl -d -m u:heimdall:rX /home/forge/example.com/releases
 | `… is readable by other users` | `chmod 400 /etc/heimdall/token` |
 | `HEIMDALL_URL must use https://` | Use an `https://` URL, or a local `http://127.0.0.1` proxy |
 | `hub rejected the token (HTTP 401/403)` | The token was rotated or the host removed. Get a new one with `heimdall host add`. |
+| `the hub rejected the enrollment key (mistyped or revoked)` (install.sh) | Check the key, or create a new one: the old one may have been revoked |
+| `enrollment key expired` / `enrollment key used up` (install.sh) | Create a new key (Hosts → Add servers), with a longer expiry or a higher server limit |
+| `this server is already enrolled as web-01` (install.sh) | The hub has this server (by machine ID). Keep its existing token (`/etc/heimdall/token`), or remove that host on the hub first |
+| `this hub can't enroll servers yet` (install.sh) | Upgrade the hub to the release the installer came from, or use a token from Add a host |
+| `waiting for an admin to approve it on the hub` (install.sh) | Not an error: approve the server under Hosts → Add servers, or `heimdall enroll approve`. Until then the hub discards its reports. |
 | `hub rejected the snapshot as invalid (HTTP 422)` | Run `--print` and check the output with `heimdall import --check` |
 | `rate limited by the hub (HTTP 429)` | It's running too often. The default limit is 30 per hour per host (`[ingest] rate_per_host`). |
 | `curl is required for --push` | Install curl |

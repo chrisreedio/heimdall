@@ -1,0 +1,142 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}{{$multi := gt (len .Orgs) 1}}
+<div class="wizard enroll">
+<nav class="crumbs" aria-label="Breadcrumb"><a href="/hosts">Hosts</a> <span aria-hidden="true">/</span> Add servers</nav>
+<h1>Add servers</h1>
+<p class="lede">Create an enrollment key, then run one command on each server. Every server gets its own ingest token. The key can only add servers, never send reports, and it stops working when it expires or is used up.</p>
+{{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+
+{{if .Created}}
+<section class="card token-new" aria-labelledby="key-h">
+  <h2 id="key-h">Copy the enrollment key</h2>
+  <p><strong>It's shown only this once</strong>: Heimdall keeps just a hash. The installer asks for it on each server.</p>
+  <div class="codebox"><code id="enroll-key">{{.Secret}}</code><button type="button" class="copy" data-copy="enroll-key" hidden>Copy</button></div>
+  <p class="hint">Adds {{if .Key.MaxUses}}up to {{.Key.MaxUses}} server{{if ne .Key.MaxUses 1}}s{{end}}{{else}}any number of servers{{end}} to {{.Key.OrgSlug}} / {{.Key.EnvSlug}}{{if .Key.Tags}}, tagged {{join .Key.Tags ", "}}{{end}}. Expires {{.Key.Expires}} ({{time .Key.ExpiresAt}}).
+  {{if .Key.Approval}}Each server waits for your approval below before its reports count.{{else}}Servers report at once, without approval.{{end}}</p>
+</section>
+
+<section class="card">
+  <h2>Run the installer</h2>
+  {{if .Unpinned}}<p class="alert">This hub isn't a tagged release build, so replace <code>vX.Y.Z</code> below with the release you're using.</p>{{end}}
+  <div class="tabs">
+    <input type="radio" name="how" id="en-each" checked><label for="en-each">Each server</label>
+    <input type="radio" name="how" id="en-many"><label for="en-many">Many servers from your machine</label>
+    <input type="radio" name="how" id="en-cloud"><label for="en-cloud">New VMs (cloud-init)</label>
+    <input type="radio" name="how" id="en-win"><label for="en-win">Windows</label>
+    <div class="panel" id="panel-each">
+      <p class="muted">On each server, as a user with sudo, then paste the key when asked. It isn't shown, and it never lands in a command line or shell history.</p>
+      <div class="codebox"><pre id="cmd-each">{{.Linux}}</pre><button type="button" class="copy" data-copy="cmd-each" hidden>Copy</button></div>
+    </div>
+    <div class="panel" id="panel-many">
+      <p class="muted">From your own machine, with your server names in place of <code>web-01 web-02 web-03</code>. You type the key once; each server reads it from ssh's stdin. Needs ssh access with passwordless sudo on each server (or root login).</p>
+      <div class="codebox"><pre id="cmd-many">{{.Many}}</pre><button type="button" class="copy" data-copy="cmd-many" hidden>Copy</button></div>
+      <p class="hint">Safe to run over servers that already report: they keep their token and are only upgraded.</p>
+    </div>
+    <div class="panel" id="panel-cloud">
+      <p class="muted">Paste as new VMs' user data. <strong>It contains the key</strong>, and cloud metadata is readable on those VMs, so use a short expiry and a server limit.</p>
+      <div class="codebox"><pre id="cmd-cloud">{{.Cloud}}</pre><button type="button" class="copy" data-copy="cmd-cloud" hidden>Copy</button></div>
+    </div>
+    <div class="panel" id="panel-win">
+      <p class="muted">In an elevated PowerShell, then paste the key when asked. Check the downloads against <code>SHA256SUMS</code> first.</p>
+      <div class="codebox"><pre id="cmd-win">{{.Windows}}</pre><button type="button" class="copy" data-copy="cmd-win" hidden>Copy</button></div>
+    </div>
+  </div>
+  <div class="actions start">
+    <a class="button" href="/hosts">Go to Hosts</a>
+    <a class="button secondary" href="/hosts/enroll">Create another key</a>
+  </div>
+</section>
+
+{{else}}
+{{if not .IngestURL}}<p class="alert">Set <code>ingest.public_url</code> in heimdall.toml so the install commands point at the right address.</p>{{end}}
+<form method="post" action="/hosts/enroll" class="card stack">
+  <input type="hidden" name="csrf" value="{{$csrf}}">
+  <h2>New enrollment key</h2>
+  <div class="field">
+    <label for="env">Environment</label>
+    <select id="env" name="env" required>
+      {{$envs := .Envs}}{{$sel := .Form.Env}}
+      {{range .Orgs}}{{$org := .Slug}}
+      {{if $multi}}<optgroup label="{{.Name}}">{{end}}
+      {{range index $envs $org}}<option value="{{$org}}/{{.Slug}}"{{if eq $sel (print $org "/" .Slug)}} selected{{end}}>{{.Slug}}</option>{{end}}
+      {{if $multi}}</optgroup>{{end}}
+      {{end}}
+    </select>
+    <p class="hint">Every server the key adds goes here. Need another? <a href="/hosts/new">Add a host</a> creates one.</p>
+  </div>
+  <div class="field">
+    <label for="tags">Tags <span class="optional">optional</span></label>
+    <input id="tags" name="tags" maxlength="300" placeholder="web, role:lb" autocomplete="off" autocapitalize="none" spellcheck="false" value="{{.Form.Tags}}" data-tags>
+    <p class="hint">Each server gets these. Drift compares servers that share a tag.</p>
+  </div>
+  <div class="field">
+    <label for="label">Label <span class="optional">optional</span></label>
+    <input id="label" name="label" maxlength="100" placeholder="October web rollout" autocomplete="off" value="{{.Form.Label}}">
+  </div>
+  <div class="field-row">
+    <div class="field">
+      <label for="expires">Expires after</label>
+      <select id="expires" name="expires">
+        {{$exp := .Form.Expires}}{{range .TTLs}}<option value="{{.Value}}"{{if eq .Value $exp}} selected{{end}}>{{.Label}}</option>{{end}}
+      </select>
+    </div>
+    <div class="field">
+      <label for="uses">Servers <span class="optional">optional</span></label>
+      <input id="uses" name="uses" type="number" min="1" max="10000" inputmode="numeric" placeholder="no limit" value="{{.Form.Uses}}">
+    </div>
+  </div>
+  <div class="field">
+    <label class="check"><input type="checkbox" name="approval" value="1"{{if .Form.Approval}} checked{{end}}> Require approval</label>
+    <p class="hint">Each new server waits here until you approve it; until then its reports are discarded. Turn it off only for a key you'll keep to yourself.</p>
+  </div>
+  <div class="actions">
+    <a class="button secondary" href="/hosts">Cancel</a>
+    <button type="submit">Create key</button>
+  </div>
+</form>
+{{end}}
+
+{{if .Awaiting}}
+<section class="card" id="waiting" aria-labelledby="waiting-h">
+  <h2 id="waiting-h">Waiting for approval</h2>
+  <p class="muted">Enrolled with a key that requires approval. Approve the servers you expect; reject removes the host and its token.</p>
+  <div class="scroll"><table class="enroll-list">
+    <thead><tr><th>Server</th><th>Key</th><th>From</th><th>Enrolled</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>{{range .Awaiting}}<tr>
+      <td><strong class="wrap">{{.Name}}</strong>{{if $multi}} <span class="muted small">{{.OrgSlug}}</span>{{end}}
+        <div class="h-meta"><span class="env-chip" title="Environment">{{.EnvSlug}}</span>{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</div></td>
+      <td>{{if .KeyLabel}}{{.KeyLabel}}{{else if .KeyID}}<span class="muted">key {{.KeyID}}</span>{{else}}<span class="muted">revoked key</span>{{end}}</td>
+      <td>{{if .IP}}<code>{{.IP}}</code>{{else}}<span class="muted">unknown</span>{{end}}</td>
+      <td class="nowrap" title="{{time .EnrolledAt}}">{{ago .EnrolledAt}}</td>
+      <td class="enroll-act">
+        <form method="post" action="/hosts/enroll/approve" class="inline"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.OrgSlug}}"><input type="hidden" name="host" value="{{.Name}}"><button type="submit" aria-label="Approve {{.Name}}">Approve</button></form>
+        <form method="post" action="/hosts/enroll/reject" class="inline"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.OrgSlug}}"><input type="hidden" name="host" value="{{.Name}}"><button type="submit" class="secondary" aria-label="Reject {{.Name}}">Reject</button></form>
+      </td>
+    </tr>{{end}}</tbody>
+  </table></div>
+</section>
+{{end}}
+
+<section class="card" aria-labelledby="keys-h">
+  <h2 id="keys-h">Enrollment keys</h2>
+  {{if .Keys}}
+  <div class="scroll"><table class="enroll-list">
+    <thead><tr><th>Key</th><th>Status</th><th class="num">Servers</th><th>Expires</th><th>Enrolled</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>{{range .Keys}}<tr>
+      <td><strong class="wrap">{{if .Label}}{{.Label}}{{else}}Key {{.ID}}{{end}}</strong>{{if $multi}} <span class="muted small">{{.OrgSlug}}</span>{{end}}
+        <div class="h-meta"><span class="env-chip" title="Environment">{{.EnvSlug}}</span>{{range .Tags}}<span class="tag">{{.}}</span>{{end}}{{if not .Approval}}<span class="pill muted" title="Servers report without approval">no approval</span>{{end}}</div></td>
+      <td>{{if eq .Status "active"}}<span class="pill ok">active</span>{{else}}<span class="pill muted">{{.Status}}</span>{{end}}</td>
+      <td class="num">{{.Uses}}{{if .MaxUses}} / {{.MaxUses}}{{end}}</td>
+      <td class="nowrap" title="{{time .ExpiresAt}}">{{if eq .Status "active"}}{{.Expires}}{{else if eq .Status "revoked"}}<span class="muted">–</span>{{else}}<span class="muted">{{.Expires}}</span>{{end}}</td>
+      <td class="enroll-hosts">{{$o := .OrgSlug}}{{range $i, $h := .Hosts}}{{if $i}}, {{end}}<a href="{{hostURL $o $h}}">{{$h}}</a>{{else}}<span class="muted">none yet</span>{{end}}</td>
+      <td class="enroll-act">{{if eq .Status "active"}}<form method="post" action="/hosts/enroll/revoke" class="inline">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.OrgSlug}}"><input type="hidden" name="id" value="{{.ID}}">
+        <button type="submit" class="link" aria-label="Revoke {{if .Label}}{{.Label}}{{else}}key {{.ID}}{{end}}">Revoke</button>
+      </form>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="muted">No keys yet. Create one above; it works until it expires, is used up or you revoke it.</p>{{end}}
+  <p class="hint">Revoking stops a key adding servers; the ones it added keep their own tokens. From the hub's shell: <code>heimdall enroll list</code>, <code>heimdall enroll pending</code>.</p>
+</section>
+</div>
+{{end}}{{end}}
