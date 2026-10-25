@@ -91,3 +91,25 @@ jobs:
           cache: false
 
       - run: make test-collector
+
+  # The hub and a collector installed for real on the runner (a systemd VM
+  # with passwordless sudo), driven the way an operator drives them. Catches
+  # what unit tests stub away: sudo and privilege drops, systemd units, and
+  # first runs on a quiet box. See deploy/test/installed-smoke.sh.
+  installed:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          # No cache (see collector).
+          cache: false
+
+      - run: make dist VERSION=v0.0.0
+
+      - run: sh deploy/test/installed-smoke.sh dist

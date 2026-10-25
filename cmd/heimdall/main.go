@@ -183,7 +183,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 }
 
 // group dispatches "<name> <sub> ..." to a subcommand.
+// groupSubs lists each group's subcommands (for the sudo test in
+// drop_unix_test.go).
+var groupSubs = map[string][]string{}
+
 func group(name string, subs map[string]command) command {
+	for k := range subs {
+		groupSubs[name] = append(groupSubs[name], k)
+	}
 	return func(a *app, args []string) error {
 		if len(args) == 0 || subs[args[0]] == nil {
 			fmt.Fprintf(a.stderr, "usage: heimdall %s <%s>\n", name, joinKeys(subs))
