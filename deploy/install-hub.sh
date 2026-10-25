@@ -109,7 +109,7 @@ say "Fetching Heimdall $version ($arch)"
 for f in SHA256SUMS "heimdall-linux-$arch" heimdall.service collect.sh splash.html; do fetch "$f"; done
 if have cosign && (fetch SHA256SUMS.sigstore.json) 2>/dev/null; then
 	cosign verify-blob "$work/SHA256SUMS" --bundle "$work/SHA256SUMS.sigstore.json" \
-		--certificate-identity-regexp '^https://github.com/chrisreedio/heimdall/\.github/workflows/release\.yml@refs/tags/v' \
+		--certificate-identity-regexp '^https://github.com/(chrisreedio|realmwatch)/heimdall/\.github/workflows/release\.yml@refs/tags/v' \
 		--certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null 2>&1 ||
 		die "SHA256SUMS signature verification FAILED"
 	say "Sigstore signature verified"
