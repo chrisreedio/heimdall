@@ -27,6 +27,10 @@ type Syncer struct {
 	Interval time.Duration
 	Now      func() time.Time
 	Log      *slog.Logger
+	// Surface: also read zone settings and certificates, check CNAME
+	// targets outside the zones and log changes (surfacesync.go).
+	Surface  bool
+	Resolver Resolver // for the CNAME checks; nil = net.DefaultResolver
 }
 
 func (s *Syncer) Name() string         { return "cloudflare:zones" }
@@ -79,8 +83,17 @@ func (s *Syncer) sync(ctx context.Context) error {
 		}
 		records[z.ID] = out
 	}
+	var before *surfaceBefore
+	if s.Surface {
+		if before, err = s.surfaceBefore(ctx); err != nil {
+			return err
+		}
+	}
 	if err := s.Store.ReplaceCloudflareZones(ctx, stored, records, s.Now()); err != nil {
 		return err
+	}
+	if s.Surface {
+		errs = append(errs, s.surface(ctx, stored, records, before)...)
 	}
 	if s.Security {
 		for _, z := range stored {

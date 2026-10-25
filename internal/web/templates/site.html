@@ -58,5 +58,6 @@
   <ul class="plain other-sites">{{range .Others}}<li><a href="{{siteURL $.Body.Org $.Body.Host .Root}}">{{with first .ServerNames}}{{if eq . "_"}}default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}}</a> <span class="muted small">{{.Root}}</span>{{if .Counts.Total}} <span class="muted small">· {{.Counts.Total}} findings</span>{{end}}</li>{{end}}</ul>
 </section>
 {{end}}
+{{.Surface}}
 {{.Cloudflare}}
 {{end}}{{end}}
