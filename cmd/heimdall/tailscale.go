@@ -57,6 +57,7 @@ func cmdTailscaleSetKey(a *app, args []string) error {
 		if in, err = newInput(a, false); err != nil {
 			return errors.New("stdin is not a terminal; use --stdin to pipe the secret")
 		}
+		fmt.Fprintf(a.stderr, "Create an OAuth client here with only the Devices > Core > Read scope (%s):\n\n  %s\n\n", tailscale.Scope, tailscale.OAuthClientsURL)
 		if secret, err = in.line("Tailscale OAuth client secret or API access token (input hidden): ", true); err != nil {
 			return err
 		}

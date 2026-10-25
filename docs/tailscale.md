@@ -10,7 +10,7 @@ It's **read only**. Heimdall lists the tailnet's devices and never changes anyth
 
 ## Set it up
 
-1. **Create an OAuth client** (recommended: it doesn't expire). In the Tailscale admin console go to **Settings → Trust credentials** (formerly *OAuth clients*), choose **OAuth**, and give it only the **Devices → Core → Read** scope (`devices:core:read`). Read-only scopes don't need tags. Copy the client ID and the secret (`tskey-client-…`); the secret is shown once.
+1. **Create an OAuth client** (recommended: it doesn't expire). `sudo heimdall tailscale set-key` prints the link (https://login.tailscale.com/admin/settings/oauth). In the Tailscale admin console go to **Settings → Trust credentials** (formerly *OAuth clients*), choose **OAuth**, and give it only the **Devices → Core → Read** scope (`devices:core:read`). Read-only scopes don't need tags. Copy the client ID and the secret (`tskey-client-…`); the secret is shown once.
 
    An **API access token** (`tskey-api-…`, from **Settings → Keys**) also works, but it has your full admin rights and expires after 1 to 90 days. `heimdall tailscale status` warns two weeks before it expires.
 
