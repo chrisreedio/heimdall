@@ -192,7 +192,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Warn("anomaly", "rule", a.Rule, "severity", a.Severity, "summary", a.Summary)
 		}
 	}
-	if res.Status < 300 { // opt-in privilege watch (privilege.go)
+	if res.Status < 300 {
+		if err := h.store.RecordReportIP(r.Context(), host.ID, ip.String()); err != nil {
+			log.Warn("report address not recorded", "err", err)
+		}
+		// opt-in privilege watch (privilege.go)
 		h.recordPrivilege(r.Context(), log, host, res.SnapshotID, r)
 		h.recordSiteRepos(r.Context(), log, host, r) // repos.go
 	}

@@ -26,6 +26,7 @@ import (
 	"github.com/chrisreedio/heimdall/internal/auth"
 	"github.com/chrisreedio/heimdall/internal/auth/entra"
 	"github.com/chrisreedio/heimdall/internal/handoff"
+	"github.com/chrisreedio/heimdall/internal/ipinfo"
 	"github.com/chrisreedio/heimdall/internal/report"
 	"github.com/chrisreedio/heimdall/internal/search"
 	"github.com/chrisreedio/heimdall/internal/store"
@@ -72,6 +73,10 @@ type Config struct {
 	// Agents are the coding agents "Hand off to agent" can ask for a pull
 	// request ([[agents]]); none hides the button. See handoff.go.
 	Agents []handoff.Agent
+
+	// IPs says what's known about addresses (privilege sessions' sources,
+	// sign-ins); nil knows only the built-in ranges.
+	IPs *ipinfo.Resolver
 }
 
 // CSP is the Content-Security-Policy sent with every response.

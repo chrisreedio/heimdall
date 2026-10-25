@@ -22,6 +22,7 @@ import (
 	"github.com/chrisreedio/heimdall/internal/config"
 	"github.com/chrisreedio/heimdall/internal/findings"
 	"github.com/chrisreedio/heimdall/internal/ingest"
+	"github.com/chrisreedio/heimdall/internal/ipinfo"
 	"github.com/chrisreedio/heimdall/internal/mcp"
 	"github.com/chrisreedio/heimdall/internal/netx"
 	"github.com/chrisreedio/heimdall/internal/search"
@@ -84,11 +85,14 @@ func cmdServe(a *app, args []string) error {
 		}()
 	}
 
+	ips, ipSyncers := newIPResolver(cfg, s, log) // what's known about IP addresses (ipinfo.go)
+	ipinfo.Run(a.ctx, log, ipSyncers...)
+
 	aiSvc := newAIService(cfg, s, log) // nil when [ai] is off
 	if aiSvc != nil {
 		go aiSvc.Run(a.ctx) // scheduled fleet briefs
 	}
-	uiSrv, err := newUIServer(cfg, s, log, aiSvc)
+	uiSrv, err := newUIServer(cfg, s, log, aiSvc, ips)
 	if err != nil {
 		return err
 	}
@@ -162,7 +166,7 @@ func cmdServe(a *app, args []string) error {
 
 // newUIServer builds the web UI: local accounts behind sessions, the
 // dashboard, host pages and fleet search.
-func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.Service) (*http.Server, error) {
+func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.Service, ips *ipinfo.Resolver) (*http.Server, error) {
 	authn := &auth.Service{
 		Store:        s,
 		Now:          time.Now,
@@ -204,6 +208,7 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.
 		News:         cfg.News.Enabled,
 		MCP:          web.MCPSetup{Enabled: cfg.MCP.Enabled, BaseURL: cfg.MCP.BaseURL},
 		Agents:       handoffAgents(cfg, log.With("component", "handoff")),
+		IPs:          ips,
 	}
 	if aiSvc != nil {
 		wcfg.AI = aiSvc
