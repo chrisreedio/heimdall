@@ -29,7 +29,7 @@ func TestAsHubUser(t *testing.T) {
 	errExec := errors.New("exec")
 	stub(t, &execve, func(_ string, argv []string, _ []string) error { got = argv; return errExec })
 
-	if err := asHubUser(cfg, []string{"user", "list"}); err != errExec {
+	if _, err := asHubUser(cfg, []string{"user", "list"}); err != errExec {
 		t.Fatalf("want exec, got %v", err)
 	}
 	if got[0] != "runuser" || got[1] != "-u" || !slices.Equal(got[len(got)-4:], []string{"-c", cfg, "user", "list"}) {
@@ -37,15 +37,15 @@ func TestAsHubUser(t *testing.T) {
 	}
 	got = nil
 	for _, args := range [][]string{{"upgrade"}, {"restart"}, {"sso", "setup"}, {"ingest", "cert"}, {"ai", "set-key"}, {"ai", "test"}, {"notify", "set-webhook"}, {"notify", "test"}, {"tailscale", "set-key"}, {"cloudflare", "set-token"}, {"ip-services", "set-key", "ploi"}, {"bans", "set-token"}, {}} {
-		if err := asHubUser(cfg, args); err != nil || got != nil {
+		if _, err := asHubUser(cfg, args); err != nil || got != nil {
 			t.Errorf("%v should run as root: %v %q", args, err, got)
 		}
 	}
-	if err := asHubUser(t.TempDir()+"/missing.toml", []string{"user", "list"}); err != nil || got != nil {
+	if _, err := asHubUser(t.TempDir()+"/missing.toml", []string{"user", "list"}); err != nil || got != nil {
 		t.Error("no hub config: should run as is")
 	}
 	stub(t, &euid, func() int { return 1000 })
-	if err := asHubUser(cfg, []string{"user", "list"}); err != nil || got != nil {
+	if _, err := asHubUser(cfg, []string{"user", "list"}); err != nil || got != nil {
 		t.Error("not root: should run as is")
 	}
 }
@@ -71,8 +71,12 @@ func TestAsHubUserKeyCommands(t *testing.T) {
 	stub(t, &setuid, func(u int) error { gotUID = u; return nil })
 	for _, args := range [][]string{{"tailscale", "status"}, {"cloudflare", "sync"}, {"ip-services", "status"}, {"bans", "status"}} {
 		gotUID = -1
-		if err := asHubUser(cfg, args); err != nil {
+		path, err := asHubUser(cfg, args)
+		if err != nil {
 			t.Fatalf("%v: %v", args, err)
+		}
+		if path != cfg { // absolute already; runs on from /
+			t.Errorf("%v: config path %q, want %q", args, path, cfg)
 		}
 		if gotUID != uid || gotGID < 0 {
 			t.Errorf("%v: setuid(%d) setgid(%d), want uid %d", args, gotUID, gotGID, uid)

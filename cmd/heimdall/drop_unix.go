@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"syscall"
 )
@@ -37,41 +38,45 @@ var (
 // asHubUser makes `sudo heimdall <command>` on an installed hub run as the
 // user that owns its config (and database), so files never end up owned by
 // root and nobody has to type `runuser -u heimdall-hub -- ...`. It replaces
-// the process and only returns if that isn't possible or needed.
-func asHubUser(configPath string, args []string) error {
+// the process and only returns if that isn't possible or needed, with the
+// config path to use (a keyCommand runs on in this process, from /).
+func asHubUser(configPath string, args []string) (string, error) {
 	if euid() != 0 || len(args) == 0 || rootCommands[args[0]] || (len(args) > 1 && rootCommands[args[0]+" "+args[1]]) {
-		return nil
+		return configPath, nil
 	}
 	path := hubConfigPath(configPath)
 	fi, err := os.Stat(path)
 	if err != nil {
-		return nil
+		return configPath, nil
 	}
 	uid, _, ok := fileOwner(fi)
 	if !ok || uid == 0 {
-		return nil
+		return configPath, nil
 	}
 	u, err := user.LookupId(strconv.Itoa(uid))
 	if err != nil {
-		return nil
+		return configPath, nil
 	}
 	if len(args) > 1 && keyCommands[args[0]+" "+args[1]] {
-		return dropInProcess(u)
+		if path, err = filepath.Abs(path); err != nil {
+			return configPath, err
+		}
+		return path, dropInProcess(u)
 	}
 	runuser, err := exec.LookPath("runuser")
 	if err != nil {
-		return nil
+		return configPath, nil
 	}
 	self, err := os.Executable()
 	if err != nil {
-		return err
+		return configPath, err
 	}
 	// The hub user usually can't enter the caller's directory.
 	if err := os.Chdir("/"); err != nil {
-		return err
+		return configPath, err
 	}
 	argv := append([]string{"runuser", "-u", u.Username, "--", self, "-c", path}, args...)
-	return execve(runuser, argv, os.Environ())
+	return configPath, execve(runuser, argv, os.Environ())
 }
 
 // dropInProcess keeps a copy of each key file root can read (see
