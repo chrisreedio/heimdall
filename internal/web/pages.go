@@ -150,6 +150,7 @@ type hostBody struct {
 	AI              *aiView   // AI triage card (nil when [ai] is off); see ai.go
 
 	Tailnet *tailnetView // the host's tailnet device (nil when [tailscale] is off); see tailscale.go
+	Surface surfaceHTML  // "public as ..." line, or "" (surface.go)
 }
 
 type command struct {
@@ -321,6 +322,7 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	if s.canHandoff(v, host.OrgID) {
 		aiHandoffs(body.AI, host.OrgSlug, host.Name, body.Sites, body.Report)
 	}
+	body.Surface = s.surfaceLineFor(ctx, v, host.OrgID, host.Name, "")
 	s.render(w, r, http.StatusOK, "host", v, host.Name, "hosts", body)
 }
 
@@ -780,6 +782,7 @@ type siteBody struct {
 	HandoffError bool
 
 	Cloudflare cloudflareHTML // the Cloudflare card, or "" (cloudflare.go)
+	Surface    surfaceHTML    // "public as ..." line, or "" (surface.go)
 }
 
 // sitePage shows one site (a web root on a host): its stack, lifecycle and
@@ -851,6 +854,7 @@ func (s *server) sitePage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	hn := r.URL.Query().Get("handoff")
 	body.HandoffNote, body.HandoffError = handoffNotices[hn], hn == "failed"
 	body.Cloudflare = s.cloudflareCard(ctx, v, host.OrgID, host.Name, root)
+	body.Surface = s.surfaceLineFor(ctx, v, host.OrgID, host.Name, root)
 	name := root
 	if len(body.Site.ServerNames) > 0 && body.Site.ServerNames[0] != "_" {
 		name = body.Site.ServerNames[0]

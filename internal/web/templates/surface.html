@@ -1,0 +1,68 @@
+{{define "content"}}{{with .Body}}
+<div class="head">
+  <h1>Attack surface</h1>
+  {{range .Views}}{{if and .Count (eq .Label "Vulnerable")}}<span class="pill bad">{{.Count}} vulnerable</span>{{end}}{{if and .Count (eq .Label "Exposed")}}<span class="pill warn">{{.Count}} exposed</span>{{end}}{{end}}
+</div>
+<p class="lede">Every public name, followed through: its zone, its DNS record, the host it reaches, the site on that host, and the open findings there. Names that serve critical or high findings come first.</p>
+{{if not .CF}}<p class="notice" role="status">Cloudflare is off, so these names come only from the sites your collectors report. Turn on <code>[cloudflare]</code> to add zones, DNS records, proxy status and zone settings (see docs/surface.md).</p>{{end}}
+{{if .CF}}<p class="muted small">{{if .LastSync.IsZero}}Zones not synced yet.{{else}}Zones synced {{ago .LastSync}}.{{end}} {{.All}} name{{if ne .All 1}}s{{end}}.</p>{{end}}
+
+<nav class="filter-chips" aria-label="View">{{range .Views}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Label}} <span>{{.Count}}</span></a>{{end}}</nav>
+{{if .ZoneOpts}}<nav class="filter-chips quick" aria-label="Zone">{{range .ZoneOpts}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Label}}{{if .Count}} <span>{{.Count}}</span>{{end}}</a>{{end}}</nav>{{end}}
+
+{{if .Rows}}
+<div class="scroll"><table>
+  <thead><tr><th>Name</th><th>Zone</th><th>Record</th><th>Host</th><th>Site</th><th>Findings</th><th>Flags</th></tr></thead>
+  <tbody>{{range .Rows}}
+  <tr>
+    <td class="id">{{.Name}}</td>
+    <td>{{with .Zone}}{{.}}{{else}}<span class="muted">—</span>{{end}}{{with .Plan}}<div class="muted small">{{.}}</div>{{end}}{{range .ZoneFlags}} <span class="pill {{if eq .Level "high"}}bad{{else}}warn{{end}}" title="{{.Note}}">{{.Kind}}</span>{{end}}</td>
+    <td>{{if eq .Status "proxied"}}<span class="pill ok">proxied</span>{{else if eq .Status "unproxied"}}<span class="pill warn" title="Grey cloud: visitors reach the target directly">not proxied</span>{{else if eq .Status "no-record"}}<span class="pill muted">no record in {{.Zone}}</span>{{else}}<span class="pill muted" title="No synced Cloudflare zone covers this name">not on Cloudflare</span>{{end}}{{if .Exposed}} <span class="pill bad" title="Not proxied and points straight at one of your hosts: its address is public">origin exposed</span>{{end}}{{if .Wildcard}} <span class="pill muted">wildcard</span>{{end}}
+      {{range .Targets}}<div class="muted small">{{.}}</div>{{end}}</td>
+    <td>{{range .Hosts}}<div><a href="{{hostURL .Org .Name}}">{{.Name}}</a>{{with .OS}} <span class="muted small">{{.}}</span>{{end}}{{if or .Counts.Critical .Counts.High}} <span class="muted small">OS: {{.Counts.Critical}} critical, {{.Counts.High}} high</span>{{end}}</div>{{else}}<span class="muted">none of yours</span>{{end}}</td>
+    <td>{{range .Sites}}<div><a href="{{siteURL .Org .Host .Root}}">{{.Root}}</a>{{with .Software}}<div class="muted small">{{.}}</div>{{end}}</div>{{else}}<span class="muted">—</span>{{end}}</td>
+    <td>{{if .Worst.KEV}}<span class="badge kev" title="known exploited">KEV {{.Worst.KEV}}</span> {{end}}{{if .Worst.Critical}}<span class="badge sev sev-critical">{{.Worst.Critical}} critical</span> {{end}}{{if .Worst.High}}<span class="badge sev sev-high">{{.Worst.High}} high</span> {{end}}{{if .Worst.Medium}}<span class="badge sev sev-medium">{{.Worst.Medium}} medium</span> {{end}}{{if .Worst.Low}}<span class="badge sev sev-low">{{.Worst.Low}} low</span>{{end}}{{if not .Worst.Total}}<span class="muted">none</span>{{end}}</td>
+    <td>{{range .Flags}}<span class="pill {{if eq .Level "high"}}bad{{else if eq .Level "medium"}}warn{{else}}info{{end}}" title="{{.Note}}">{{.Kind}}</span> {{end}}</td>
+  </tr>{{end}}
+  </tbody>
+</table></div>
+{{else if .All}}<p class="empty">No name matches this filter.</p>
+{{else}}<p class="empty">No public names yet. They come from the server names your collectors report{{if .CF}} and from your Cloudflare zones{{end}}.</p>{{end}}
+
+{{if .Zones}}
+<section id="zones">
+  <h2>Zones</h2>
+  <p class="muted small">Read-only settings. A zone's proxied names are the ones Cloudflare's rules can protect; unproxied ones go around them.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Zone</th><th>Plan</th><th>SSL/TLS</th><th>Always HTTPS</th><th>Min TLS</th><th>Edge certificate</th><th class="num">Proxied</th><th class="num">Not proxied</th></tr></thead>
+    <tbody>{{range .Zones}}
+    <tr><td><span class="id">{{.Name}}</span>{{if and .Status (ne .Status "active")}} <span class="pill muted">{{.Status}}</span>{{end}}</td><td>{{.Plan}}</td>
+      {{if eq .Settings.State "permission"}}<td colspan="3"><span class="pill muted" title="{{.Settings.Note}}">no permission</span></td>
+      {{else if and (eq .Settings.State "error") (not .Settings.SSL)}}<td colspan="3"><span class="pill warn" title="{{.Settings.Note}}">couldn't fetch</span></td>
+      {{else if not .Settings.State}}<td colspan="3"><span class="muted small">not fetched</span></td>
+      {{else}}<td>{{with .Settings.SSL}}{{if or (eq . "off") (eq . "flexible")}}<span class="pill bad">{{.}}</span>{{else}}{{.}}{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{with .Settings.AlwaysHTTPS}}{{if eq . "off"}}<span class="pill warn">off</span>{{else}}{{.}}{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
+        <td>{{with .Settings.MinTLS}}{{if or (eq . "1.0") (eq . "1.1")}}<span class="pill warn">{{.}}</span>{{else}}{{.}}{{end}}{{else}}<span class="muted">—</span>{{end}}</td>{{end}}
+      <td>{{if eq .Settings.CertState "permission"}}<span class="pill muted" title="{{.Settings.CertNote}}">no permission</span>{{else if not .Settings.CertExpires.IsZero}}expires {{day .Settings.CertExpires}}{{else if eq .Settings.CertState "error"}}<span class="pill muted" title="{{.Settings.CertNote}}">couldn't fetch</span>{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="num">{{.Proxied}}</td><td class="num">{{.Unproxied}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</section>
+{{end}}
+
+{{if .CF}}
+<section id="changes">
+  <h2>Recent changes</h2>
+  {{if .Changes}}
+  <div class="scroll"><table>
+    <thead><tr><th>When</th><th>Name</th><th>Change</th><th>Zone</th></tr></thead>
+    <tbody>{{range .Changes}}
+    <tr><td title="{{.Full}}">{{.When}}</td><td><span class="id">{{.Name}}</span></td>
+      <td>{{if eq .Kind "unproxied"}}<span class="pill bad">proxy turned off</span>{{else if eq .Kind "proxied"}}<span class="pill ok">proxy turned on</span>{{else if eq .Kind "added"}}<span class="pill info">added</span> <span class="muted small">{{.New}}</span>{{else if eq .Kind "removed"}}<span class="pill muted">removed</span> <span class="muted small">{{.Old}}</span>{{else}}<span class="pill warn">target changed</span> <span class="muted small">{{.Old}} → {{.New}}</span>{{end}}</td>
+      <td>{{.Zone}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+  {{else}}<p class="empty">No DNS changes in the last 30 days.</p>{{end}}
+</section>
+{{end}}
+{{end}}{{end}}
