@@ -117,7 +117,15 @@ type Counts struct {
 	// aren't a kernel (linux-tools-common, linux-libc-dev…): left out like
 	// NotRunning (Total = Fixable + NoFix + NotRunning + KernelUserland).
 	KernelUserland int `json:"kernel_userland"`
+	// Watch are the NoFix findings still worth watching: known-exploited,
+	// in the news, or with an EPSS score of at least store.WatchEPSS.
+	// Fixable + Watch is what needs attention (Attention).
+	Watch int `json:"watch"`
 }
+
+// Attention is how many findings need attention: everything fixable, and
+// the ones with no fix yet that are worth watching.
+func (c Counts) Attention() int { return c.Fixable + c.Watch }
 
 type Finding struct {
 	Advisory      string    `json:"advisory"`
@@ -361,6 +369,9 @@ func (c *Counts) add(f store.ReportFinding, kernelStatus string) {
 		}
 	default:
 		c.NoFix++
+		if f.KEV || f.InNews || f.EPSS >= store.WatchEPSS {
+			c.Watch++
+		}
 	}
 	if kernelStatus != kernel.StatusNotRunning && kernelStatus != kernel.StatusUserland {
 		if f.KEV {
@@ -395,7 +406,7 @@ func countsFrom(c store.FindingCounts) Counts {
 	return Counts{Total: c.Total, KEV: c.KEV, Critical: c.Critical, High: c.High, Medium: c.Medium, Low: c.Low,
 		Unknown: c.Unknown, Fixable: c.Fixable, FixPending: c.FixPending, NoFix: c.NoFix, FixUrgent: c.FixUrgent,
 		InNews: c.InNews, NotRunning: c.NotRunning, RebootPending: c.RebootPending,
-		KernelUserland: c.KernelUserland}
+		KernelUserland: c.KernelUserland, Watch: c.Watch}
 }
 
 func (c *Counts) merge(o Counts) {
@@ -414,6 +425,7 @@ func (c *Counts) merge(o Counts) {
 	c.NotRunning += o.NotRunning
 	c.RebootPending += o.RebootPending
 	c.KernelUserland += o.KernelUserland
+	c.Watch += o.Watch
 }
 
 func nonNil(s []string) []string {

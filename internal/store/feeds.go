@@ -277,7 +277,8 @@ type EPSSScore struct {
 	Date              time.Time
 }
 
-// PutEPSS upserts scores (CVEs not in the batch keep their last score).
+// PutEPSS upserts scores (CVEs not in the batch keep their last score),
+// then recounts: a score crossing WatchEPSS changes FindingCounts.Watch.
 func (s *Store) PutEPSS(ctx context.Context, scores []EPSSScore) error {
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		stmt, err := tx.PrepareContext(ctx, `
@@ -293,7 +294,7 @@ func (s *Store) PutEPSS(ctx context.Context, scores []EPSSScore) error {
 				return err
 			}
 		}
-		return nil
+		return refreshFindingCounts(ctx, tx, 0)
 	})
 }
 

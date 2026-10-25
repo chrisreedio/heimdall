@@ -29,7 +29,13 @@ type FindingCounts struct {
 	NotRunning                                       int // on an old kernel that's installed but not running
 	RebootPending                                    int // on the running kernel, a newer one installed
 	KernelUserland                                   int // only on kernel userland packages (kernel.Userland)
+	Watch                                            int // of NoFix, known-exploited, in the news or WatchEPSS likely
 }
+
+// WatchEPSS is the EPSS score (the chance of exploitation in the next 30
+// days) from which a finding with no fix yet is still worth watching:
+// counted in FindingCounts.Watch and shown on the host page's default view.
+const WatchEPSS = 0.10
 
 // OpenFindingCounts returns every host's open-finding tallies by site root
 // from the finding_counts table: a few rows, where counting live would
@@ -37,7 +43,7 @@ type FindingCounts struct {
 func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]FindingCounts, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT host_id, site_root, total, kev, critical, high, medium, low, unknown,
-		       fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending, kernel_userland
+		       fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending, kernel_userland, watch
 		FROM finding_counts`)
 	if err != nil {
 		return nil, err
@@ -49,7 +55,7 @@ func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]Fin
 		var root string
 		var c FindingCounts
 		if err := rows.Scan(&host, &root, &c.Total, &c.KEV, &c.Critical, &c.High, &c.Medium, &c.Low, &c.Unknown,
-			&c.Fixable, &c.FixPending, &c.FixUrgent, &c.InNews, &c.NotRunning, &c.RebootPending, &c.KernelUserland); err != nil {
+			&c.Fixable, &c.FixPending, &c.FixUrgent, &c.InNews, &c.NotRunning, &c.RebootPending, &c.KernelUserland, &c.Watch); err != nil {
 			return nil, err
 		}
 		c.NoFix = c.Total - c.Fixable - c.NotRunning - c.KernelUserland
@@ -69,7 +75,8 @@ func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]Fin
 // an old kernel's package, and reboot_pending when every binary is the
 // running kernel's while a newer one is installed, and userland when every
 // binary is a kernel userland package (?3, kernel.Userland's list):
-// kernel.State.Status.
+// kernel.State.Status. ?4 is WatchEPSS: watch counts findings with no fix
+// that are known-exploited, in the news, or scored at least that.
 const countsSQL = `
 	WITH kev AS (
 		SELECT k.cve_id AS id FROM kev_entries k
@@ -79,6 +86,9 @@ const countsSQL = `
 	news AS (
 		SELECT cve AS id FROM news_cve
 		UNION SELECT aa.advisory_id FROM advisory_aliases aa JOIN news_cve ON news_cve.cve = aa.alias),
+	hot AS (
+		SELECT e.cve_id AS id FROM epss_scores e WHERE e.score >= ?4
+		UNION SELECT aa.advisory_id FROM advisory_aliases aa JOIN epss_scores e ON e.cve_id = aa.alias WHERE e.score >= ?4),
 	ks AS (
 		SELECT CAST(key AS INTEGER) AS host_id, json_extract(value, '$.old') AS old, json_extract(value, '$.boot') AS boot
 		FROM json_each(?2)),
@@ -86,6 +96,7 @@ const countsSQL = `
 		SELECT f.host_id, f.site_root, a.severity AS sev,
 		       coalesce(f.fixed_version, '') != '' AS fixable, f.fix_pending AS pending,
 		       f.advisory_id IN (SELECT id FROM kev) AS kev, f.advisory_id IN (SELECT id FROM news) AS news,
+		       f.advisory_id IN (SELECT id FROM hot) AS hot,
 		       coalesce(f.site_root = '' AND json_array_length(f.binaries) > 0 AND h.dpkg AND NOT EXISTS (
 		           SELECT 1 FROM json_each(f.binaries) b WHERE b.value NOT IN (SELECT value FROM json_each(?3))
 		           AND b.value NOT LIKE 'linux-source-%'), 0) AS ku,
@@ -100,21 +111,22 @@ const countsSQL = `
 		WHERE f.resolved_at IS NULL AND a.withdrawn IS NULL),
 	fk AS (SELECT *, nr0 AND NOT ku AS nr, ku OR nr0 AS off FROM fs)
 	INSERT INTO finding_counts (host_id, site_root, total, kev, critical, high, medium, low, unknown,
-	                            fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending, kernel_userland)
+	                            fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending, kernel_userland, watch)
 	SELECT host_id, site_root, count(*),
 	       sum(kev AND NOT off),
 	       sum(sev = 'critical'), sum(sev = 'high'), sum(sev = 'medium'),
 	       sum(sev = 'low'), sum(sev NOT IN ('critical', 'high', 'medium', 'low')),
 	       sum(fixable AND NOT off), sum(pending AND NOT off),
 	       sum(fixable AND NOT off AND sev IN ('critical', 'high')),
-	       sum(news), sum(nr), sum(rb AND NOT off), sum(ku)
+	       sum(news), sum(nr), sum(rb AND NOT off), sum(ku),
+	       sum(NOT fixable AND NOT off AND (kev OR news OR hot))
 	FROM fk
 	GROUP BY host_id, site_root`
 
 // refreshFindingCounts rewrites finding_counts for one host (0 = every
 // host) inside tx. Callers: SetFindings (the host's findings changed, and
 // with them any advisory updates fetched for it, or its kernels), ReplaceKEV,
-// MatchNews and the 0014 migration.
+// PutEPSS, MatchNews and the 0014 and 0016 migrations.
 func refreshFindingCounts(ctx context.Context, tx *sql.Tx, hostID int64) error {
 	sets, err := kernelSets(ctx, tx, hostID)
 	if err != nil {
@@ -123,7 +135,7 @@ func refreshFindingCounts(ctx context.Context, tx *sql.Tx, hostID int64) error {
 	if _, err := tx.ExecContext(ctx, `DELETE FROM finding_counts WHERE ?1 = 0 OR host_id = ?1`, hostID); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, countsSQL, hostID, sets, userlandJSON)
+	_, err = tx.ExecContext(ctx, countsSQL, hostID, sets, userlandJSON, WatchEPSS)
 	return err
 }
 

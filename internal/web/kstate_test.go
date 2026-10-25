@@ -33,7 +33,7 @@ func TestKernelCaseHostPages(t *testing.T) {
 	e := kernelCaseEnv(t)
 
 	// web-01 runs 6.17 with 7.0 installed: reboot, not a metapackage upgrade.
-	local := e.get("/hosts/acme/"+storetest.RebootPendingHost, signedIn(e)).Body.String()
+	local := e.get("/hosts/acme/"+storetest.RebootPendingHost+"?show=all", signedIn(e)).Body.String()
 	for _, want := range []string{
 		`kernel ` + storetest.KernelOld,
 		`reboot pending: ` + storetest.KernelNew + ` installed</a>`,
@@ -62,7 +62,7 @@ func TestKernelCaseHostPages(t *testing.T) {
 	}
 
 	// web-02 runs 7.0: the 6.17 findings are on an old kernel.
-	fun := e.get("/hosts/acme/"+storetest.OldKernelHost, signedIn(e)).Body.String()
+	fun := e.get("/hosts/acme/"+storetest.OldKernelHost+"?show=all", signedIn(e)).Body.String()
 	for _, want := range []string{
 		`kernel ` + storetest.KernelNew, `old kernel installed</a>`, `>not running</span>`,
 		`<strong>4</strong> on kernels not running`, `<strong>0</strong> known-exploited`,
@@ -146,7 +146,7 @@ func TestKernelCaseCounts(t *testing.T) {
 
 	// The linux-tools-common KEV is muted: badged, left out of the
 	// known-exploited filter, still listed with all findings.
-	page := e.get("/hosts/acme/"+storetest.OldKernelHost+"?findings=all", signedIn(e)).Body.String()
+	page := e.get("/hosts/acme/"+storetest.OldKernelHost+"?findings=all&show=all", signedIn(e)).Body.String()
 	for _, want := range []string{`>kernel userland</span>`, `<strong>1</strong> on kernel userland</span>`, `linux-tools-common`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("web-02 page missing %q", want)

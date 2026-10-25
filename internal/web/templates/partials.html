@@ -13,7 +13,7 @@
   <tbody>
   {{range .}}
   <tr>
-    <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}{{if or .KEV .InNews .KernelStatus}}<div class="find-badges">{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}{{template "kernelbadge" .KernelStatus}}</div>{{end}}</td>
+    <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}{{if or .KEV .InNews .KernelStatus (hotEPSS .EPSS)}}<div class="find-badges">{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}{{template "epssbadge" .EPSS}}{{template "kernelbadge" .KernelStatus}}</div>{{end}}</td>
     <td><span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</td>
     <td>{{.Package}}{{if gt (len .Binaries) 1}}<div class="muted small">{{join .Binaries ", "}}</div>{{end}}</td>
     <td class="ver">{{.Version}}</td>
@@ -40,14 +40,19 @@
 
 {{/* osfindings: a host's OS findings by package (default) or one by one,
      filtered and a page at a time (a findingsView). */}}
-{{define "osfindings"}}
-<div class="view-bar">
+{{define "osfindings"}}{{$calm := and .Focus (not .Total)}}
+{{if $calm}}<div class="calm" role="status">{{template "icon" "check"}}<div>
+  <p><strong>Nothing needs attention here.</strong> No findings are fixable now, known-exploited, in the news or likely to be exploited (EPSS {{watchEPSS}} or more).</p>
+  {{if .Hidden}}<p class="muted small">{{num .Hidden}} other finding{{if ne .Hidden 1}}s have{{else}} has{{end}} no fix released yet and little sign of exploitation. Heimdall rechecks on every report and lists {{if eq .Hidden 1}}it{{else}}them{{end}} here once a fix ships or that changes. <a href="{{.AllSevLink}}">Show all findings</a></p>{{end}}
+</div></div>
+{{else}}<div class="view-bar">
   <nav class="seg" aria-label="Group findings">
     <a href="{{index .ViewLink "packages"}}"{{if eq .View "packages"}} aria-current="true"{{end}}>By package</a>
     <a href="{{index .ViewLink "all"}}"{{if eq .View "all"}} aria-current="true"{{end}}>All findings</a>
   </nav>
-  <span class="muted small">{{.Total}} finding{{if ne .Total 1}}s{{end}}{{if or .Sev .Fixable}} match{{if eq .Total 1}}es{{end}} the filter{{end}}{{if eq .View "packages"}}{{if .Groups}} · page {{.Page}} of {{.Pages}}{{end}}{{else if .Rows}} · page {{.Page}} of {{.Pages}}{{end}}</span>
+  <span class="muted small">{{.Total}} finding{{if ne .Total 1}}s{{end}}{{if .Focus}} need{{if eq .Total 1}}s{{end}} attention{{else if or .Sev .Fixable}} match{{if eq .Total 1}}es{{end}} the filter{{end}}{{if eq .View "packages"}}{{if .Groups}} · page {{.Page}} of {{.Pages}}{{end}}{{else if .Rows}} · page {{.Page}} of {{.Pages}}{{end}}</span>
 </div>
+{{end}}
 {{if .RebootFirst}}{{template "rebootcmd" .}}{{end}}
 {{with .FixCmd}}<div class="cmd fix-cmd">
   <div class="cmd-label">{{if eq $.PM "composer"}}Update {{$.FixPkgs}} Composer package{{if ne $.FixPkgs 1}}s{{end}} with fixes for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}} <span class="muted small">· run in the site root</span>{{else}}Patch {{$.FixPkgs}} package{{if ne $.FixPkgs 1}}s{{end}} with updates for {{if or $.Sev $.Fixable}}the findings shown{{else}}these findings{{end}}{{end}}{{if $.FixPending}} <span class="muted small">· {{$.FixPending}} reach{{if eq $.FixPending 1}}es{{end}} the fixed version</span>{{end}}</div>
@@ -61,7 +66,7 @@
   <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
   <p class="muted small">{{.Note}} Heimdall never runs it for you.</p>
 </div>{{end}}
-{{if eq .View "packages"}}
+{{if $calm}}{{else if eq .View "packages"}}
   {{if .Groups}}
   <div class="pkg-list" role="table" aria-label="Findings by package">
     <div class="pkg-grid pkg-head" role="row"><span>Package</span><span>Installed</span><span>Worst</span><span class="num">KEV</span><span class="num">Crit</span><span class="num">High</span><span class="num">Med</span><span class="num">Low</span><span class="num">Fixable</span></div>
@@ -76,7 +81,7 @@
       </summary>
       <div class="pkg-panel">
         {{if gt (len .Binaries) 1}}<p class="muted small">Binary packages: {{join .Binaries ", "}}</p>{{end}}
-        <ul class="pkg-findings">{{range head .Findings 100 false}}<li><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .KEV}} <span class="badge kev">KEV</span>{{end}}{{if .InNews}} <span class="badge news" title="Named by a live incident in the news">in the news</span>{{end}} <span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Fixed}} <span class="muted small">fixed in {{.Fixed}}</span>{{else}} <span class="muted small">no fix yet</span>{{end}}{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</li>{{end}}</ul>
+        <ul class="pkg-findings">{{range head .Findings 100 false}}<li><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .KEV}} <span class="badge kev">KEV</span>{{end}}{{if .InNews}} <span class="badge news" title="Named by a live incident in the news">in the news</span>{{end}}{{template "epssbadge" .EPSS}} <span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Fixed}} <span class="muted small">fixed in {{.Fixed}}</span>{{else}} <span class="muted small">no fix yet</span>{{end}}{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</li>{{end}}</ul>
         {{if gt (len .Findings) 100}}<p class="more">The 100 most important of {{len .Findings}}; switch to All findings to see every one.</p>{{end}}
       </div>
     </details>{{end}}
@@ -85,12 +90,16 @@
 {{else}}
   {{if .Rows}}{{template "findings" .Rows}}{{else}}<p class="empty">No findings match the filter.</p>{{end}}
 {{end}}
+{{if and .Focus .Total .Hidden}}<p class="muted small focus-more">Plus {{num .Hidden}} finding{{if ne .Hidden 1}}s{{end}} with no fix released yet and little sign of exploitation. <a href="{{.AllSevLink}}">Show all findings</a></p>{{end}}
 {{if gt .Pages 1}}<nav class="pager" aria-label="Pages">
   {{with .PrevLink}}<a class="button secondary" href="{{.}}">← Previous</a>{{else}}<span></span>{{end}}
   <span class="muted small">Page {{.Page}} of {{.Pages}}</span>
   {{with .NextLink}}<a class="button secondary" href="{{.}}">Next →</a>{{else}}<span></span>{{end}}
 </nav>{{end}}
 {{end}}
+
+{{/* epssbadge: an EPSS score worth watching (store.WatchEPSS or more), with a leading space. */}}
+{{define "epssbadge"}}{{if hotEPSS .}} <span class="badge warn" title="EPSS: a {{pct .}} chance of exploitation in the next 30 days">EPSS {{pct .}}</span>{{end}}{{end}}
 
 {{/* kernelbadge: a finding's (or package group's) kernel status, with a leading space. */}}
 {{define "kernelbadge"}}{{if eq . "not_running"}} <span class="badge muted" title="On an older kernel that's installed but not running: removing it clears this">not running</span>{{else if eq . "reboot_pending"}} <span class="badge warn" title="On the running kernel, while a newer kernel is already installed: rebooting clears this (the newer kernel may have findings of its own)">reboot pending</span>{{else if eq . "userland"}} <span class="badge muted" title="On a package built from the kernel source that isn't the kernel (tools, headers): not live kernel exposure, so it's left out of the known-exploited and fixable counts. Upgrading it still clears it">kernel userland</span>{{else if eq . "newer_kernel"}} <span class="badge muted" title="On the newer kernel that's installed but not booted yet: it runs after the reboot, so rebooting won't clear this">next kernel</span>{{end}}{{end}}
@@ -108,26 +117,29 @@
 {{/* lifepill: a lifecycle as a colored pill (*report.Lifecycle, nil-safe). */}}
 {{define "lifepill"}}{{$s := lifeState .}}{{if eq $s "eol"}}<span class="pill bad" title="end of life{{with .EOLDate}} since {{fullDate .}}{{end}}">EoL{{with .EOLDate}} {{month .}}{{end}}</span>{{else if eq $s "soon"}}<span class="pill warn" title="end of life {{fullDate .EOLDate}}, {{.DaysLeft}} days from now">EoL in {{.DaysLeft}}d</span>{{else if eq $s "ok"}}<span class="pill ok" title="supported{{with .EOLDate}} until {{fullDate .}}{{end}}">{{with .EOLDate}}EoL {{month .}}{{else}}supported{{end}}</span>{{else}}<span class="pill muted" title="no lifecycle data yet">EoL unknown</span>{{end}}{{end}}
 
-{{/* chips: severity counts that filter a findingsView (chipsFor). */}}
+{{/* chips: counts that filter a findingsView (chipsFor). What needs
+     attention comes first and is the default; the severity counts, which
+     include findings nobody can act on yet, browse everything. */}}
 {{define "chips"}}
-  <div class="chips" aria-label="Filter findings by severity">
-    <a class="chip{{if not $.V.Sev}} active{{end}}" href="{{$.V.AllSevLink}}"><strong>{{.C.Total}}</strong> open</a>
+  <div class="chips" aria-label="Filter findings">
+    <a class="chip{{if .C.Attention}} chip-attn{{else}} chip-ok{{end}}{{if $.V.Focus}} active{{end}}" href="{{$.V.FocusLink}}" title="{{.C.Fixable}} fixable now, and {{.C.Watch}} with no fix yet that are known-exploited, in the news or likely to be exploited (EPSS {{watchEPSS}} or more)"><strong>{{.C.Attention}}</strong> need{{if eq .C.Attention 1}}s{{end}} attention</a>
     <a class="chip{{if .C.KEV}} chip-kev{{end}}{{if eq $.V.Sev "kev"}} active{{end}}" href="{{index $.V.SevLinks "kev"}}" title="CISA Known Exploited Vulnerabilities"><strong>{{.C.KEV}}</strong> known-exploited</a>
-    <a class="chip{{if .C.Critical}} chip-critical{{end}}{{if eq $.V.Sev "critical"}} active{{end}}" href="{{index $.V.SevLinks "critical"}}"><strong>{{.C.Critical}}</strong> critical</a>
-    <a class="chip{{if .C.High}} chip-high{{end}}{{if eq $.V.Sev "high"}} active{{end}}" href="{{index $.V.SevLinks "high"}}"><strong>{{.C.High}}</strong> high</a>
-    <a class="chip{{if eq $.V.Sev "medium"}} active{{end}}" href="{{index $.V.SevLinks "medium"}}"><strong>{{.C.Medium}}</strong> medium</a>
-    <a class="chip{{if eq $.V.Sev "low"}} active{{end}}" href="{{index $.V.SevLinks "low"}}"><strong>{{.C.Low}}</strong> low</a>
-    <a class="chip{{if eq $.V.Sev "unknown"}} active{{end}}" href="{{index $.V.SevLinks "unknown"}}"><strong>{{.C.Unknown}}</strong> unrated</a>
-    {{if $.V.Fixable}}<a class="chip chip-ok active" href="{{index $.V.FixLink "off"}}" title="{{.C.FixPending}} via updates already pending on the host"><strong>{{.C.Fixable}}</strong> fixable now</a>
-    {{else}}<a class="chip chip-ok" href="{{index $.V.FixLink "on"}}" title="Show only findings an update fixes ({{.C.FixPending}} already pending on the host)"><strong>{{.C.Fixable}}</strong> fixable now</a>{{end}}
+    {{if $.V.Fixable}}<a class="chip active" href="{{index $.V.FixLink "off"}}" title="{{.C.FixPending}} via updates already pending on the host"><strong>{{.C.Fixable}}</strong> fixable now</a>
+    {{else}}<a class="chip" href="{{index $.V.FixLink "on"}}" title="Show only findings an update fixes ({{.C.FixPending}} already pending on the host)"><strong>{{.C.Fixable}}</strong> fixable now</a>{{end}}
+    <span class="chips-sep" aria-hidden="true"></span>
+    <a class="chip chip-browse{{if not (or $.V.Focus $.V.Sev $.V.Fixable)}} active{{end}}" href="{{$.V.AllSevLink}}" title="Every open finding, including those with no fix released yet"><strong>{{.C.Total}}</strong> open</a>
+    {{range $s := sevChips}}<a class="chip chip-browse chip-sev chip-sev-{{$s}}{{if eq $.V.Sev $s}} active{{end}}" href="{{index $.V.SevLinks $s}}"><strong>{{index $.C.BySev $s}}</strong> {{if eq $s "unknown"}}unrated{{else}}{{$s}}{{end}}</a>
+    {{end}}
     {{if .C.NotRunning}}<span class="chip chip-muted" title="On older kernels that are installed but not running: not live exposure, so they're left out of the known-exploited and fixable counts"><strong>{{.C.NotRunning}}</strong> on kernels not running</span>{{end}}
     {{if .C.KernelUserland}}<span class="chip chip-muted" title="On packages built from the kernel source that aren't the kernel (linux-tools-common, linux-libc-dev): not live kernel exposure, so they're left out of the known-exploited and fixable counts"><strong>{{.C.KernelUserland}}</strong> on kernel userland</span>{{end}}
   </div>
 {{end}}
+
 {{/* whyPills: why a fleetHost needs attention, most urgent first. */}}
 {{define "whyPills"}}{{$c := .R.Counts}}<span class="pills">
 {{- if $c.KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerabilities">{{num $c.KEV}} KEV</span>{{end}}
 {{- if .News}}<a class="badge news" href="/news?affects=me" title="{{.News}} incident{{if ne .News 1}}s{{end}} in the news match open findings here">in the news{{if gt .News 1}} ×{{.News}}{{end}}</a>{{end}}
+{{- if and $c.Watch (not $c.KEV) (not .News)}}<span class="pill warn" title="No fix released yet, but known-exploited, in the news or likely to be exploited (EPSS {{watchEPSS}} or more)">{{num $c.Watch}} to watch</span>{{end}}
 {{- if .EOL}}<span class="pill bad" title="{{.EOLLabels "eol"}}">end of life</span>{{else if .EOLSoon}}<span class="pill warn" title="{{.EOLLabels "soon"}}">EoL soon</span>{{end}}
 {{- if .Stale}}<span class="pill warn">stale</span>{{end}}
 {{- if .Anomalies}}<a class="pill {{if eq .AnomalyWorst "high"}}bad{{else}}warn{{end}}" href="/anomalies">{{.Anomalies}} anomal{{if eq .Anomalies 1}}y{{else}}ies{{end}}</a>{{end}}

@@ -486,6 +486,7 @@ The security baseline isn't saved for later. Each milestone ships with the harde
 - [x] Audit log covering logins (success, and failures with an internal reason), logout and account changes
 - [x] Dashboard: KEV hits, critical findings, EOL hosts, reboot required, stale hosts, and hosts waiting for their first report
 - [x] Host page: findings, lifecycle, pending updates with copy-paste upgrade commands (security-only and all), packages, anomalies
+- [x] Findings open on what needs attention: fixable now, or with no fix yet but known-exploited, in the news or likely to be exploited (EPSS 10% or more). The rest, which nobody can act on yet, is one click away, and a host with nothing to do says so
 - [x] Fleet search: `openssl < 3.0.13`, `php = 8.1`, `CVE-2024-6387`, `host:web`
 - [x] Org filter (hidden when the install has only one org)
 

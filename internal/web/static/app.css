@@ -386,10 +386,35 @@ form.row.card input:not([type=checkbox]), form.row.card select { font-size: 14px
 .chip strong { color: var(--text); font-size: 14px; }
 .chip-kev { background: var(--kev-bg); border-color: var(--kev-bg); color: var(--kev-fg); }
 .chip-kev strong { color: var(--kev-fg); }
-.chip-critical { background: var(--crit-bg); border-color: var(--crit-bg); color: var(--crit-fg); }
-.chip-critical strong { color: var(--crit-fg); }
-.chip-high { background: var(--high-bg); border-color: var(--high-bg); color: var(--high-fg); }
-.chip-high strong { color: var(--high-fg); }
+.chip-attn { background: var(--high-bg); border-color: var(--high-bg); color: var(--high-fg); }
+.chip-attn strong { color: var(--high-fg); }
+/* What needs attention comes first; then a divider, and the counts that
+   browse everything, quieter since much of it can't be acted on yet. */
+.chips-sep { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--border); }
+.chip-browse { background: transparent; }
+.chip-browse strong { font-weight: 600; }
+.chip-sev::before { content: ""; width: 7px; height: 7px; border-radius: 50%; align-self: center; background: var(--unk-fg); opacity: .8; }
+.chip-sev-critical::before { background: var(--crit-fg); }
+.chip-sev-high::before { background: var(--high-fg); }
+.chip-sev-medium::before { background: var(--med-fg); }
+.chip-sev-low::before { background: var(--low-fg); }
+/* Hosts, sites and CVEs named in AI text (aiLinker). */
+.ref { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 6px; white-space: nowrap;
+  background: var(--code-bg); border: 1px solid var(--border); color: var(--text); font-size: .92em; line-height: 1.45;
+  text-decoration: none; vertical-align: baseline; }
+.ref:hover { border-color: var(--link); color: var(--link); }
+.ref .icon { width: 12px; height: 12px; flex: none; color: var(--muted); }
+.ref:hover .icon { color: var(--link); }
+.ref-cve { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .85em; }
+/* Nothing on the host needs attention. */
+.calm { display: flex; gap: 12px; align-items: flex-start; padding: 14px 16px; margin: 0 0 12px; border-radius: 10px;
+  background: var(--ok-bg); color: var(--ok-fg); }
+.calm .icon { width: 22px; height: 22px; flex: none; margin-top: 1px; }
+.calm p { margin: 0; }
+.calm p + p { margin-top: 6px; }
+.calm .muted { color: var(--ok-fg); opacity: .85; }
+.calm a { color: inherit; text-decoration: underline; }
+.focus-more { margin: 10px 0 0; }
 .chip-ok { background: var(--ok-bg); border-color: var(--ok-bg); color: var(--ok-fg); }
 .chip-ok strong { color: var(--ok-fg); }
 details.nofix { margin-top: 12px; }
@@ -719,6 +744,7 @@ table.findings td:first-child { white-space: nowrap; }
   background: var(--code-bg); border: 1px solid var(--border); color: var(--muted); vertical-align: 1px;
 }
 .sub-bad { color: var(--crit-fg); }
+.sub-warn { color: var(--high-fg); font-weight: 600; }
 .ok-text { color: var(--ok-fg); }
 table.attn td { vertical-align: middle; }
 table.attn .attn-host { white-space: nowrap; }

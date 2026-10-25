@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/chrisreedio/heimdall/internal/report"
+	"github.com/chrisreedio/heimdall/internal/store"
 )
 
 func TestFindingsView(t *testing.T) {
@@ -30,8 +31,22 @@ func TestFindingsView(t *testing.T) {
 	for _, f := range list {
 		pkgs[f.Package] = true // every package has an update pending
 	}
+	// By default, only what needs attention: the 40 fixable packages and
+	// the known-exploited one.
 	fv := buildFindingsView(base, "dpkg", url.Values{}, list, pkgs, kernelInfo{})
-	if fv.View != "packages" || fv.Total != 240 || fv.Pages != 3 || len(fv.Groups) != findingsPerPage {
+	if !fv.Focus || fv.Total != 82 || fv.Hidden != 158 || fv.Groups[0].Package != "pkg-007" {
+		t.Fatalf("focus view: focus=%v total=%d hidden=%d", fv.Focus, fv.Total, fv.Hidden)
+	}
+	if fv.AllSevLink != base+"?show=all#findings" || fv.FocusLink != base+"#findings" {
+		t.Errorf("all=%q focus=%q", fv.AllSevLink, fv.FocusLink)
+	}
+	// A severity filter looks at everything, and clearing it goes back.
+	if fv := buildFindingsView(base, "dpkg", url.Values{"sev": {"low"}}, list, pkgs, kernelInfo{}); fv.Focus || fv.Total != 60 ||
+		fv.SevLinks["low"] != base+"#findings" {
+		t.Errorf("low filter: focus=%v total=%d clear=%q", fv.Focus, fv.Total, fv.SevLinks["low"])
+	}
+	fv = buildFindingsView(base, "dpkg", url.Values{"show": {"all"}}, list, pkgs, kernelInfo{})
+	if fv.View != "packages" || fv.Focus || fv.Hidden != 0 || fv.Total != 240 || fv.Pages != 3 || len(fv.Groups) != findingsPerPage {
 		t.Fatalf("default view: %s total=%d pages=%d groups=%d", fv.View, fv.Total, fv.Pages, len(fv.Groups))
 	}
 	if g := fv.Groups[0]; g.Package != "pkg-007" || g.KEV != 2 || g.Total != 2 {
@@ -40,7 +55,7 @@ func TestFindingsView(t *testing.T) {
 	if fv.Groups[1].Worst != "critical" {
 		t.Errorf("then worst severity: %+v", fv.Groups[1])
 	}
-	if fv.NextLink != base+"?page=2#findings" || fv.PrevLink != "" {
+	if fv.NextLink != base+"?page=2&show=all#findings" || fv.PrevLink != "" {
 		t.Errorf("paging links: next=%q prev=%q", fv.NextLink, fv.PrevLink)
 	}
 	// Filters combine, and changing one goes back to page 1.
@@ -64,7 +79,7 @@ func TestFindingsView(t *testing.T) {
 		t.Errorf("another chip: %q", l)
 	}
 	// All findings, a page at a time; junk parameters are ignored.
-	fv = buildFindingsView(base, "dpkg", url.Values{"view": {"all"}, "page": {"2"}, "sev": {"<x>"}}, list, pkgs, kernelInfo{})
+	fv = buildFindingsView(base, "dpkg", url.Values{"view": {"all"}, "page": {"2"}, "sev": {"<x>"}, "show": {"all"}}, list, pkgs, kernelInfo{})
 	if fv.View != "all" || len(fv.Rows) != findingsPerPage || fv.Page != 2 || fv.Sev != "" {
 		t.Errorf("all view: rows=%d page=%d sev=%q", len(fv.Rows), fv.Page, fv.Sev)
 	}
@@ -175,5 +190,48 @@ func TestFullDateKeepsPlainDates(t *testing.T) {
 	d := time.Date(2025, 2, 4, 0, 0, 0, 0, time.UTC) // a lifecycle date
 	if got := fullDate(&d); got != "Tuesday, February 4, 2025" {
 		t.Errorf("plain date shifted: %q", got)
+	}
+}
+
+// With nothing fixable or worth watching, the host page says so and hides
+// the rest; an EPSS score crossing the bar brings a finding back.
+func TestHostPageCalm(t *testing.T) {
+	e := newEnv(t, "http://127.0.0.1:8080", nil)
+	host := e.seed()
+	ctx := t.Context()
+	if _, _, err := e.st.SetFindings(ctx, host.ID, []store.Finding{{
+		AdvisoryID: "DEBIAN-CVE-2099-0001", Ecosystem: "Debian:12", Package: "openssl",
+		Version: "3.0.14-1~deb12u2", Binaries: []string{"libssl3", "openssl"},
+	}}, testNow.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	page := e.get("/hosts/acme/web-01", signedIn(e)).Body.String()
+	for _, want := range []string{"Nothing needs attention here.", "1 other finding has no fix released yet",
+		`<a href="/hosts/acme/web-01?show=all#findings">Show all findings</a>`, `<strong>0</strong> need attention`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("calm page missing %q", want)
+		}
+	}
+	if strings.Contains(page, `class="pkg-list"`) {
+		t.Error("calm page lists findings")
+	}
+	if all := e.get("/hosts/acme/web-01?show=all", signedIn(e)).Body.String(); !strings.Contains(all, `class="pkg-list"`) || strings.Contains(all, "Nothing needs attention") {
+		t.Error("show=all should list every finding")
+	}
+	if hosts := e.get("/hosts?only=watch", signedIn(e)).Body.String(); strings.Contains(hosts, `href="/hosts/acme/web-01"`) {
+		t.Error("nothing to watch yet")
+	}
+
+	if err := e.st.PutEPSS(ctx, []store.EPSSScore{{CVE: "CVE-2099-0001", Score: 0.42, Date: testNow}}); err != nil {
+		t.Fatal(err)
+	}
+	page = e.get("/hosts/acme/web-01", signedIn(e)).Body.String()
+	for _, want := range []string{`<strong>1</strong> needs attention`, `class="pkg-list"`, `EPSS 42%</span>`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("watched page missing %q", want)
+		}
+	}
+	if hosts := e.get("/hosts?only=watch", signedIn(e)).Body.String(); !strings.Contains(hosts, `href="/hosts/acme/web-01"`) || !strings.Contains(hosts, `data-label="To watch"><span class="sub-warn">1</span>`) {
+		t.Error("the host list should show web-01 to watch")
 	}
 }

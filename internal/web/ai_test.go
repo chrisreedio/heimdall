@@ -139,7 +139,7 @@ func TestAIBrief(t *testing.T) {
 	storeRun(t, e.st, host.OrgID, 0, hostile(), time.Date(2026, 10, 22, 8, 0, 0, 0, time.Local))
 	page := e.get("/", signedIn(e)).Body.String()
 	for _, want := range []string{`id="ai-brief-acme"`, "Daily brief", "&lt;script&gt;", "Generated Oct 22, 2026 8:00 AM by 6.1 sol",
-		`href="/hosts/acme/web-01"`, `action="/ai/brief/acme"`} {
+		`<a class="ref ref-host" href="/hosts/acme/web-01" title="Host">`, `action="/ai/brief/acme"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard lacks %q", want)
 		}

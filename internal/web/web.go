@@ -483,9 +483,9 @@ var funcs = template.FuncMap{
 	"devMode":  func() bool { return devMode },
 	"devLogin": func() string { return devLoginEmail },
 	"userRef":  store.UserRef,
-	"hostURL": func(org, host string) string {
-		return "/hosts/" + url.PathEscape(org) + "/" + url.PathEscape(host)
-	},
+	"hostURL":  hostURL,
+	// aitext renders AI text escaped, with known names linked (aiLinker).
+	"aitext": func(l *aiLinker, text string) template.HTML { return l.HTML(text) },
 	"time": func(t time.Time) string {
 		if t.IsZero() {
 			return "never"
@@ -559,8 +559,13 @@ var funcs = template.FuncMap{
 	},
 	"findingsCap": func() int { return findingsCap },
 	"chipsFor": func(c report.Counts, v findingsView) map[string]any {
-		return map[string]any{"C": c, "V": v}
+		return map[string]any{"C": chipCounts{c}, "V": v}
 	},
+	"sevChips": func() []string { return []string{"critical", "high", "medium", "low", "unknown"} },
+	// hotEPSS: an EPSS score worth watching even with no fix (store.WatchEPSS).
+	"hotEPSS":   func(e float64) bool { return e >= store.WatchEPSS },
+	"watchEPSS": func() string { return pct(store.WatchEPSS) },
+	"pct":       pct,
 	// siteURL is a site's page: sites are a host plus a web root.
 	"siteURL": siteURL,
 	"repoWeb": handoff.WebURL, // a GitHub or GitLab link for a repository, or ""
@@ -594,6 +599,25 @@ var funcs = template.FuncMap{
 		}
 		return s[0]
 	},
+}
+
+// chipCounts adds BySev, for ranging over the severity chips.
+type chipCounts struct{ report.Counts }
+
+func (c chipCounts) BySev() map[string]int {
+	return map[string]int{"critical": c.Critical, "high": c.High, "medium": c.Medium, "low": c.Low, "unknown": c.Unknown}
+}
+
+// pct shows a 0-1 score as a whole percentage ("34%"; "<1%" under one).
+func pct(f float64) string {
+	if f > 0 && f < 0.01 {
+		return "<1%"
+	}
+	return fmt.Sprintf("%.0f%%", f*100)
+}
+
+func hostURL(org, host string) string {
+	return "/hosts/" + url.PathEscape(org) + "/" + url.PathEscape(host)
 }
 
 // siteURL is a site's page: sites are a host plus a web root.

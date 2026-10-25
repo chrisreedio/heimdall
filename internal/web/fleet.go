@@ -56,7 +56,7 @@ type lifeItem struct {
 // Attention reports whether there's anything to do on the host.
 func (h fleetHost) Attention() bool {
 	c := h.R.Counts
-	return h.Reported && (c.KEV > 0 || h.News > 0 || c.Fixable > 0 || h.EOL || h.EOLSoon || h.Stale ||
+	return h.Reported && (c.KEV > 0 || h.News > 0 || c.Fixable > 0 || c.Watch > 0 || h.EOL || h.EOLSoon || h.Stale ||
 		h.Anomalies > 0 || h.Reboot || c.RebootPending > 0 || h.PendingSecurity > 0 || h.SitesAttention > 0 || h.CollectorBehind ||
 		h.ChangeWatch == "off")
 }
@@ -211,7 +211,7 @@ func comparePriority(a, b fleetHost) int {
 		{b2i(a.EOL), b2i(b.EOL)}, {b2i(a.Stale), b2i(b.Stale)},
 		{b2i(a.AnomalyWorst == "high"), b2i(b.AnomalyWorst == "high")},
 		{b2i(a.Reboot), b2i(b.Reboot)}, {a.PendingSecurity, b.PendingSecurity},
-		{ac.Fixable, bc.Fixable}, {a.Anomalies, b.Anomalies}, {a.SitesAttention, b.SitesAttention},
+		{ac.Fixable, bc.Fixable}, {ac.Watch, bc.Watch}, {a.Anomalies, b.Anomalies}, {a.SitesAttention, b.SitesAttention},
 		{b2i(a.EOLSoon), b2i(b.EOLSoon)}, {b2i(a.CollectorBehind), b2i(b.CollectorBehind)},
 	} {
 		if d[0] != d[1] {
@@ -279,6 +279,7 @@ type fleetSummary struct {
 	NotRunning        int    // ...on old kernels that aren't running
 	KernelUserland    int    // ...on kernel userland packages
 	Fixable           int
+	Watch             int // ...with no fix yet, but worth watching
 }
 
 // attentionCap is how many hosts the dashboard's attention list shows.
@@ -322,6 +323,7 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		f.NotRunning += c.NotRunning
 		f.KernelUserland += c.KernelUserland
 		f.Fixable += c.Fixable
+		f.Watch += c.Watch
 		t.kev += c.KEV
 		t.urgent += c.FixUrgent
 		t.fixable += c.Fixable
@@ -540,6 +542,7 @@ var hostFilters = []struct {
 	{"kev", "Known-exploited", func(h fleetHost) bool { return h.R.Counts.KEV > 0 }},
 	{"news", "In the news", func(h fleetHost) bool { return h.News > 0 }},
 	{"fixable", "Critical & high fixable", func(h fleetHost) bool { return h.R.Counts.FixUrgent > 0 }},
+	{"watch", "To watch", func(h fleetHost) bool { return h.R.Counts.Watch > 0 }},
 	{"updates", "Security updates", func(h fleetHost) bool { return h.PendingSecurity > 0 }},
 	{"eol", "End of life", func(h fleetHost) bool { return h.EOL || h.EOLSoon }},
 	{"reboot", "Needs reboot", func(h fleetHost) bool { return h.Reboot }},

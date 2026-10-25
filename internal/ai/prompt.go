@@ -32,9 +32,10 @@ Rules:
   - running: on the running kernel, no newer one installed.
 - Only suggest a reboot when it's in suggested_commands.
 - Set "host" to a hostname exactly as it appears in the data, or null.
-- Findings with no fix released yet can't be patched now; say so in notes when they make up much of the count, and why they can wait (or what to watch).
-- Plain text only: no Markdown, no HTML, no links. Dates as "Oct 23, 2026".
-- Be brief: summary 2-4 sentences, 3-5 actions, notes at most 3 sentences.
+- Findings with no fix released yet can't be patched now. finding_counts.watch counts the ones still worth watching (known-exploited, in the news, or with a high EPSS score); the rest can wait, so don't list or dwell on them, and don't recite severity totals that are mostly unfixable. findings_needing_attention is fixable plus watch.
+- When a host's findings_needing_attention is 0 and nothing else needs doing (no reboot, pending security updates, end of life, stale report or anomaly), say so plainly in one sentence and give no actions, or only what the data still calls for. Don't invent busywork.
+- Plain text only: no Markdown, no HTML, no links. Dates as "Oct 23, 2026". Write hostnames and site domains exactly as in the data.
+- Be brief: summary 1-3 sentences, at most 5 actions (fewer when little needs doing), notes at most 3 sentences.
 - Answer only with the JSON object the schema describes.`
 
 // The tasks name no hostnames: everything reported lives in the data.
@@ -43,7 +44,7 @@ const hostTask = "Task: explain the host in the data for its operator. Turn its 
 	"and what can safely wait."
 
 const briefTask = "Task: write today's brief for this organization's fleet. Say what changed in the period, what's urgent, " +
-	"and what to do first (3-5 actions, each naming a host when it's about one)."
+	"and what to do first (at most 5 actions, each naming a host when it's about one)."
 
 // buildPrompt wraps the facts in the labelled, delimited data section.
 func buildPrompt(task string, facts []byte) Request {
