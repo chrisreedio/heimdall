@@ -172,10 +172,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		fmt.Fprintf(stderr, "unknown command %q\n\n%s", fs.Arg(0), usage)
 		return errUsage
 	}
-	if err := asHubUser(*configPath, fs.Args()); err != nil {
+	cfgPath, err := asHubUser(*configPath, fs.Args())
+	if err != nil {
 		return err
 	}
-	return cmd(&app{ctx: ctx, configPath: *configPath, stdout: stdout, stderr: stderr}, fs.Args()[1:])
+	return cmd(&app{ctx: ctx, configPath: cfgPath, stdout: stdout, stderr: stderr}, fs.Args()[1:])
 }
 
 // group dispatches "<name> <sub> ..." to a subcommand.
