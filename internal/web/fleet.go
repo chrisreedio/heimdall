@@ -45,6 +45,8 @@ type fleetHost struct {
 	// is false on Windows, which has none.
 	Privilege    privilegeCoverage
 	HasPrivilege bool
+
+	OffTailnet bool // reported, and no tailnet device matches it (tailscale.go)
 }
 
 // lifeItem is one lifecycle on a host: its OS, a runtime, or a site's PHP
@@ -173,6 +175,9 @@ func (s *server) fleet(r *http.Request, v *auth.Viewer, org string) ([]fleetHost
 			out[i].AnomalyWorst = a.Severity
 		}
 	}
+	if err := s.markOffTailnet(ctx, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -246,6 +251,8 @@ type dashBody struct {
 	Fleet      fleetSummary
 	Hosts      int       // visible hosts, reported or not
 	AIBrief    *aiBriefs // AI fleet brief (nil when [ai] is off); see ai.go
+	// Privileged sessions from unknown addresses this week (ips.go).
+	UnknownIPs *unknownIPs
 }
 
 // tile is one dashboard number. Every tile links to where it's acted on;
@@ -306,6 +313,10 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 	}
 	body := dashBody{Org: org, Orgs: orgs, ShowOrgs: len(orgs) > 1, Hosts: len(fleet)}
 	if body.News, err = s.newsAffecting(r, v, org); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if body.UnknownIPs, err = s.unknownSources(r.Context(), v, org); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}
@@ -564,6 +575,7 @@ var hostFilters = []struct {
 	{"anomalies", "Anomalies", func(h fleetHost) bool { return h.Anomalies > 0 }},
 	{"collector", "Collector", func(h fleetHost) bool { return h.CollectorBehind || h.ChangeWatch == "off" }},
 	{"privilege", "Privilege watch", func(h fleetHost) bool { return h.HasPrivilege && !h.Privilege.Full }},
+	{"tailnet", "Not on tailnet", func(h fleetHost) bool { return h.OffTailnet }},
 	{"waiting", "Waiting", func(h fleetHost) bool { return !h.Reported }},
 }
 
@@ -745,6 +757,8 @@ var anomalyRules = map[string]string{
 	"privilege_watch_disabled": "privilege watch disabled", "uptime_inconsistent": "uptime doesn't add up",
 	"inventory_reverted": "inventory reverted", "package_drop": "packages dropped",
 	"collector_downgrade": "collector downgraded", "os_changed": "OS changed",
+	"privilege_unknown_source": "privileged access from an unknown address", "privilege_off_tailnet": "SSH from outside the tailnet",
+	"silent_online": "stopped reporting while still on the tailnet",
 }
 
 func ruleLabel(rule string) string {

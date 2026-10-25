@@ -122,6 +122,13 @@ func sendAlert(ctx context.Context, s *store.Store, dests []notify.Destination, 
 // immediate notices. A notice no destination took is retried on the next
 // tick; one that reached some destinations isn't resent (no duplicates).
 func checkSilence(ctx context.Context, cfg config.Config, tripwires *anomaly.Engine, s *store.Store, log *slog.Logger) error {
+	// Up on the tailnet but not reporting: high severity, so the anomaly
+	// alert (if on) sends it; nothing to send here.
+	if n, err := tripwires.CheckSilentOnline(ctx, cfg.Hosts.AlertAfter.Duration); err != nil {
+		log.Warn("silent-but-online check failed", "err", err)
+	} else if n > 0 {
+		log.Warn("hosts stopped reporting while still on the tailnet", "count", n)
+	}
 	found, err := tripwires.CheckFastSilence(ctx, cfg.Hosts.AlertAfter.Duration)
 	if err != nil || len(found.Silent)+len(found.Back) == 0 {
 		return err

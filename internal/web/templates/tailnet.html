@@ -1,0 +1,10 @@
+{{define "tailnetcard"}}{{with .}}{{/* the host's tailnet device, from the Tailscale sync (tailscale.go) */}}
+<section class="facts card" id="tailnet">
+  <div class="fact">{{template "icon" "globe"}}<div><div class="k">Tailnet</div>{{if .On}}
+    <div class="v" title="{{.DNSName}}">{{.Name}}{{with .Person}} <span class="muted small">{{.}}</span>{{end}}</div>
+    <div class="pills">{{if .Online}}<span class="pill ok">online</span>{{else if .LastSeen}}<span class="pill muted" title="{{fullDate .LastSeen}}">last seen {{.SeenAgo}}</span>{{else}}<span class="pill muted">offline</span>{{end}}{{range .Tags}}<span class="pill muted">{{.}}</span>{{end}}{{with .ClientVersion}}<span class="pill muted" title="Tailscale client version{{with $.OS}} on {{.}}{{end}}">Tailscale {{.}}</span>{{end}}{{if .UpdateAvailable}}<span class="pill warn">client update available</span>{{end}}{{if .KeyExpired}}<span class="pill bad" title="Re-authenticate the device, or disable key expiry for servers in the Tailscale admin console">node key expired {{.KeyDate}}</span>{{else if .KeyExpiresSoon}}<span class="pill warn" title="Re-authenticate the device, or disable key expiry for servers in the Tailscale admin console">node key expires {{.KeyDate}}</span>{{end}}</div>
+    <p class="muted small">{{range $i, $a := .Addresses}}{{if $i}} · {{end}}<code>{{$a}}</code>{{end}}</p>{{else}}
+    <div class="v">Not on the tailnet</div>
+    <p class="muted small">No tailnet device matches this host's name or the address its reports come from. Install Tailscale on it before allowing SSH only from the tailnet.</p>{{end}}</div></div>
+</section>
+{{end}}{{end}}

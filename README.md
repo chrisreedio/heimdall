@@ -93,6 +93,8 @@ These risks are knowingly accepted to keep things simple:
 
 **Never collected, even with the privilege watch:** users and commands. The opt-in [privilege watch](docs/collector.md#privilege-watch) (`install.sh --watch-privilege`) records only *when* sudo, su or a root SSH login happened and which of the three it was; usernames only with a second opt-in, `--watch-privilege-users`. Root can remove it, like anything else on the box, but removing it while the host still reports raises **privilege watch disabled**, and removing the collector raises **silence**.
 
+**Deploy services:** a privilege watch session from Laravel Forge, Ploi or your own deploy tool shows as automation, not an unknown address, from the vendors' public address lists. See [docs/deploy-services.md](docs/deploy-services.md).
+
 ### Sites & Laravel
 Most PHP apps are a site on a shared box, so Heimdall inventories **sites**, not just packages.
 
@@ -130,6 +132,7 @@ Heimdall looks for patterns in the snapshots it already collects that are hard t
 - The collector's version or checksum changing unexpectedly
 - New services, runtimes or packages that a host's peers don't have
 - [Reports that don't add up](docs/anomaly-signals.md#reports-that-dont-add-up) against the host's own history: uptime growing faster than time passes, an inventory reverting to an older one, a sudden big drop in packages, a collector downgrade, or a different OS
+- [IP awareness](docs/ip-awareness.md): who each privileged session's address belongs to (a person, a deploy service, your own servers, the tailnet), an alert for addresses nobody knows, and an optional "SSH only from the tailnet" policy per org
 
 See [docs/anomaly-signals.md](docs/anomaly-signals.md) for what each signal means, its innocent explanations, and what to do when one fires.
 
@@ -582,6 +585,7 @@ Builds on M6 patch plans and M7 history. See [docs/anomaly-signals.md](docs/anom
 - [x] **Site labels:** each site is Production, Staging or Development, suggested from its name (`staging.`, `dev.`, `test.`…) and overridable by org admins. Sites can be filtered by label, and the host page shows the labels.
 - [x] **Event-driven reports:** a report about a minute after packages change (one per `apt upgrade`, however many packages), 3 minutes after boot so "reboot required" clears quickly, and after deploys with a one-line, sudoers-limited snippet. See [When it reports](docs/collector.md#when-it-reports).
 - [x] **AI analysis (optional):** a daily fleet brief and "Explain this host" from your own Azure AI Foundry deployment, advisory only, with strict output checks and a command allowlist. Not yet tried against a real deployment. See [docs/ai.md](docs/ai.md).
+- [x] **Tailscale (optional):** names the person and device behind each tailnet address from the read-only Tailscale API, shows each host's tailnet device, and lists hosts not on the tailnet. See [docs/tailscale.md](docs/tailscale.md).
 - [ ] **Threat news (draft, Phase 1 built):** cross-reference a curated "what's being exploited now" feed such as pwn.watch with the inventory, so the UI can say "this is in the news and it affects 3 of your hosts". Phase 1 (feed, confirmed CVE matches, News page, dashboard strip, Patch first boost) is in; turn it on with `[news] enabled = true`. See [docs/threat-news.md](docs/threat-news.md).
 
 ---

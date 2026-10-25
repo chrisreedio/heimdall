@@ -22,6 +22,7 @@ import (
 	"github.com/chrisreedio/heimdall/internal/config"
 	"github.com/chrisreedio/heimdall/internal/findings"
 	"github.com/chrisreedio/heimdall/internal/ingest"
+	"github.com/chrisreedio/heimdall/internal/ipinfo"
 	"github.com/chrisreedio/heimdall/internal/mcp"
 	"github.com/chrisreedio/heimdall/internal/netx"
 	"github.com/chrisreedio/heimdall/internal/search"
@@ -84,11 +85,15 @@ func cmdServe(a *app, args []string) error {
 		}()
 	}
 
+	ips, ipSyncers := newIPResolver(cfg, s, log) // what's known about IP addresses (ipinfo.go)
+	ipinfo.Run(a.ctx, log, ipSyncers...)
+	h.IPs = ips // privilege sessions' sources (internal/privilege/source.go)
+
 	aiSvc := newAIService(cfg, s, log) // nil when [ai] is off
 	if aiSvc != nil {
 		go aiSvc.Run(a.ctx) // scheduled fleet briefs
 	}
-	uiSrv, err := newUIServer(cfg, s, log, aiSvc)
+	uiSrv, err := newUIServer(cfg, s, log, aiSvc, ips)
 	if err != nil {
 		return err
 	}
@@ -162,7 +167,7 @@ func cmdServe(a *app, args []string) error {
 
 // newUIServer builds the web UI: local accounts behind sessions, the
 // dashboard, host pages and fleet search.
-func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.Service) (*http.Server, error) {
+func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.Service, ips *ipinfo.Resolver) (*http.Server, error) {
 	authn := &auth.Service{
 		Store:        s,
 		Now:          time.Now,
@@ -204,7 +209,10 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.
 		News:         cfg.News.Enabled,
 		MCP:          web.MCPSetup{Enabled: cfg.MCP.Enabled, BaseURL: cfg.MCP.BaseURL},
 		Agents:       handoffAgents(cfg, log.With("component", "handoff")),
+		IPs:          ips,
+		Tailnet:      cfg.Tailscale.Enabled,
 	}
+	wcfg.BehindTailscaleServe = cfg.UI.BehindTailscaleServe // tailscale serve's client headers (web/tsproxy.go)
 	if aiSvc != nil {
 		wcfg.AI = aiSvc
 	}
@@ -265,6 +273,11 @@ func runFindings(ctx context.Context, syncer *findings.Syncer, news *findings.Ne
 				log.Warn("silence check failed", "err", err)
 			} else if n > 0 {
 				log.Warn("hosts went silent", "count", n)
+			}
+			if n, err := tripwires.CheckSilentOnline(ctx, staleAfter); err != nil { // tailnet.go
+				log.Warn("silent-but-online check failed", "err", err)
+			} else if n > 0 {
+				log.Warn("hosts stopped reporting while still on the tailnet", "count", n)
 			}
 			if keep := syncer.Retention; keep.For > 0 {
 				if n, err := syncer.Store.PruneSnapshots(ctx, time.Now().Add(-keep.For), keep.Min); err != nil {

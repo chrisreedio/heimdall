@@ -16,6 +16,8 @@ import (
 var AnomalyRules = []string{"silence", "replay", "clock_skew", "package_change", "package_downgrade",
 	"kernel_no_reboot", "unexpected_reboot", "collector_changed", "peer_outlier", "trigger_disabled",
 	"privileged_access", "privilege_watch_disabled",
+	"privilege_unknown_source", "privilege_off_tailnet", // IP awareness (internal/privilege/source.go)
+	"silent_online", // not reporting, yet up on the tailnet (internal/anomaly/tailnet.go)
 	// Reports that don't add up (consistency with the host's own history).
 	"uptime_inconsistent", "inventory_reverted", "package_drop", "collector_downgrade", "os_changed"}
 
