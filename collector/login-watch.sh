@@ -228,6 +228,7 @@ END {
 		split(rows[i], p, SUBSEP)
 		if (fl[rows[i]] > 0) print "I", p[1], p[2], fl[rows[i]], nu[rows[i]], fa[rows[i]], la[rows[i]], ok[rows[i]] > out
 	}
+	printf "" > uout # written even with no usernames to keep
 	for (k in hu) { split(k, p, SUBSEP); print "U", p[1], p[2], p[3] > uout }
 }'
 
