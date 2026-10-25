@@ -87,6 +87,7 @@ func cmdServe(a *app, args []string) error {
 
 	ips, ipSyncers := newIPResolver(cfg, s, log) // what's known about IP addresses (ipinfo.go)
 	ipinfo.Run(a.ctx, log, ipSyncers...)
+	h.TrustedEdge = cloudflareTrustedEdge() // CF-Connecting-IP from Cloudflare's edge only; nil when off (cloudflare.go)
 
 	aiSvc := newAIService(cfg, s, log) // nil when [ai] is off
 	if aiSvc != nil {

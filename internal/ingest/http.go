@@ -11,6 +11,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 	"time"
@@ -64,6 +65,12 @@ type Handler struct {
 	// OnSeen, if set, is called after an unchanged report is recorded as a
 	// heartbeat (e.g. to run the reboot rules). It must not block.
 	OnSeen func(store.IngestHost)
+
+	// TrustedEdge, if set, reports whether an address is a CDN edge in
+	// front of the local proxy (Cloudflare's; see internal/cloudflare). Only
+	// when the proxy's trusted hop is such an address is the client taken
+	// from CF-Connecting-IP.
+	TrustedEdge func(netip.Addr) bool
 }
 
 func NewHandler(st *store.Store, cfg config.Ingest, log *slog.Logger, now func() time.Time) (*Handler, error) {
@@ -275,11 +282,27 @@ func (h *Handler) clientIP(r *http.Request) net.IP {
 		if xff := r.Header.Values("X-Forwarded-For"); len(xff) > 0 {
 			parts := strings.Split(xff[len(xff)-1], ",")
 			if fwd := net.ParseIP(strings.TrimSpace(parts[len(parts)-1])); fwd != nil {
-				return fwd
+				return h.edgeClient(r, fwd)
 			}
 		}
 	}
 	return ip
+}
+
+// edgeClient returns CF-Connecting-IP when the proxy's peer fwd is a
+// trusted edge address and the header holds exactly one address, else fwd.
+// Cloudflare sets the header itself; from anywhere else it's ignored.
+func (h *Handler) edgeClient(r *http.Request, fwd net.IP) net.IP {
+	a, ok := netip.AddrFromSlice(fwd)
+	if h.TrustedEdge == nil || !ok || !h.TrustedEdge(a.Unmap()) {
+		return fwd
+	}
+	if v := r.Header.Values("CF-Connecting-IP"); len(v) == 1 {
+		if c := net.ParseIP(strings.TrimSpace(v[0])); c != nil && !c.IsUnspecified() && !c.IsLoopback() {
+			return c
+		}
+	}
+	return fwd
 }
 
 func (h *Handler) allowed(ip net.IP) bool {

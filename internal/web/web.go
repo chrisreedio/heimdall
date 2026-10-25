@@ -179,6 +179,7 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /account/assistants", s.requireAuth(s.assistantCreate))
 	mux.HandleFunc("POST /account/assistants/revoke", s.requireAuth(s.assistantRevoke))
 	mux.HandleFunc("GET /account/assistants/heimdall.mcpb", s.requireAuth(s.assistantBundle))
+	mux.HandleFunc("GET /cloudflare", s.requireAuth(s.cloudflarePage)) // Cloudflare overview (cloudflare.go)
 	mux.HandleFunc("POST /admin/users/mcp-revoke", s.requireAuth(s.requireAdmin(s.adminTokenRevoke)))
 	if cfg.AI != nil { // AI analysis: regenerate a brief or explain a host (operator+)
 		mux.HandleFunc("POST /ai/brief/{org}", s.requireAuth(s.aiBriefRun))
@@ -468,6 +469,7 @@ func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
 		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "site", "news", "handoff"}
 	names = append(names, "assistants") // AI assistants (MCP tokens)
+	names = append(names, "cloudflare") // Cloudflare overview (cloudflare.go)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/ai.html", "templates/"+n+".html")

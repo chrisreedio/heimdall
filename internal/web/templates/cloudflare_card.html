@@ -1,0 +1,21 @@
+<section class="card" id="cloudflare">
+  <div class="section-head"><h2>Cloudflare</h2>{{if .Overview}}<a class="small" href="/cloudflare">Overview</a>{{end}}</div>
+  <ul class="plain">{{range .Names}}
+    <li><span class="id">{{.Name}}</span>
+      {{if eq .Status "proxied"}}<span class="pill ok">proxied</span>
+      {{else if eq .Status "unproxied"}}<span class="pill warn" title="A grey-cloud record: visitors reach the server directly, and its address is public">not proxied</span>
+      {{else if eq .Status "no-record"}}<span class="pill muted">no record in {{.Zone}}</span>
+      {{else}}<span class="pill muted" title="No zone the Cloudflare token can read covers this name">not in a visible zone</span>{{end}}
+      {{range .Records}}<span class="muted small">{{.Type}} {{.Content}}</span> {{end}}</li>{{end}}
+  </ul>
+  {{with .Security}}{{if .Show}}
+  <p class="small">{{if or (eq .State "ok") (eq .State "sampled")}}Security events on {{$.Zone}} in the last 24 hours: <strong>{{num .Total}}</strong>{{range .Actions}} <span class="pill {{if eq .Key "block"}}bad{{else}}muted{{end}}">{{.Key}} {{num .N}}</span>{{end}}{{if eq .State "sampled"}} <span class="pill muted" title="{{.Note}}">sampled</span>{{end}}{{if ge .Requests 0}} <span class="muted">of {{num .Requests}} requests</span>{{end}}
+    {{if .Countries}}<br><span class="muted">Top countries: {{range $i, $c := .Countries}}{{if $i}}, {{end}}{{$c.Key}} {{num $c.N}}{{end}}</span>{{end}}
+    {{if .ASNs}}<br><span class="muted">Top networks: {{range $i, $c := .ASNs}}{{if $i}}, {{end}}{{$c.Key}} {{num $c.N}}{{end}}</span>{{end}}
+    {{if .Paths}}<br><span class="muted">Top paths: {{range $i, $c := .Paths}}{{if $i}}, {{end}}<code>{{$c.Key}}</code> {{num $c.N}}{{end}}</span>{{end}}
+    {{if .MonthDays}}<br><span class="muted">{{num .Month}} in the last {{.MonthDays}} day{{if ne .MonthDays 1}}s{{end}}.</span>{{end}}
+  {{else if eq .State "plan"}}<span class="muted">Security events: not available on {{$.Zone}}'s plan through the API.</span>
+  {{else if eq .State "permission"}}<span class="muted">Security events: the token can't read {{$.Zone}}'s analytics.</span>
+  {{else if eq .State "error"}}<span class="muted">Security events: couldn't fetch them for {{$.Zone}} last time.</span>{{end}}</p>
+  {{end}}{{end}}
+</section>

@@ -1,0 +1,81 @@
+{{define "content"}}{{with .Body}}
+<div class="head">
+  <h1>Cloudflare</h1>
+  {{if .Exposed}}<span class="pill bad">{{len .Exposed}} origin{{if ne (len .Exposed) 1}}s{{end}} exposed</span>{{end}}
+  {{if .Dangling}}<span class="pill warn">{{len .Dangling}} dangling</span>{{end}}
+</div>
+<p class="lede">What your Cloudflare zones say about your servers: DNS records that point straight at a host (its address is public), sites that aren't behind Cloudflare, and the security events Cloudflare blocked or challenged. Read with a read-only token; nothing is changed at Cloudflare.</p>
+
+{{if not .Zones}}
+<p class="empty">{{if .LastSync.IsZero}}Nothing synced yet. An admin turns this on with <code>[cloudflare] enabled = true</code> and <code>sudo heimdall cloudflare set-token</code> (see docs/cloudflare.md).{{else}}No zone has records pointing at your hosts or sites.{{end}}</p>
+{{else}}
+<p class="muted small">Synced {{ago .LastSync}}{{with .SyncError}} · <span class="repo-error">last sync had errors: {{.}}</span>{{end}} · {{.Records}} record{{if ne .Records 1}}s{{end}} point at your hosts or sites.</p>
+
+<section id="exposed">
+  <h2>Origins exposed</h2>
+  {{if .Exposed}}
+  <p class="muted small">These records aren't proxied (grey cloud), so anyone can look up the host's real address and go around Cloudflare. Turn on the proxy, or make sure the server only accepts Cloudflare's ranges.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Record</th><th>Type</th><th>Points at</th><th>Host</th><th>Sites</th></tr></thead>
+    <tbody>{{range .Exposed}}
+    <tr><td class="id">{{.Name}}</td><td>{{.Type}}</td><td class="id">{{.Content}}</td>
+      <td>{{range $i, $h := .Hosts}}{{if $i}}, {{end}}<a href="{{hostURL $h.Org $h.Host}}">{{$h.Host}}</a>{{end}}</td>
+      <td>{{range $i, $s := .Sites}}{{if $i}}, {{end}}<a href="{{siteURL $s.Org $s.Host $s.Root}}">{{$s.Root}}</a>{{end}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+  {{else}}<p class="empty">No grey-cloud record points straight at one of your hosts.</p>{{end}}
+</section>
+
+<section id="sites">
+  <h2>Sites not behind Cloudflare</h2>
+  {{if .Sites}}
+  <div class="scroll"><table>
+    <thead><tr><th>Name</th><th>Status</th><th>Site</th></tr></thead>
+    <tbody>{{range .Sites}}
+    <tr><td class="id">{{.Name}}</td>
+      <td>{{if eq .Status "unproxied"}}<span class="pill warn">not proxied</span>{{else if eq .Status "no-record"}}<span class="pill muted" title="The zone {{.Zone}} is visible but has no record for this name">no record in {{.Zone}}</span>{{else}}<span class="pill muted" title="No zone the token can read covers this name">not in a visible zone</span>{{end}}</td>
+      <td><a href="{{siteURL .Site.Org .Site.Host .Site.Root}}">{{.Site.Root}}</a> <span class="muted small">on {{.Site.Host}}</span></td></tr>{{end}}
+    </tbody>
+  </table></div>
+  {{if .SitesOK}}<p class="muted small">{{.SitesOK}} other site name{{if ne .SitesOK 1}}s are{{else}} is{{end}} proxied.</p>{{end}}
+  {{else if .SitesOK}}<p class="empty">All {{.SitesOK}} of your site names are proxied by Cloudflare.</p>
+  {{else}}<p class="empty">No sites found yet.</p>{{end}}
+</section>
+
+<section id="zones">
+  <h2>Zones and security events</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Zone</th><th>Plan</th><th class="num">Records</th><th>Last 24 hours</th><th class="num">Requests (24h)</th><th class="num">Events (30 days)</th></tr></thead>
+    <tbody>{{range .Zones}}{{$sec := .Security}}
+    <tr><td class="id">{{.Name}}{{if ne .Status "active"}} <span class="pill muted">{{.Status}}</span>{{end}}</td><td>{{.Plan}}</td><td class="num">{{.Records}}</td>
+      <td>{{if not $sec.Show}}<span class="muted small">shared zone</span>
+        {{else if or (eq $sec.State "ok") (eq $sec.State "sampled")}}{{num $sec.Total}} event{{if ne $sec.Total 1}}s{{end}}{{range $sec.Actions}} <span class="pill {{if eq .Key "block"}}bad{{else}}muted{{end}}">{{.Key}} {{num .N}}</span>{{end}}{{if eq $sec.State "sampled"}} <span class="pill muted" title="{{$sec.Note}}">sampled</span>{{end}}
+          {{if $sec.Countries}}<div class="muted small">Countries: {{range $i, $c := $sec.Countries}}{{if $i}}, {{end}}{{$c.Key}} {{num $c.N}}{{end}}</div>{{end}}
+          {{if $sec.ASNs}}<div class="muted small">Networks: {{range $i, $c := $sec.ASNs}}{{if $i}}, {{end}}{{$c.Key}} {{num $c.N}}{{end}}</div>{{end}}
+          {{if $sec.Paths}}<div class="muted small">Paths: {{range $i, $c := $sec.Paths}}{{if $i}}, {{end}}<code>{{$c.Key}}</code> {{num $c.N}}{{end}}</div>{{end}}
+        {{else if eq $sec.State "plan"}}<span class="pill muted" title="{{$sec.Note}}">not on this plan</span>
+        {{else if eq $sec.State "permission"}}<span class="pill warn" title="{{$sec.Note}}">no permission</span>
+        {{else if eq $sec.State "error"}}<span class="pill warn" title="{{$sec.Note}}">couldn't fetch</span>
+        {{else}}<span class="muted small">not fetched</span>{{end}}</td>
+      <td class="num">{{if and $sec.Show (ge $sec.Requests 0) (or (eq $sec.State "ok") (eq $sec.State "sampled"))}}{{num $sec.Requests}}{{else}}<span class="muted">—</span>{{end}}</td>
+      <td class="num">{{if and $sec.Show $sec.MonthDays}}{{num $sec.Month}} <span class="muted small">({{$sec.MonthDays}}d)</span>{{else}}<span class="muted">—</span>{{end}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+</section>
+
+{{if .Admin}}
+<section id="dangling">
+  <h2>Dangling records</h2>
+  {{if .Dangling}}
+  <p class="muted small">A and AAAA records whose address is none of your hosts, not Cloudflare's, not private and not labelled. Often a leftover from a server that's gone; if that address now belongs to someone else, they can serve your name. Delete the record, or label the address if it's yours. Only admins see this list.</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Record</th><th>Type</th><th>Address</th><th>Proxied</th><th>Zone</th></tr></thead>
+    <tbody>{{range .Dangling}}
+    <tr><td class="id">{{.Name}}</td><td>{{.Type}}</td><td class="id">{{.Content}}</td><td>{{if .Proxied}}yes{{else}}no{{end}}</td><td>{{.Zone}}</td></tr>{{end}}
+    </tbody>
+  </table></div>
+  {{else}}<p class="empty">Every A and AAAA record points at a known address.</p>{{end}}
+</section>
+{{end}}
+{{end}}
+{{end}}{{end}}
