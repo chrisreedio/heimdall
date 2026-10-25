@@ -21,6 +21,9 @@ func newIPResolver(cfg config.Config, s *store.Store, log *slog.Logger) (*ipinfo
 
 	// ── sources: keep one block per source, in this order ──
 	// (deploy services)
+	hints, dsSyncers := deployServices(cfg, s, log) // ipservices.go
+	r.UserHints = append(r.UserHints, hints...)
+	syncers = append(syncers, dsSyncers...)
 	// (Tailscale)
 	// (Cloudflare)
 

@@ -93,6 +93,8 @@ These risks are knowingly accepted to keep things simple:
 
 **Never collected, even with the privilege watch:** users and commands. The opt-in [privilege watch](docs/collector.md#privilege-watch) (`install.sh --watch-privilege`) records only *when* sudo, su or a root SSH login happened and which of the three it was; usernames only with a second opt-in, `--watch-privilege-users`. Root can remove it, like anything else on the box, but removing it while the host still reports raises **privilege watch disabled**, and removing the collector raises **silence**.
 
+**Deploy services:** a privilege watch session from Laravel Forge, Ploi or your own deploy tool shows as automation, not an unknown address, from the vendors' public address lists. See [docs/deploy-services.md](docs/deploy-services.md).
+
 ### Sites & Laravel
 Most PHP apps are a site on a shared box, so Heimdall inventories **sites**, not just packages.
 
