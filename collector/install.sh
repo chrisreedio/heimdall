@@ -200,7 +200,7 @@ for f in SHA256SUMS collect.sh $units privilege-watch.sh privilege-hook login-wa
 if fetch_sig=$(fetch SHA256SUMS.sigstore.json 2>/dev/null && echo ok) && [ "$fetch_sig" = ok ] && have cosign; then
 	say "Verifying the Sigstore signature on SHA256SUMS"
 	cosign verify-blob "$work/SHA256SUMS" --bundle "$work/SHA256SUMS.sigstore.json" \
-		--certificate-identity-regexp '^https://github.com/chrisreedio/heimdall/\.github/workflows/release\.yml@refs/tags/v' \
+		--certificate-identity-regexp '^https://github.com/(chrisreedio|realmwatch)/heimdall/\.github/workflows/release\.yml@refs/tags/v' \
 		--certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null 2>&1 ||
 		die "SHA256SUMS signature verification FAILED"
 fi
