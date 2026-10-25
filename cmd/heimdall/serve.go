@@ -276,6 +276,11 @@ func runFindings(ctx context.Context, syncer *findings.Syncer, news *findings.Ne
 			} else if n > 0 {
 				log.Warn("hosts went silent", "count", n)
 			}
+			if n, err := tripwires.CheckSilentOnline(ctx, staleAfter); err != nil { // tailnet.go
+				log.Warn("silent-but-online check failed", "err", err)
+			} else if n > 0 {
+				log.Warn("hosts stopped reporting while still on the tailnet", "count", n)
+			}
 			if keep := syncer.Retention; keep.For > 0 {
 				if n, err := syncer.Store.PruneSnapshots(ctx, time.Now().Add(-keep.For), keep.Min); err != nil {
 					log.Warn("snapshot retention failed", "err", err)

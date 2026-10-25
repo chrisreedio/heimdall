@@ -69,6 +69,12 @@ Hosts get a **Tailnet** card, just above *Privileged access*, when Tailscale is 
 
 A host matches a device when its reports come from one of the device's addresses, or else when its name matches the device's MagicDNS name, then its hostname (ignoring case and any domain: `web-01.example.com` matches `web-01.tail1234.ts.net`). If two devices share a hostname, the most recently seen one wins.
 
+## Stopped reporting, still online
+
+A switched-off collector is the classic sign of tampering, but on its own it looks the same as a server that's down. Tailscale tells them apart: when a host has been quiet for `hosts.alert_after` (or `stale_after`) and its tailnet device was still online, or seen online well after the host's last report, Heimdall raises **`silent_online`** (high). The machine is up, so something stopped or blocked its collector. A server that's off or unplugged leaves the tailnet too, and raises only the usual `silence`.
+
+It needs a Tailscale sync less than an hour old, so a stale sync never raises it. Maintenance windows and suppressions apply, and it's raised once per silence. See [anomaly signals](anomaly-signals.md).
+
 ## Troubleshooting
 
 - **HTTP 401, "the credential was refused":** the secret was mistyped, revoked, or (an API access token) expired. Store a new one with `sudo heimdall tailscale set-key`, then `sudo heimdall restart`.
