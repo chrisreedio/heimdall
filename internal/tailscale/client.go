@@ -34,6 +34,10 @@ const BaseURL = "https://api.tailscale.com/api/v2"
 // Scope is the one OAuth scope Heimdall needs: list the tailnet's devices.
 const Scope = "devices:core:read"
 
+// OAuthClientsURL is where an OAuth client is created (Settings > Trust
+// credentials, formerly OAuth clients). Tailscale has no pre-filled form.
+const OAuthClientsURL = "https://login.tailscale.com/admin/settings/oauth"
+
 // Credential kinds.
 const (
 	KindOAuth  = "oauth"   // an OAuth client: doesn't expire

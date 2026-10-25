@@ -126,26 +126,22 @@ func bansToken(fallback bool) (string, string, error) {
 			}
 		}
 	}
-	if path == "" && fallback {
+	if path == "" && keyFallback(fallback) {
 		path = defaultBansTokenFile
 	}
 	if path == "" {
 		return "", "", errors.New("no ban token: run `sudo heimdall bans set-token` (it adds `LoadCredential=" +
 			bansCredential + ":" + defaultBansTokenFile + "` to the unit), or set HEIMDALL_CLOUDFLARE_BANS_TOKEN_FILE")
 	}
-	fi, err := os.Stat(path)
+	perm, b, err := readKeyFile(path)
 	if err != nil {
 		return "", path, fmt.Errorf("ban token: %w", err)
 	}
-	if !fromSystemd && fi.Mode().Perm()&0o077 != 0 {
+	if !fromSystemd && perm&0o077 != 0 {
 		return "", path, fmt.Errorf("ban token %s is readable by other users; run `chmod 600 %s`", path, path)
 	}
-	if fi.Size() > 4096 {
+	if len(b) > 4096 {
 		return "", path, fmt.Errorf("ban token %s is suspiciously large", path)
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return "", path, err
 	}
 	token := strings.TrimSpace(string(b))
 	if token == "" {

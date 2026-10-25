@@ -16,7 +16,7 @@ Heimdall never writes anything to Cloudflare.
 
 ## Set it up
 
-1. **Create a token.** In the Cloudflare dashboard: **My Profile > API Tokens > Create Token > Create Custom Token**. Give it only these permissions:
+1. **Create a token.** The quick way: `heimdall cloudflare token-url` (also printed by `set-token`, and a button on the `/cloudflare` page for admins) prints a dashboard link with the read-only permissions below already filled in, on all zones. Add Radar by hand (it has no template key), check the list, and click Create. Or by hand: in the Cloudflare dashboard, **My Profile > API Tokens > Create Token > Create Custom Token**. Give it only these permissions:
 
    | Permission | Needed for |
    |---|---|

@@ -141,25 +141,21 @@ func serviceToken(id string, fallback bool) (string, string, error) {
 			}
 		}
 	}
-	if path == "" && fallback {
+	if path == "" && keyFallback(fallback) {
 		path = serviceTokenFile(id)
 	}
 	if path == "" {
 		return "", "", fmt.Errorf("no %s API token: run `sudo heimdall ip-services set-key %s`", id, id)
 	}
-	fi, err := os.Stat(path)
+	perm, b, err := readKeyFile(path)
 	if err != nil {
 		return "", path, fmt.Errorf("%s API token: %w", id, err)
 	}
-	if !fromSystemd && fi.Mode().Perm()&0o077 != 0 {
+	if !fromSystemd && perm&0o077 != 0 {
 		return "", path, fmt.Errorf("%s API token %s is readable by other users; run `chmod 600 %s`", id, path, path)
 	}
-	if fi.Size() > 4096 {
+	if len(b) > 4096 {
 		return "", path, fmt.Errorf("%s API token %s is suspiciously large", id, path)
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return "", path, err
 	}
 	tok := strings.TrimSpace(string(b))
 	if tok == "" {

@@ -7,7 +7,8 @@
 <p class="lede">What your Cloudflare zones say about your servers: DNS records that point straight at a host (its address is public), sites that aren't behind Cloudflare, and the security events Cloudflare blocked or challenged. Read with a read-only token; nothing is changed at Cloudflare.</p>
 
 {{if not .Zones}}
-<p class="empty">{{if .LastSync.IsZero}}Nothing synced yet. An admin turns this on with <code>[cloudflare] enabled = true</code> and <code>sudo heimdall cloudflare set-token</code> (see docs/cloudflare.md).{{else}}No zone has records pointing at your hosts or sites.{{end}}</p>
+<p class="empty">{{if .LastSync.IsZero}}Nothing synced yet. An admin turns this on with <code>[cloudflare] enabled = true</code> and <code>sudo heimdall cloudflare set-token</code> (see docs/cloudflare.md).{{with $.Body.TokenURL}}</p>
+<p><a class="button" href="{{.}}" target="_blank" rel="noopener noreferrer">Create the token in Cloudflare</a> <span class="muted small">Opens the form with the read-only permissions filled in; nothing is created until you click Create. Also add {{$.Body.TokenHand}}.</span>{{end}}{{else}}No zone has records pointing at your hosts or sites.{{end}}</p>
 {{else}}
 <p class="muted small">Synced {{ago .LastSync}}{{with .SyncError}} · <span class="repo-error">last sync had errors: {{.}}</span>{{end}} · {{.Records}} record{{if ne .Records 1}}s{{end}} point at your hosts or sites.</p>
 

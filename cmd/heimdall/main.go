@@ -78,8 +78,8 @@ Commands:
                                Deploy services' (Forge, Ploi) published addresses: show, fetch now, store a token
   tailscale set-key|status|sync
                                Name the people and devices behind tailnet addresses (read-only Tailscale API)
-  cloudflare set-token|status|sync
-                               Read-only Cloudflare (DNS, security events): store the token (never echoed), check, sync now
+  cloudflare set-token|status|sync|token-url
+                               Read-only Cloudflare (DNS, security events): store the token (never echoed), check, sync now, token link
   offenders [--since 24h] [--json]
                                Addresses failing SSH logins across your hosts, ranked (login watch)
   surface [--org X] [--json] [--changes]
@@ -141,7 +141,7 @@ var commands = map[string]command{
 	"ip-services": group("ip-services", map[string]command{"status": cmdIPServicesStatus, "sync": cmdIPServicesSync, "set-key": cmdIPServicesSetKey}),
 
 	"cloudflare": group("cloudflare", map[string]command{
-		"set-token": cmdCloudflareSetToken, "status": cmdCloudflareStatus, "sync": cmdCloudflareSync}),
+		"set-token": cmdCloudflareSetToken, "status": cmdCloudflareStatus, "sync": cmdCloudflareSync, "token-url": cmdCloudflareTokenURL}),
 	"surface": cmdSurface,                  // surface.go
 	"bans":    group("bans", bansCommands), // bans.go
 	"sso":     group("sso", map[string]command{"setup": cmdSSOSetup, "set-secret": cmdSSOSetSecret}),

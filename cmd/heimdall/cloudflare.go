@@ -111,6 +111,7 @@ func cmdCloudflareSetToken(a *app, args []string) error {
 		if err != nil {
 			return errors.New("stdin is not a terminal; use --stdin to pipe the token")
 		}
+		printCloudflareTokenURL(a.stderr)
 		if token, err = in.line("Cloudflare API token (input hidden): ", true); err != nil {
 			return err
 		}
@@ -157,26 +158,22 @@ func cloudflareToken(fallback bool) (string, string, error) {
 			}
 		}
 	}
-	if path == "" && fallback {
+	if path == "" && keyFallback(fallback) {
 		path = defaultCloudflareTokenFile
 	}
 	if path == "" {
 		return "", "", errors.New("no Cloudflare token: run `sudo heimdall cloudflare set-token` (it adds `LoadCredential=" +
 			cloudflareCredential + ":" + defaultCloudflareTokenFile + "` to the unit), or set HEIMDALL_CLOUDFLARE_TOKEN_FILE")
 	}
-	fi, err := os.Stat(path)
+	perm, b, err := readKeyFile(path)
 	if err != nil {
 		return "", path, fmt.Errorf("cloudflare token: %w", err)
 	}
-	if !fromSystemd && fi.Mode().Perm()&0o077 != 0 {
+	if !fromSystemd && perm&0o077 != 0 {
 		return "", path, fmt.Errorf("cloudflare token %s is readable by other users; run `chmod 600 %s`", path, path)
 	}
-	if fi.Size() > 4096 {
+	if len(b) > 4096 {
 		return "", path, fmt.Errorf("cloudflare token %s is suspiciously large", path)
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return "", path, err
 	}
 	token := strings.TrimSpace(string(b))
 	if token == "" {
@@ -370,4 +367,19 @@ func cmdCloudflareSync(a *app, args []string) error {
 		return fmt.Errorf("sync finished with errors (the last good data is kept): %w", serr)
 	}
 	return nil
+}
+
+// cmdCloudflareTokenURL prints the dashboard link that pre-fills a
+// read-only token with exactly the permissions Heimdall uses.
+func cmdCloudflareTokenURL(a *app, args []string) error {
+	if _, err := parse(a.flags("cloudflare token-url", ""), args, 0); err != nil {
+		return err
+	}
+	printCloudflareTokenURL(a.stdout)
+	return nil
+}
+
+func printCloudflareTokenURL(w io.Writer) {
+	fmt.Fprintf(w, "Create the token here (permissions pre-filled, read-only; check them, then Create):\n\n  %s\n\nAlso add by hand: %s.\nThen paste it into: sudo heimdall cloudflare set-token\n\n",
+		cloudflare.TokenURL("Heimdall (read-only)", cloudflare.ReadPerms), cloudflare.ReadManual)
 }

@@ -57,6 +57,7 @@ func cmdTailscaleSetKey(a *app, args []string) error {
 		if in, err = newInput(a, false); err != nil {
 			return errors.New("stdin is not a terminal; use --stdin to pipe the secret")
 		}
+		fmt.Fprintf(a.stderr, "Create an OAuth client here with only the Devices > Core > Read scope (%s):\n\n  %s\n\n", tailscale.Scope, tailscale.OAuthClientsURL)
 		if secret, err = in.line("Tailscale OAuth client secret or API access token (input hidden): ", true); err != nil {
 			return err
 		}
@@ -127,26 +128,22 @@ func tailscaleCred(fallback bool) (tailscale.Credential, string, error) {
 			}
 		}
 	}
-	if path == "" && fallback {
+	if path == "" && keyFallback(fallback) {
 		path = defaultTailscaleKeyFile
 	}
 	if path == "" {
 		return tailscale.Credential{}, "", errors.New("no Tailscale credential: run `sudo heimdall tailscale set-key` (it adds `LoadCredential=" +
 			tailscaleCredential + ":" + defaultTailscaleKeyFile + "` to the unit), or set HEIMDALL_TAILSCALE_KEY_FILE")
 	}
-	fi, err := os.Stat(path)
+	perm, b, err := readKeyFile(path)
 	if err != nil {
 		return tailscale.Credential{}, path, fmt.Errorf("tailscale credential: %w", err)
 	}
-	if !fromSystemd && fi.Mode().Perm()&0o077 != 0 {
+	if !fromSystemd && perm&0o077 != 0 {
 		return tailscale.Credential{}, path, fmt.Errorf("tailscale credential %s is readable by other users; run `chmod 600 %s`", path, path)
 	}
-	if fi.Size() > 4096 {
+	if len(b) > 4096 {
 		return tailscale.Credential{}, path, fmt.Errorf("tailscale credential %s is suspiciously large", path)
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return tailscale.Credential{}, path, err
 	}
 	cred, err := tailscale.ParseCredential(string(b))
 	if err != nil {
@@ -187,7 +184,7 @@ func cmdTailscaleStatus(a *app, args []string) error {
 		return nil
 	}
 	fmt.Fprintf(out, "Tailscale:   on, tailnet %q, sync every %s\n", c.Tailnet, c.SyncEvery.Duration)
-	switch cred, path, err := tailscaleCred(false); {
+	switch cred, path, err := tailscaleCred(isRoot()); {
 	case err == nil:
 		fmt.Fprintf(out, "Credential:  %s, loaded from %s\n", cred.Kind(), path)
 	default:

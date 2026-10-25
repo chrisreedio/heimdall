@@ -122,6 +122,8 @@ func TestCloudflareSiteCard(t *testing.T) {
 	}
 	if b := e.get("/cloudflare", signedIn(e)).Body.String(); !strings.Contains(b, "Nothing synced yet") {
 		t.Error("empty overview")
+	} else if !strings.Contains(b, `href="https://dash.cloudflare.com/profile/api-tokens?`) || !strings.Contains(b, "Create the token in Cloudflare") {
+		t.Error("empty overview has no token link for an admin")
 	}
 
 	e = newEnv(t, "http://127.0.0.1:8080", nil)
