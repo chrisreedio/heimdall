@@ -37,6 +37,22 @@ func Counts(counts map[string]int) string {
 	return strings.Join(parts, ", ")
 }
 
+// Who describes who an event was, as far as the server recorded it:
+// "chris from 203.0.113.7", "chris", "from 203.0.113.7" or "".
+func Who(ev store.PrivilegeEvent) string {
+	src := ev.Source
+	if src == "?" {
+		src = ""
+	}
+	switch {
+	case ev.User != "" && src != "":
+		return ev.User + " from " + src
+	case src != "":
+		return "from " + src
+	}
+	return ev.User
+}
+
 // Rules raises privilege watch anomalies.
 type Rules struct {
 	Store *store.Store
@@ -95,8 +111,8 @@ func (e *Rules) OnReport(ctx context.Context, host store.IngestHost, snapshotID 
 			days[k] = d
 		}
 		d.counts[ev.Kind]++
-		if ev.User != "" && !slices.Contains(d.users, ev.User) {
-			d.users = append(d.users, ev.User)
+		if who := Who(ev); who != "" && !slices.Contains(d.users, who) {
+			d.users = append(d.users, who)
 		}
 	}
 	for _, k := range slices.Sorted(maps.Keys(days)) {

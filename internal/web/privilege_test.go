@@ -33,6 +33,20 @@ func TestHostPagePrivilege(t *testing.T) {
 			t.Errorf("host page missing %q", want)
 		}
 	}
+	if strings.Contains(body, "priv-recent") {
+		t.Error("recent events listed for a host that doesn't record who")
+	}
+	who := []store.PrivilegeEvent{{At: at.Add(3 * time.Second), Kind: "sudo", User: "chris", Source: "203.0.113.7"},
+		{At: at.Add(4 * time.Second), Kind: "root-ssh", User: "root", Source: "2001:db8::1"}}
+	if _, _, err := e.st.RecordPrivilege(ctx, host.ID, who, "on", testNow); err != nil {
+		t.Fatal(err)
+	}
+	body = page()
+	for _, want := range []string{"by chris from 203.0.113.7", "root SSH <span class=\"priv-who\">by root from 2001:db8::1</span>"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("host page missing %q", want)
+		}
+	}
 	if _, _, err := e.st.RecordPrivilege(ctx, host.ID, nil, "partial", testNow); err != nil {
 		t.Fatal(err)
 	}
