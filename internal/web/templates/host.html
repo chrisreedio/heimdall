@@ -62,6 +62,7 @@
   <p class="muted small"><a href="/news?affects=me">All news affecting your hosts</a></p>
 </section>
 {{end}}
+{{template "tailnetcard" .Tailnet}}
 {{with .Privilege}}{{/* the opt-in privilege watch (Linux only), and what it doesn't record */}}
 <section class="facts card" id="privilege">
   <div class="fact">{{template "icon" "clock"}}<div><div class="k">Privileged access</div><div class="v">{{if not .EverOn}}Not watched{{else if .Counts}}{{.Counts}} in the last 24 hours{{else}}None in the last 24 hours{{end}}</div><div class="pills">{{with .Last}}<span class="pill muted" title="{{fullDate .}}">last {{dayAgo .}}</span>{{end}}{{if .Off}}<span class="pill bad" title="It was on before. Re-enable: {{.Coverage.Fix}}">privilege watch {{if eq .State "partial"}}partly removed{{else}}off{{end}}</span>{{else if eq .State "on"}}<span class="pill ok">watched</span>{{end}}{{if and (not .Off) (not .Coverage.Full)}}<span class="pill warn" title="{{.Coverage.Why}}">{{.Coverage.Label}}</span>{{end}}</div>

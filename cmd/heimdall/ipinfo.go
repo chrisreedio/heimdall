@@ -22,6 +22,11 @@ func newIPResolver(cfg config.Config, s *store.Store, log *slog.Logger) (*ipinfo
 	// ── sources: keep one block per source, in this order ──
 	// (deploy services)
 	// (Tailscale)
+	if ts, err := newTailscaleSyncer(cfg, s, log, false); err != nil { // tailscale.go; nil when [tailscale] is off
+		log.Error("Tailscale sync is enabled but has no credential", "err", err)
+	} else if ts != nil {
+		syncers = append(syncers, ts)
+	}
 	// (Cloudflare)
 
 	return r, syncers

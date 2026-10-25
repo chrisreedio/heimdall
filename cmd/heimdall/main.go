@@ -71,6 +71,8 @@ Commands:
   sso setup                    Set up Entra ID single sign-on (asks, writes, restarts)
   sso set-secret               Store or rotate the Entra client secret (never echoed)
   ai set-key|status|test       AI analysis with your Azure model: store the key (never echoed), show, test
+  tailscale set-key|status|sync
+                               Name the people and devices behind tailnet addresses (read-only Tailscale API)
   upgrade [--check]            Upgrade this hub to the latest release (sudo)
   restart                      Restart the hub (after config changes) and check it's up (sudo)
   ingest cert                  Install a certificate for public ingest, e.g. a Cloudflare Origin cert (sudo)
@@ -129,6 +131,8 @@ var commands = map[string]command{
 	"serve":   cmdServe,
 	"import":  cmdImport,
 	"version": func(a *app, _ []string) error { _, err := fmt.Fprintln(a.stdout, version); return err },
+
+	"tailscale": group("tailscale", map[string]command{"set-key": cmdTailscaleSetKey, "status": cmdTailscaleStatus, "sync": cmdTailscaleSync}),
 }
 
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {

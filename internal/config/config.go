@@ -39,6 +39,8 @@ type Config struct {
 	// Agents are coding agents (Discord bots) that "Hand off to agent"
 	// can ask for a pull request. None by default, which hides the button.
 	Agents []Agent `toml:"agents"`
+
+	Tailscale Tailscale `toml:"tailscale"` // see tailscale.go
 }
 
 // Agent is one coding agent: a Discord bot that reads a channel and can
@@ -359,6 +361,7 @@ func Default() Config {
 		News:    News{Sources: []string{DefaultNewsSource}, Interval: Duration{time.Hour}},
 		AI: AI{API: AIResponses, BriefEvery: Duration{24 * time.Hour}, MaxOutputTokens: 8000,
 			MaxInputTokens: 24000, Timeout: Duration{2 * time.Minute}},
+		Tailscale: defaultTailscale,
 	}
 }
 
@@ -526,6 +529,7 @@ func (c Config) Validate() error {
 	}
 	c.AI.validate(add)
 	validateAgents(c.Agents, add)
+	c.Tailscale.validate(add)
 	return errors.Join(errs...)
 }
 

@@ -45,6 +45,8 @@ type fleetHost struct {
 	// is false on Windows, which has none.
 	Privilege    privilegeCoverage
 	HasPrivilege bool
+
+	OffTailnet bool // reported, and no tailnet device matches it (tailscale.go)
 }
 
 // lifeItem is one lifecycle on a host: its OS, a runtime, or a site's PHP
@@ -172,6 +174,9 @@ func (s *server) fleet(r *http.Request, v *auth.Viewer, org string) ([]fleetHost
 		if rank[a.Severity] > rank[out[i].AnomalyWorst] {
 			out[i].AnomalyWorst = a.Severity
 		}
+	}
+	if err := s.markOffTailnet(ctx, out); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -564,6 +569,7 @@ var hostFilters = []struct {
 	{"anomalies", "Anomalies", func(h fleetHost) bool { return h.Anomalies > 0 }},
 	{"collector", "Collector", func(h fleetHost) bool { return h.CollectorBehind || h.ChangeWatch == "off" }},
 	{"privilege", "Privilege watch", func(h fleetHost) bool { return h.HasPrivilege && !h.Privilege.Full }},
+	{"tailnet", "Not on tailnet", func(h fleetHost) bool { return h.OffTailnet }},
 	{"waiting", "Waiting", func(h fleetHost) bool { return !h.Reported }},
 }
 
