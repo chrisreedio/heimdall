@@ -20,6 +20,7 @@ type message struct {
 	Hosts    []hostLine // host lines (alerts), rendered as code
 	Note     string
 	URL      string
+	LinkText string // the link's label; "" is "Open Heimdall"
 	Footer   string
 	At       time.Time
 }
@@ -63,6 +64,10 @@ func digestMessage(d Digest) message {
 }
 
 func alertMessage(a Alert) message {
+	if a.isBan() {
+		return message{Title: a.Subject(), Severity: a.Severity(), Lead: a.lead(), Lines: a.banFacts(), Hosts: a.lines(),
+			Note: a.note(), URL: clean(a.URL, 512), LinkText: a.banLinkText(), Footer: a.footer(), At: a.GeneratedAt}
+	}
 	return message{
 		Title:    a.Subject(),
 		Severity: a.Severity(),

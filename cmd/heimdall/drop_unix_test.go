@@ -36,7 +36,7 @@ func TestAsHubUser(t *testing.T) {
 		t.Errorf("argv = %q", got)
 	}
 	got = nil
-	for _, args := range [][]string{{"upgrade"}, {"restart"}, {"sso", "setup"}, {"ingest", "cert"}, {"ai", "set-key"}, {"ai", "test"}, {"notify", "set-webhook"}, {"notify", "test"}, {"tailscale", "set-key"}, {"cloudflare", "set-token"}, {"ip-services", "set-key", "ploi"}, {}} {
+	for _, args := range [][]string{{"upgrade"}, {"restart"}, {"sso", "setup"}, {"ingest", "cert"}, {"ai", "set-key"}, {"ai", "test"}, {"notify", "set-webhook"}, {"notify", "test"}, {"tailscale", "set-key"}, {"cloudflare", "set-token"}, {"ip-services", "set-key", "ploi"}, {"bans", "set-token"}, {}} {
 		if _, err := asHubUser(cfg, args); err != nil || got != nil {
 			t.Errorf("%v should run as root: %v %q", args, err, got)
 		}
@@ -69,7 +69,7 @@ func TestAsHubUserKeyCommands(t *testing.T) {
 	stub(t, &setgroups, func([]int) error { return nil })
 	stub(t, &setgid, func(g int) error { gotGID = g; return nil })
 	stub(t, &setuid, func(u int) error { gotUID = u; return nil })
-	for _, args := range [][]string{{"tailscale", "status"}, {"cloudflare", "sync"}, {"ip-services", "status"}} {
+	for _, args := range [][]string{{"tailscale", "status"}, {"cloudflare", "sync"}, {"ip-services", "status"}, {"bans", "status"}} {
 		gotUID = -1
 		path, err := asHubUser(cfg, args)
 		if err != nil {

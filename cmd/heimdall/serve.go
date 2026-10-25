@@ -89,6 +89,7 @@ func cmdServe(a *app, args []string) error {
 	ipinfo.Run(a.ctx, log, ipSyncers...)
 	h.IPs = ips                             // privilege sessions' sources (internal/privilege/source.go)
 	h.TrustedEdge = cloudflareTrustedEdge() // CF-Connecting-IP from Cloudflare's edge only; nil when off (cloudflare.go)
+	startBans(a.ctx, cfg, s, log, ips)      // bans and their alerts (bans.go)
 
 	aiSvc := newAIService(cfg, s, log) // nil when [ai] is off
 	if aiSvc != nil {
@@ -214,6 +215,7 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.
 		Cloudflare:   cfg.Cloudflare.Enabled,
 		Tailnet:      cfg.Tailscale.Enabled,
 	}
+	wcfg.Bans = bansService                                 // set by startBans (bans.go)
 	wcfg.BehindTailscaleServe = cfg.UI.BehindTailscaleServe // tailscale serve's client headers (web/tsproxy.go)
 	if aiSvc != nil {
 		wcfg.AI = aiSvc

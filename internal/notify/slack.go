@@ -3,6 +3,7 @@
 package notify
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -99,7 +100,7 @@ func slackPayload(m message) map[string]any {
 	}
 	ctx := slackEscape(m.Footer)
 	if u := safeLinkURL(m.URL); u != "" {
-		ctx = "<" + slackEscape(u) + "|Open Heimdall> (sign-in required) · " + ctx
+		ctx = "<" + slackEscape(u) + "|" + slackEscape(cmp.Or(m.LinkText, "Open Heimdall")) + "> (sign-in required) · " + ctx
 	}
 	blocks := []map[string]any{
 		{"type": "header", "text": map[string]any{"type": "plain_text", "text": truncate(m.Title, 150), "emoji": false}},

@@ -43,6 +43,8 @@ type surfaceBody struct {
 	Zones    []surface.Zone
 	Changes  []surfaceChangeRow
 	LastSync time.Time
+	BanZones map[string]store.BanZone // the "ban rule" column (bans.go)
+	BanCol   bool
 }
 
 var surfaceViewLabels = map[string]string{
@@ -136,6 +138,8 @@ func (s *server) surfacePage(w http.ResponseWriter, r *http.Request, v *auth.Vie
 			body.LastSync = syncs["zones"].At
 		}
 	}
+	body.BanZones = s.surfaceBanZones(ctx)
+	body.BanCol = body.BanZones != nil
 	s.render(w, r, http.StatusOK, "surface", v, "Attack surface", "surface", body)
 }
 

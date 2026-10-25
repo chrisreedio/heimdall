@@ -20,13 +20,14 @@ var rootCommands = map[string]bool{"upgrade": true, "restart": true, "sso": true
 	// root-owned files it stores.
 	"notify set-webhook": true, "notify test": true,
 	// Store a root-owned key file and add its LoadCredential line.
-	"tailscale set-key": true, "cloudflare set-token": true, "ip-services set-key": true}
+	"tailscale set-key": true, "cloudflare set-token": true, "ip-services set-key": true, "bans set-token": true}
 
 // keyCommands read a root-owned key file and then use the hub's database:
 // they read the key files as root, then drop to the hub user in-process,
 // so the database never gets a root-owned file.
 var keyCommands = map[string]bool{"tailscale status": true, "tailscale sync": true,
-	"cloudflare status": true, "cloudflare sync": true, "ip-services status": true, "ip-services sync": true}
+	"cloudflare status": true, "cloudflare sync": true, "ip-services status": true, "ip-services sync": true,
+	"bans status": true}
 
 // Seams for tests.
 var (
@@ -81,7 +82,7 @@ func asHubUser(configPath string, args []string) (string, error) {
 // dropInProcess keeps a copy of each key file root can read (see
 // readKeyFile), then becomes u: groups, then gid, then uid.
 func dropInProcess(u *user.User) error {
-	paths := []string{defaultCloudflareTokenFile, defaultTailscaleKeyFile}
+	paths := []string{defaultCloudflareTokenFile, defaultTailscaleKeyFile, defaultBansTokenFile}
 	for _, id := range tokenServices() {
 		paths = append(paths, serviceTokenFile(id))
 	}

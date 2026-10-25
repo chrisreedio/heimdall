@@ -30,6 +30,7 @@ type Alert struct {
 	AlertAfter  string         `json:"alert_after,omitempty"` // the threshold, e.g. "3h0m0s"
 	Anomalies   []AlertAnomaly `json:"anomalies,omitempty"`   // KindAnomaly only
 	URL         string         `json:"url"`                   // link to the UI's Anomalies page
+	Ban         *AlertBan      `json:"ban,omitempty"`         // KindBan and KindBanShadow only (ban.go)
 }
 
 // AlertAnomaly is one anomaly in an alert: where, which rule, how bad.
@@ -48,8 +49,10 @@ type AlertSender interface {
 const maxAlertHosts = 50
 
 // alwaysAlert are the rules that notify immediately whatever their
-// severity: a switched-off watch, or privileged access outside a window.
-var alwaysAlert = map[string]bool{"trigger_disabled": true, "privilege_watch_disabled": true, "privileged_access": true}
+// severity: a switched-off watch, privileged access outside a window, or an
+// origin no longer behind Cloudflare.
+var alwaysAlert = map[string]bool{"trigger_disabled": true, "privilege_watch_disabled": true, "privileged_access": true,
+	"dns_unproxied": true} // an origin made public is worth knowing now
 
 // AlertRule reports whether a new anomaly is sent as an immediate alert:
 // the rules above, plus anything high or critical. Silence has its own
@@ -70,6 +73,9 @@ var ruleLabels = map[string]string{
 	"privilege_unknown_source": "privileged access from an unknown address",
 	"privilege_off_tailnet":    "SSH from outside the tailnet",
 	"silent_online":            "stopped reporting, still on the tailnet",
+	"login_then_succeeded":     "failed logins, then a successful one, from an unknown address",
+	"dns_unproxied":            "a public name stopped going through Cloudflare",
+	"cname_takeover":           "a public name points at a CNAME anyone could claim",
 	"collector_changed":        "collector changed",
 	"collector_downgrade":      "collector downgraded",
 	"package_downgrade":        "package downgraded",
@@ -90,6 +96,9 @@ func RuleLabel(rule string) string {
 
 // Subject is a one-line summary, e.g. "Heimdall: 2 hosts stopped reporting".
 func (a Alert) Subject() string {
+	if a.isBan() {
+		return a.banSubject()
+	}
 	switch a.Kind {
 	case KindBack:
 		return fmt.Sprintf("Heimdall: %d %s reporting again", a.Count, plural(a.Count, "host is", "hosts are"))
@@ -103,6 +112,12 @@ func (a Alert) Subject() string {
 
 // Severity is how loud the alert is: "high", "medium", "ok" or "info".
 func (a Alert) Severity() string {
+	if a.isBan() {
+		if a.Kind == KindBan && (a.Ban.Succeeded || a.Ban.Auto) {
+			return "high"
+		}
+		return map[bool]string{true: "info", false: "medium"}[a.Kind == KindBanShadow]
+	}
 	switch a.Kind {
 	case KindBack:
 		return "ok"
@@ -133,6 +148,9 @@ func (a Alert) quietFor() string {
 
 // lead is the alert's first sentence, without hosts.
 func (a Alert) lead() string {
+	if a.isBan() {
+		return a.banLead()
+	}
 	at := a.GeneratedAt.UTC().Format("2006-01-02 15:04 UTC")
 	switch a.Kind {
 	case KindBack:
@@ -147,6 +165,9 @@ func (a Alert) lead() string {
 
 // note is the alert's closing advice.
 func (a Alert) note() string {
+	if a.isBan() {
+		return a.banNote()
+	}
 	switch a.Kind {
 	case KindBack:
 		return "The silence anomaly stays open until someone acknowledges it."
@@ -160,6 +181,12 @@ func (a Alert) note() string {
 
 // lines are the alert's hosts, each with its anomaly label for KindAnomaly.
 func (a Alert) lines() []hostLine {
+	if a.isBan() {
+		if a.Kind == KindBanShadow {
+			return nil
+		}
+		return a.banHosts()
+	}
 	if a.Kind == KindAnomaly {
 		out := make([]hostLine, 0, len(a.Anomalies))
 		for _, an := range a.Anomalies {
@@ -176,6 +203,9 @@ func (a Alert) lines() []hostLine {
 
 // Text renders the plain-text body.
 func (a Alert) Text() string {
+	if a.isBan() {
+		return a.banText()
+	}
 	var b strings.Builder
 	b.WriteString(a.lead() + "\n")
 	if lines := a.lines(); len(lines) > 0 {
@@ -203,6 +233,9 @@ func (a Alert) Text() string {
 }
 
 func (a Alert) footer() string {
+	if a.isBan() {
+		return banFooter()
+	}
 	if a.Kind == KindTest {
 		return "Test only: nothing needs doing."
 	}
@@ -222,6 +255,9 @@ func (a Alert) capped() Alert {
 			ans = append(ans, AlertAnomaly{Host: clean(an.Host, 160), Rule: clean(an.Rule, 40), Severity: clean(an.Severity, 16)})
 		}
 		a.Anomalies = ans
+	}
+	if a.Ban != nil {
+		a.Ban = a.banCapped()
 	}
 	return a
 }

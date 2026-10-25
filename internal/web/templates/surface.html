@@ -36,7 +36,7 @@
   <h2>Zones</h2>
   <p class="muted small">Read-only settings. A zone's proxied names are the ones Cloudflare's rules can protect; unproxied ones go around them.</p>
   <div class="scroll"><table>
-    <thead><tr><th>Zone</th><th>Plan</th><th>SSL/TLS</th><th>Always HTTPS</th><th>Min TLS</th><th>Edge certificate</th><th class="num">Proxied</th><th class="num">Not proxied</th></tr></thead>
+    <thead><tr><th>Zone</th><th>Plan</th><th>SSL/TLS</th><th>Always HTTPS</th><th>Min TLS</th><th>Edge certificate</th><th class="num">Proxied</th><th class="num">Not proxied</th>{{if $.Body.BanCol}}<th>Ban rule</th>{{end}}</tr></thead>
     <tbody>{{range .Zones}}
     <tr><td><span class="id">{{.Name}}</span>{{if and .Status (ne .Status "active")}} <span class="pill muted">{{.Status}}</span>{{end}}</td><td>{{.Plan}}</td>
       {{if eq .Settings.State "permission"}}<td colspan="3"><span class="pill muted" title="{{.Settings.Note}}">no permission</span></td>
@@ -46,7 +46,7 @@
         <td>{{with .Settings.AlwaysHTTPS}}{{if eq . "off"}}<span class="pill warn">off</span>{{else}}{{.}}{{end}}{{else}}<span class="muted">—</span>{{end}}</td>
         <td>{{with .Settings.MinTLS}}{{if or (eq . "1.0") (eq . "1.1")}}<span class="pill warn">{{.}}</span>{{else}}{{.}}{{end}}{{else}}<span class="muted">—</span>{{end}}</td>{{end}}
       <td>{{if eq .Settings.CertState "permission"}}<span class="pill muted" title="{{.Settings.CertNote}}">no permission</span>{{else if not .Settings.CertExpires.IsZero}}expires {{day .Settings.CertExpires}}{{else if eq .Settings.CertState "error"}}<span class="pill muted" title="{{.Settings.CertNote}}">couldn't fetch</span>{{else}}<span class="muted">—</span>{{end}}</td>
-      <td class="num">{{.Proxied}}</td><td class="num">{{.Unproxied}}</td></tr>{{end}}
+      <td class="num">{{.Proxied}}</td><td class="num">{{.Unproxied}}</td>{{if $.Body.BanCol}}<td>{{with index $.Body.BanZones .ID}}{{if and .Enabled (eq .State "ok")}}<a class="pill ok" href="/bans#zones">deployed</a>{{else if eq .State "error"}}<a class="pill bad" href="/bans#zones" title="{{.Note}}">error</a>{{else if .Enabled}}<a class="pill muted" href="/bans#zones">writing</a>{{else}}<a href="/bans#zones" class="muted">off</a>{{end}}{{else}}<a href="/bans#zones" class="muted">off</a>{{end}}</td>{{end}}</tr>{{end}}
     </tbody>
   </table></div>
 </section>

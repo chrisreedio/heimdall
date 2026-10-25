@@ -1,0 +1,134 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<div class="head">
+  <h1>Bans</h1>
+  <span class="pill {{if eq .Mode "off"}}muted{{else if eq .Mode "shadow"}}info{{else}}warn{{end}}">{{.Mode}}</span>
+  {{if .Paused.Paused}}<span class="pill bad">paused</span>{{end}}
+</div>
+<p class="lede">Repeat offenders from <a href="/offenders">failed logins</a>, scored and turned into bans at Cloudflare's edge: an account-level IP list that one custom rule per opted-in zone challenges or blocks. Addresses Heimdall knows (your people, deploy services, your hosts, the tailnet, private networks, Cloudflare) are never banned. Heimdall removes each ban when it expires. <a href="https://github.com/chrisreedio/heimdall/blob/main/docs/bans.md">How it works</a>.</p>
+{{with .Flash}}<p class="notice" role="status">{{.}}</p>{{end}}
+
+<section id="status">
+  <p>{{.ModeText}}</p>
+  <div class="row">
+  {{if .Paused.Paused}}
+    <p><strong>Paused</strong> by {{.Paused.By}} {{ago .Paused.At}}{{with .Paused.Note}} ("{{.}}"){{end}}: Heimdall writes nothing to Cloudflare, so approvals, unbans and expiries wait.</p>
+    <form method="post" action="/bans/resume" class="inline"><input type="hidden" name="csrf" value="{{$csrf}}"><button type="submit" class="secondary">Resume Cloudflare writes</button></form>
+  {{else}}
+    <form method="post" action="/bans/pause" class="inline"><input type="hidden" name="csrf" value="{{$csrf}}">
+      <label>Note <input name="note" maxlength="200" placeholder="why (optional)"></label>
+      <button type="submit" class="danger">Pause all Cloudflare writes</button></form>
+  {{end}}
+  </div>
+  {{if and .Writes .CF (not .ZonesOn)}}<p class="notice" role="status">No zone has the ban rule yet, so bans in the lists take no effect. Turn zones on below.</p>{{end}}
+  {{if .Writes}}
+  <p class="small">{{if .Token}}Write token loaded.{{else}}<span class="pill warn">no write token</span> {{.TokenNote}}{{end}}
+    {{if .Lists.Challenge.ID}} Lists: <code>{{.Lists.Challenge.Name}}</code>{{if .Lists.Block.ID}}, <code>{{.Lists.Block.Name}}</code>{{end}}.{{end}}
+    {{with .Lists.Note}}<span class="pill warn" title="{{.}}">block falls back to challenge</span>{{end}}
+    {{if not .Sync.At.IsZero}} Last Cloudflare sync {{ago .Sync.At}}{{with .Sync.Error}}: <span class="pill warn" title="{{.}}">error</span> {{.}}{{end}}.{{end}}</p>
+  {{end}}
+  <details>
+    <summary>Create the write token</summary>
+    <p class="small">Bans use a second token, separate from the read-only one. <a href="{{.TokenURL}}" rel="noopener noreferrer" target="_blank">Open Cloudflare's token form, pre-filled</a> (Zone &gt; Zone WAF &gt; Edit). Then add <strong>{{.TokenManual}}</strong> by hand: Cloudflare doesn't document its key, so the link can't include it. Scope it to the account, then store it on the hub with <code>sudo heimdall bans set-token</code>.</p>
+  </details>
+</section>
+
+<section id="proposals">
+  <h2>Waiting for approval</h2>
+  {{if .Proposals}}{{range .Proposals}}{{template "banrow" (dict "Row" . "CSRF" $csrf "Actions" true)}}{{end}}
+  {{else}}<p class="empty">Nothing waiting.</p>{{end}}
+</section>
+
+<section id="active">
+  <h2>Active bans</h2>
+  {{if .Active}}<div class="scroll"><table>
+    <thead><tr><th>Target</th><th>Action</th><th>Status</th><th>Expires</th><th>Decided by</th><th></th></tr></thead>
+    <tbody>{{range .Active}}<tr id="ban-{{.ID}}">
+      <td class="id">{{.Target}}</td><td>{{.Action}}</td>
+      <td>{{.Status}}{{with .LastError}} <span class="pill warn" title="{{.}}">{{if $.Body.Paused.Paused}}paused{{else}}waiting{{end}}</span>{{end}}</td>
+      <td class="nowrap">{{if .Until}}<span title="{{time .ExpiresAt}}">{{.Until}} ({{.Left}})</span>{{else}}{{.Days}} days once written{{end}}</td>
+      <td>{{.DecidedBy}}</td>
+      <td>{{if ne .Status "lifting"}}<form method="post" action="/bans/{{.ID}}/unban" class="inline"><input type="hidden" name="csrf" value="{{$csrf}}"><button type="submit" class="link">unban</button></form>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="empty">No active bans.</p>{{end}}
+</section>
+
+{{if .Shadow}}
+<section id="shadow">
+  <h2>Would have banned</h2>
+  <p class="muted small">Shadow mode's record: what it would have proposed or banned in the last {{len .Shadow}} entries of 30 days. Nothing was written to Cloudflare. Use the scores to tune <code>[bans] propose_at</code> and <code>[bans.weights]</code>.</p>
+  {{range .Shadow}}{{template "banrow" (dict "Row" . "CSRF" $csrf "Actions" false)}}{{end}}
+</section>
+{{end}}
+
+<section id="candidates">
+  <h2>Candidates</h2>
+  <p class="muted small">Every offender, scored now. A score of {{.ProposeAt}} or more is proposed{{if eq .Mode "shadow"}} (in shadow mode: recorded){{end}}.</p>
+  {{if .Candidates}}<div class="scroll"><table>
+    <thead><tr><th>Target</th><th class="num">Score</th><th>Breakdown</th><th>Hosts</th><th>Action</th><th></th></tr></thead>
+    <tbody>{{range .Candidates}}<tr>
+      <td class="id">{{.TargetText}}{{if eq .Kind "network"}} <span class="pill info">network</span>{{end}}</td>
+      <td class="num">{{if .Over}}<strong>{{printf "%.1f" .Score}}</strong>{{else}}{{printf "%.1f" .Score}}{{end}}</td>
+      <td class="small">{{range $i, $f := .Factors}}{{if $i}} · {{end}}{{$f.Label}} {{$f.Value}} → {{printf "%.1f" $f.Points}}{{end}}</td>
+      <td class="small">{{range $i, $h := .Hosts}}{{if $i}}, {{end}}{{$h.Name}}{{end}}{{if .HostsMore}} +{{.HostsMore}} elsewhere{{end}}</td>
+      <td>{{.Action}}</td>
+      <td>{{if .Skip}}<span class="pill ok" title="{{.Skip}}">friendly</span>{{else if .State}}<span class="pill muted">{{.State}}</span>{{else if .Over}}<span class="pill warn">over</span>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{if .MoreCandidates}}<p class="muted small">{{.MoreCandidates}} more below these.</p>{{end}}
+  {{else}}<p class="empty">{{if eq .Mode "off"}}Bans are off.{{else}}No offenders in the window.{{end}}</p>{{end}}
+</section>
+
+{{if .CF}}
+<section id="zones">
+  <h2>Zones</h2>
+  <p class="muted small">Opt in per zone. Each zone that's on gets Heimdall's custom rules (<code>ip.src in $list</code>, challenge and block); only proxied names are protected. {{.ZonesOn}} on.</p>
+  {{if .Zones}}<div class="scroll"><table>
+    <thead><tr><th>Zone</th><th>Plan</th><th class="num">Proxied</th><th>Ban rule</th><th></th></tr></thead>
+    <tbody>{{range .Zones}}<tr>
+      <td class="id">{{.Name}}</td><td>{{.Plan}}</td><td class="num">{{.Proxied}}</td>
+      <td>{{if .Enabled}}{{if eq .State "ok"}}<span class="pill ok">deployed</span>{{else if eq .State "error"}}<span class="pill bad" title="{{.Note}}">error</span> <span class="small">{{.Note}}</span>{{else}}<span class="pill muted">on, writing</span>{{end}}{{else}}{{if eq .State "error"}}<span class="pill bad" title="{{.Note}}">couldn't remove</span>{{else}}<span class="muted">off</span>{{end}}{{end}}</td>
+      <td><form method="post" action="/bans/zones" class="inline"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="zone" value="{{.ID}}">
+        {{if .Enabled}}<input type="hidden" name="on" value="0"><button type="submit" class="link">turn off</button>{{else}}<input type="hidden" name="on" value="1"><button type="submit" class="link">turn on</button>{{end}}</form></td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="empty">No zones synced yet.</p>{{end}}
+</section>
+{{end}}
+
+{{if .Recent}}
+<section id="recent">
+  <h2>Ended</h2>
+  <div class="scroll"><table>
+    <thead><tr><th>Target</th><th>Action</th><th>Outcome</th><th>When</th><th>By</th></tr></thead>
+    <tbody>{{range .Recent}}<tr id="ban-{{.ID}}"><td class="id">{{.Target}}</td><td>{{.Action}}</td><td>{{.Status}}{{with .EndReason}} ({{.}}){{end}}</td>
+      <td class="nowrap" title="{{time .UpdatedAt}}">{{ago .UpdatedAt}}</td><td>{{.DecidedBy}}</td></tr>{{end}}</tbody>
+  </table></div>
+</section>
+{{end}}
+
+<section id="audit">
+  <h2>Audit log</h2>
+  {{if .Audit}}<div class="scroll"><table>
+    <thead><tr><th>When</th><th>Who</th><th>What</th><th>Target</th><th>Result</th></tr></thead>
+    <tbody>{{range .Audit}}<tr><td class="nowrap">{{time .At}}</td><td>{{.Actor}}</td><td>{{.Action}}</td><td class="id">{{.Target}}</td>
+      <td>{{if eq .Result "ok"}}ok{{else}}<span class="pill bad" title="{{index .Detail "error"}}">error</span>{{end}}</td></tr>{{end}}</tbody>
+  </table></div>
+  {{else}}<p class="empty">Nothing yet.</p>{{end}}
+</section>
+{{end}}{{end}}
+
+{{define "banrow"}}{{$r := .Row}}{{$csrf := .CSRF}}
+<article class="card" id="ban-{{$r.ID}}">
+  <h3><span class="id">{{$r.Target}}</span> {{if eq $r.Kind "network"}}<span class="pill info">network</span> {{end}}<span class="pill {{if eq $r.Action "block"}}bad{{else}}warn{{end}}">{{$r.Action}}</span> for {{$r.Days}} days{{if gt $r.Offense 1}} (offense {{$r.Offense}}){{end}}</h3>
+  <p class="small">{{with $r.Ev.Network}}{{.}} · {{end}}{{$r.Ev.Prefix}} · {{$r.Ev.Failures}} failures, {{$r.Ev.Usernames}} usernames, {{$r.Ev.Days}} day{{if ne $r.Ev.Days 1}}s{{end}} · first {{time $r.Ev.First}}, last {{ago $r.Ev.Last}}
+    {{if $r.Ev.Succeeded}} · <span class="pill bad">then succeeded</span>{{end}}</p>
+  <p class="small">Hosts: {{range $i, $h := $r.Hosts}}{{if $i}}, {{end}}<a href="{{hostURL $h.Org $h.Name}}#logins">{{$h.Name}}</a>{{end}}{{if $r.HostsMore}} +{{$r.HostsMore}} in other orgs{{end}}{{with $r.Ev.Members}} · addresses: {{join . ", "}}{{end}}</p>
+  <p class="small">IP awareness: {{$r.Ev.Known}} · {{$r.Ev.Reason}}</p>
+  <p class="small">Score <strong>{{printf "%.1f" $r.Score}}</strong>: {{range $i, $f := $r.Factors}}{{if $i}} + {{end}}{{$f.Label}} {{$f.Value}} → {{printf "%.1f" $f.Points}}{{end}}</p>
+  {{if .Actions}}<div class="row">
+    <form method="post" action="/bans/{{$r.ID}}/approve" class="inline"><input type="hidden" name="csrf" value="{{$csrf}}"><button type="submit">Approve</button></form>
+    <form method="post" action="/bans/{{$r.ID}}/reject" class="inline"><input type="hidden" name="csrf" value="{{$csrf}}"><input name="note" maxlength="200" placeholder="why not (optional)"> <button type="submit" class="secondary">Reject</button></form>
+  </div>{{end}}
+</article>
+{{end}}
