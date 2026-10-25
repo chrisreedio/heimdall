@@ -34,7 +34,7 @@ param(
 
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
-$script:CollectorVersion = '0.4.26'
+$script:CollectorVersion = '0.4.27'
 $script:Format = 'heimdall.snapshot/v3'
 
 # Drop control characters, quotes and backslashes; cap the length. The hub
