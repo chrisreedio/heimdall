@@ -1,0 +1,61 @@
+{{define "content"}}{{with .Body}}
+<div class="head">
+  <h1>Repeat offenders</h1>
+  {{if .GotIn}}<span class="pill bad">{{.GotIn}} then succeeded</span>{{end}}
+  {{if .ShowOrgs}}
+  <form method="get" action="/offenders" class="filter">
+    <input type="hidden" name="since" value="{{.Window}}">
+    <label>Org
+      <select name="org">
+        <option value="">All</option>
+        {{range .Orgs}}<option value="{{.Slug}}"{{if eq .Slug $.Body.Org}} selected{{end}}>{{.Name}}</option>{{end}}
+      </select>
+    </label>
+    <button type="submit">Filter</button>
+  </form>
+  {{end}}
+</div>
+<p class="lede">Addresses that failed to log in over SSH to your servers, from servers with the login watch on (<code>sudo heimdall-collect upgrade --watch-logins</code>). Ranked by how many hosts each one tried, then by failures. Addresses Heimdall knows (your people, deploy services, your hosts, the tailnet, private networks, Cloudflare) are listed apart and never counted. Counts only: no usernames. <a href="https://github.com/chrisreedio/heimdall/blob/main/docs/failed-logins.md">How it works</a>.</p>
+
+<div class="list-bar">
+  <span class="muted small">{{num .Failures}} failed login{{if ne .Failures 1}}s{{end}} in the last {{.WindowLabel}}{{if .Offenders}} · {{len .Offenders}}{{if .MoreOffenders}}+{{end}} unknown address{{if ne (len .Offenders) 1}}es{{end}}{{if .Repeat}}, {{.Repeat}} on more than one host{{end}}{{end}}</span>
+  <nav class="seg" aria-label="Window"><span class="seg-label">Last</span>{{range .Windows}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Label}}</a>{{end}}</nav>
+</div>
+
+<section id="offenders">
+  {{if .Offenders}}<div class="scroll"><table>
+    <thead><tr><th>Address</th><th>Network</th><th class="num">Hosts</th><th class="num">Failures</th><th class="num">Usernames</th><th>First seen</th><th>Last seen</th><th></th></tr></thead>
+    <tbody>{{range .Offenders}}<tr>
+      <td class="id"><a href="{{.Href}}">{{.IP}}</a></td>
+      <td class="small">{{if .Network}}{{.Network}}{{else}}<span class="muted">unknown</span>{{end}}</td>
+      <td class="num">{{len .Hosts}}<div class="small">{{range $i, $h := .Shown}}{{if $i}}, {{end}}<a href="{{hostURL $h.OrgSlug $h.Name}}#logins">{{$h.Name}}</a>{{end}}{{if .HostsMore}} +{{.HostsMore}}{{end}}</div></td>
+      <td class="num">{{num .Failures}}</td>
+      <td class="num">{{.Usernames}}</td>
+      <td class="nowrap" title="{{time .First}}">{{dayAgo (timep .First)}}</td>
+      <td class="nowrap" title="{{time .Last}}">{{ago .Last}}</td>
+      <td>{{if .Succeeded}}<span class="pill bad" title="A login from this address succeeded after it failed, on: {{range $i, $h := .Succeeded}}{{if $i}}, {{end}}{{$h.Name}}{{end}}">then succeeded</span>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{if .MoreOffenders}}<p class="muted small">{{.MoreOffenders}} more not listed. <code>heimdall offenders --since {{.Window}}</code> lists them all.</p>{{end}}
+  {{else}}<p class="empty">No failed logins from unknown addresses in the last {{.WindowLabel}}.</p>{{end}}
+</section>
+
+{{if .Known}}
+<section id="known">
+  <h2>Known addresses</h2>
+  <p class="muted small">These failed too, but Heimdall knows who they are, so they're not offenders (a mistyped password, a deploy key that changed).</p>
+  <div class="scroll"><table>
+    <thead><tr><th>Address</th><th>Known as</th><th class="num">Hosts</th><th class="num">Failures</th><th>Last seen</th><th></th></tr></thead>
+    <tbody>{{range .Known}}<tr>
+      <td class="id"><a href="{{.Href}}">{{.IP}}</a></td>
+      <td>{{template "ipbadge" .Badge}}</td>
+      <td class="num">{{len .Hosts}}</td>
+      <td class="num">{{num .Failures}}</td>
+      <td class="nowrap" title="{{time .Last}}">{{ago .Last}}</td>
+      <td>{{if .Succeeded}}<span class="pill muted" title="A login from this address succeeded after it failed">then succeeded</span>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  {{if .MoreKnown}}<p class="muted small">{{.MoreKnown}} more not listed.</p>{{end}}
+</section>
+{{end}}
+{{end}}{{end}}

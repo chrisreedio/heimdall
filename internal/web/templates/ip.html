@@ -27,6 +27,8 @@
   </table></div>{{else}}<p class="empty">None recorded.</p>{{end}}
 </section>
 
+{{template "iplogins" .}}
+
 <section class="card" aria-labelledby="ip-hosts">
   <h2 id="ip-hosts">Hosts reporting from here</h2>
   {{if .Hosts}}<p>{{range $i, $h := .Hosts}}{{if $i}}, {{end}}<a href="{{hostURL $h.OrgSlug $h.Name}}">{{$h.Name}}</a>{{if $.Body.ShowOrgs}} <span class="muted small">{{$h.OrgSlug}}</span>{{end}}{{end}}</p>

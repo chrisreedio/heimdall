@@ -39,6 +39,7 @@ usage: install.sh --hub https://ingest.example.com [--token-stdin | --token-file
                   [--version vX.Y.Z] [--from-dir DIR] [--no-push]
                   [--sites "/srv/app ..."] [--lockfiles "/srv/app/package-lock.json ..."]
                   [--watch-privilege [--watch-privilege-users] | --no-watch-privilege]
+                  [--watch-logins | --no-watch-logins]
 
   --hub          the hub's ingest URL (https://)
   (default)      prompt for the ingest token on the terminal, without echo
@@ -57,12 +58,15 @@ usage: install.sh --hub https://ingest.example.com [--token-stdin | --token-file
   --watch-privilege-users  also record who, and the IP the session came from
                            (implies --watch-privilege)
   --no-watch-privilege     remove the privilege watch
-  (re-running keeps the current privilege watch choice)
+  --watch-logins           count failed SSH logins per source address (counts
+                           only; never usernames); see docs/failed-logins.md
+  --no-watch-logins        remove the login watch
+  (re-running keeps the current privilege and login watch choices)
 EOF
 	exit 2
 }
 
-token_given=0 hub='' token='' enroll='' awaiting=0 name='' version=$HEIMDALL_VERSION from_dir='' push=1 sites='' lockfiles='' privilege=''
+token_given=0 hub='' token='' enroll='' awaiting=0 name='' version=$HEIMDALL_VERSION from_dir='' push=1 sites='' lockfiles='' privilege='' logins=''
 while [ $# -gt 0 ]; do
 	case $1 in
 	--hub) hub=${2:-}; shift ;;
@@ -78,6 +82,8 @@ while [ $# -gt 0 ]; do
 	--watch-privilege) [ "$privilege" = users ] || privilege=on ;;
 	--watch-privilege-users) privilege=users ;;
 	--no-watch-privilege) privilege=off ;;
+	--watch-logins) logins=on ;;
+	--no-watch-logins) logins=off ;;
 	-h | --help) usage ;;
 	*) usage ;;
 	esac
@@ -190,7 +196,7 @@ token_works() {
 
 say "Fetching Heimdall collector $version"
 units='heimdall-collect.service heimdall-collect.timer heimdall-collect-boot.timer heimdall-collect-soon.timer heimdall-collect-changes.service heimdall-collect-changes.path'
-for f in SHA256SUMS collect.sh $units privilege-watch.sh privilege-hook; do fetch "$f"; done
+for f in SHA256SUMS collect.sh $units privilege-watch.sh privilege-hook login-watch.sh; do fetch "$f"; done
 if fetch_sig=$(fetch SHA256SUMS.sigstore.json 2>/dev/null && echo ok) && [ "$fetch_sig" = ok ] && have cosign; then
 	say "Verifying the Sigstore signature on SHA256SUMS"
 	cosign verify-blob "$work/SHA256SUMS" --bundle "$work/SHA256SUMS.sigstore.json" \
@@ -200,7 +206,7 @@ if fetch_sig=$(fetch SHA256SUMS.sigstore.json 2>/dev/null && echo ok) && [ "$fet
 fi
 say "Verifying checksums"
 # Check exactly the files fetched above; each one must be listed.
-for f in collect.sh $units; do
+for f in collect.sh $units login-watch.sh; do
 	awk -v f="$f" '$2 == f { print; found = 1 } END { exit !found }' "$work/SHA256SUMS" ||
 		die "$f isn't in SHA256SUMS; not installing"
 done >"$work/check"
@@ -213,6 +219,8 @@ conf=/etc/heimdall
 # Re-runs (and `heimdall-collect upgrade`) keep the privilege watch choice.
 [ -n "$privilege" ] || privilege=$(sed -n 's/^HEIMDALL_PRIVILEGE_WATCH=//p' "$conf/collect.env" 2>/dev/null | tail -n 1)
 case $privilege in on | users | off) ;; *) privilege='' ;; esac
+[ -n "$logins" ] || logins=$(sed -n 's/^HEIMDALL_LOGIN_WATCH=//p' "$conf/collect.env" 2>/dev/null | tail -n 1)
+case $logins in on | off) ;; *) logins='' ;; esac
 if [ -n "$enroll" ]; then
 	# Re-running on a server that already reports (e.g. an ssh loop over the
 	# whole fleet) keeps its token: it's an upgrade, not a second host.
@@ -251,6 +259,7 @@ chmod 0400 "$conf/token"
 	[ -z "$sites" ] || printf "HEIMDALL_SITES='%s'\n" "$sites"
 	[ -z "$lockfiles" ] || printf "HEIMDALL_LOCKFILES='%s'\n" "$lockfiles"
 	[ -z "$privilege" ] || printf 'HEIMDALL_PRIVILEGE_WATCH=%s\n' "$privilege"
+	[ -z "$logins" ] || printf 'HEIMDALL_LOGIN_WATCH=%s\n' "$logins"
 } >"$conf/collect.env"
 chmod 0644 "$conf/collect.env"
 
@@ -308,6 +317,8 @@ else
 # Heimdall: push a report as the heimdall user. Run as root by cron (hourly,
 # after a random delay of up to 15 minutes) and by soon.sh (--now). Written by install.sh.
 [ "\${1:-}" = --now ] || sleep "\$(awk 'BEGIN { srand(); print int(rand() * 900) }')"
+# The login watch (--watch-logins) counts failed SSH logins first, as root.
+[ ! -x /usr/local/lib/heimdall/login-watch ] || /usr/local/lib/heimdall/login-watch run >/dev/null 2>&1 || true
 exec su -s /bin/sh heimdall -c 'set -a; . $conf/collect.env; set +a; exec /usr/local/bin/heimdall-collect --push'
 EOF
 	cat >"$lib/soon.sh" <<'EOF'
@@ -395,6 +406,10 @@ fi
 case $privilege in
 on | users) sh "$work/privilege-watch.sh" install "$work/privilege-hook" "$privilege" ;;
 off) sh "$work/privilege-watch.sh" remove ;;
+esac
+case $logins in
+on) sh "$work/login-watch.sh" install "$work/login-watch.sh" ;;
+off) sh "$work/login-watch.sh" remove ;;
 esac
 have curl || say "WARNING: curl is required for pushing; install it (e.g. apk add curl)"
 

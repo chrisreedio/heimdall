@@ -71,6 +71,7 @@
     <p class="small priv-unknown"><span class="pill warn">unknown addresses</span> {{.UnknownSessions}} session{{if ne .UnknownSessions 1}}s{{end}} in the last 24 hours came from addresses Heimdall doesn't know: {{range $i, $u := .Unknown}}{{if $i}}, {{end}}{{if $u.Href}}<a href="{{$u.Href}}">{{$u.Addr}}</a>{{else}}{{$u.Addr}}{{end}}{{end}}. If they're yours, label them so they stop alerting.</p>{{end}}</div></div>
 </section>
 {{end}}
+{{template "loginscard" .Logins}}
 
 {{if .Anomalies}}
 <section>

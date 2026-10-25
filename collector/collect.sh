@@ -783,6 +783,53 @@ privilege_config() {
 	[ -z "$list" ] || echo "header = \"X-Heimdall-Privilege: v1 $list\""
 }
 
+# ── Login watch (opt-in, install.sh --watch-logins) ─────────────────────────
+# Failed SSH logins per source address for today and yesterday (UTC), as
+# counted by the root-run login-watch before this push, sent as one header
+# line (docs/failed-logins.md):
+#
+#   v1 <source> <updated> <day>:<failures>:<addresses>[=<entry>,...] ...
+#   entry: <failures>:<usernames>:<first>:<last>:<succeeded>:<ip>
+#
+# first and last are seconds into the day; the address goes last since an
+# IPv6 one has colons. Counts only, never usernames or log lines. The
+# addresses with the most failures go first, today's before yesterday's,
+# at most 200 and about 5 KB (so it fits beside the other headers on any
+# hub); the rest still count toward each day's total.
+logins_config() {
+	[ -e /usr/local/lib/heimdall/login-watch ] || return 0
+	logins_header /var/lib/heimdall-logins/counts
+}
+
+# logins_header COUNTS: the X-Heimdall-Logins header line for a counts file.
+logins_header() {
+	if [ ! -r "$1" ]; then
+		echo 'header = "X-Heimdall-Logins: v1 unreadable 0"'
+		return 0
+	fi
+	v=$({
+		sed -n '1p' "$1"
+		sed -n '/^D /p' "$1" | sort -k2,2r
+		sed -n '/^I /p' "$1" | sort -k2,2r -k4,4nr -k3,3
+	} | awk '
+		NR == 1 { if ($2 != "heimdall-logins" || $3 != "v1") exit 1; src = $4; upd = $5 + 0; next }
+		$1 == "D" && NF == 4 && $2 ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ && nd < 3 {
+			day[++nd] = $2; head[$2] = $2 ":" ($3 + 0) ":" ($4 + 0); size += length(head[$2]) + 1; next
+		}
+		$1 == "I" && NF == 8 && ($2 in head) && $3 ~ /^[0-9A-Fa-f.:]+$/ && length($3) <= 45 && n < 200 {
+			e = ($4 + 0) ":" ($5 + 0) ":" ($6 + 0) ":" ($7 + 0) ":" ($8 == 1 ? 1 : 0) ":" $3
+			if (size + length(e) + 1 > 5000) next
+			list[$2] = (list[$2] == "" ? e : list[$2] "," e); size += length(e) + 1; n++
+		}
+		END {
+			if (src !~ /^[a-z.]+$/) exit 1
+			out = "v1 " src " " upd
+			for (i = 1; i <= nd; i++) out = out " " head[day[i]] (list[day[i]] == "" ? "" : "=" list[day[i]])
+			print out
+		}') || return 0
+	[ -z "$v" ] || echo "header = \"X-Heimdall-Logins: $v\""
+}
+
 # ── Push ────────────────────────────────────────────────────────────────────
 
 # machine_hash: a hash of the machine ID, as install.sh computes it (sent
@@ -887,7 +934,7 @@ push() {
 	status=$(printf '%s\n' \
 		"header = \"Authorization: Bearer $token\"" \
 		'header = "Content-Type: application/json"' \
-		"$encoding" "$cacert" "$hostname_header" "$machine_header" "$triggers_header" "$repos_header" "$(privilege_config)" |
+		"$encoding" "$cacert" "$hostname_header" "$machine_header" "$triggers_header" "$repos_header" "$(privilege_config)" "$(logins_config)" |
 		curl --config - --silent --show-error \
 			--proto '=https,http' --tlsv1.2 \
 			--connect-timeout 10 --max-time 120 \
@@ -927,15 +974,17 @@ newer() {
 }
 
 # upgrade [vX.Y.Z] [--watch-privilege-users | --watch-privilege |
-# --no-watch-privilege]: reinstall this collector from the release the hub
-# runs (or the one given), keeping its hub, token and settings, and
-# changing the privilege watch when asked (even when already up to date).
+# --no-watch-privilege] [--watch-logins | --no-watch-logins]: reinstall
+# this collector from the release the hub runs (or the one given), keeping
+# its hub, token and settings, and changing the privilege or login watch
+# when asked (even when already up to date).
 # Root only: it replaces /usr/local/bin/heimdall-collect.
 upgrade() {
-	given='' priv=''
+	given='' priv='' logins=''
 	for a in "$@"; do
 		case $a in
 		--watch-privilege | --watch-privilege-users | --no-watch-privilege) priv=$a ;;
+		--watch-logins | --no-watch-logins) logins=$a ;;
 		v[0-9]*) given=$a ;;
 		*) usage ;;
 		esac
@@ -968,7 +1017,7 @@ upgrade() {
 	v[0-9]*.[0-9]*.[0-9]*) ;;
 	*) die "the hub didn't report a release version; give one: heimdall-collect upgrade vX.Y.Z" ;;
 	esac
-	if [ -z "$given" ] && [ -z "$priv" ] && ! newer "${want#v}" "$VERSION"; then
+	if [ -z "$given" ] && [ -z "$priv" ] && [ -z "$logins" ] && ! newer "${want#v}" "$VERSION"; then
 		echo "heimdall-collect: already up to date ($VERSION; the hub runs $want)" >&2
 		return 0
 	fi
@@ -985,6 +1034,7 @@ upgrade() {
 	[ -z "$sites" ] || set -- "$@" --sites "$sites"
 	[ -z "$lockfiles" ] || set -- "$@" --lockfiles "$lockfiles"
 	[ -z "$priv" ] || set -- "$@" "$priv"
+	[ -z "$logins" ] || set -- "$@" "$logins"
 	sh "$work/install.sh" "$@"
 }
 
@@ -992,23 +1042,27 @@ upgrade() {
 
 usage() {
 	cat >&2 <<'EOF'
-usage: heimdall-collect --print | --push | --site-repos | --version
+usage: heimdall-collect --print | --push | --site-repos | --logins | --version
        sudo heimdall-collect upgrade [vX.Y.Z] [--watch-privilege-users |
                                      --watch-privilege | --no-watch-privilege]
+                                     [--watch-logins | --no-watch-logins]
 
   --print       write a snapshot to stdout (for review or 'heimdall import')
   --push        send a snapshot to $HEIMDALL_URL using $HEIMDALL_TOKEN_FILE
   --site-repos  print the site repositories --push would send
+  --logins      print the failed-login counts --push would send (with
+                the login watch on; see install.sh --watch-logins)
   --version     print the collector version
   upgrade       reinstall from the release the hub runs (or the one given),
                 keeping the hub, token and settings; checked against the
-                release's SHA256SUMS. A privilege watch option changes it
-                (see install.sh --help), even when already up to date
+                release's SHA256SUMS. A privilege or login watch option
+                changes it (see install.sh --help), even when already up
+                to date
 EOF
 	exit 2
 }
 
-if [ "${1:-}" = upgrade ] && [ $# -le 3 ]; then
+if [ "${1:-}" = upgrade ] && [ $# -le 4 ]; then
 	shift
 	upgrade "$@"
 	exit 0
@@ -1016,7 +1070,7 @@ fi
 [ $# -eq 1 ] || usage
 case $1 in
 --version) echo "$VERSION"; exit 0 ;;
---print | --push | --site-repos) ;;
+--print | --push | --site-repos | --logins) ;;
 *) usage ;;
 esac
 
@@ -1028,4 +1082,5 @@ case $1 in
 --print) snapshot ;;
 --push) push ;;
 --site-repos) sites_json | site_repos; echo ;;
+--logins) logins_header "${HEIMDALL_LOGIN_COUNTS:-/var/lib/heimdall-logins/counts}" | sed -n 's/^header = "X-Heimdall-Logins: \(.*\)"$/\1/p' ;;
 esac

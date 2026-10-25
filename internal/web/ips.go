@@ -304,6 +304,7 @@ type ipBody struct {
 	Hosts    []store.IngestHost // hosts whose reports come from it
 	SignIns  []store.SignIn
 	Audit    []store.AuditRow
+	Logins   []store.HostLoginFailure // failed logins from it (logins.go)
 	// What the viewer may see: sign-ins (admins), audit entries (admins of
 	// an org), and whether they can label it.
 	ShowSignIns, ShowAudit, CanLabel bool
@@ -367,6 +368,10 @@ func (s *server) ipPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer) 
 	}
 	for _, ev := range evs {
 		body.Events = append(body.Events, ipEvent{HostPrivilegeEvent: ev, Kind: privilege.KindLabel(ev.PrivilegeEvent.Kind)})
+	}
+	if body.Logins, err = s.ipLogins(ctx, v, addr); err != nil {
+		s.fail(w, r, v, err)
+		return
 	}
 	if body.ShowSignIns {
 		if body.SignIns, err = s.st.SignInsFrom(ctx, addr, ipPageLimit); err != nil {
