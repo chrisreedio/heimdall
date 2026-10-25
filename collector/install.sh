@@ -206,7 +206,7 @@ if fetch_sig=$(fetch SHA256SUMS.sigstore.json 2>/dev/null && echo ok) && [ "$fet
 fi
 say "Verifying checksums"
 # Check exactly the files fetched above; each one must be listed.
-for f in collect.sh $units login-watch.sh; do
+for f in collect.sh $units privilege-watch.sh privilege-hook login-watch.sh; do
 	awk -v f="$f" '$2 == f { print; found = 1 } END { exit !found }' "$work/SHA256SUMS" ||
 		die "$f isn't in SHA256SUMS; not installing"
 done >"$work/check"
