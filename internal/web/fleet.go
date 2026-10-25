@@ -41,6 +41,10 @@ type fleetHost struct {
 	EOL, EOLSoon    bool   // software past, or within 90 days of, end of life
 	Life            []lifeItem
 	SitesAttention  int
+	// Privilege is how fully the privilege watch records; HasPrivilege
+	// is false on Windows, which has none.
+	Privilege    privilegeCoverage
+	HasPrivilege bool
 }
 
 // lifeItem is one lifecycle on a host: its OS, a runtime, or a site's PHP
@@ -152,6 +156,7 @@ func (s *server) fleet(r *http.Request, v *auth.Viewer, org string) ([]fleetHost
 			if t, err := triggers.Parse(st.Triggers); err == nil {
 				row.ChangeWatch = t.ChangeWatch()
 			}
+			row.Privilege, row.HasPrivilege = coverageOf(st.PackageManager, st.PrivilegeState, st.PrivilegeDetail)
 			row.addLife(rh)
 		}
 		byID[h.ID] = len(out)
@@ -280,6 +285,9 @@ type fleetSummary struct {
 	KernelUserland    int    // ...on kernel userland packages
 	Fixable           int
 	Watch             int // ...with no fix yet, but worth watching
+	// Linux hosts (the ones with a privilege watch), and how many of them
+	// don't record who and from where.
+	PrivHosts, PrivGap int
 }
 
 // attentionCap is how many hosts the dashboard's attention list shows.
@@ -355,6 +363,12 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		}
 		if h.ChangeWatch == "off" {
 			f.WatchOff++
+		}
+		if h.HasPrivilege {
+			f.PrivHosts++
+			if !h.Privilege.Full {
+				f.PrivGap++
+			}
 		}
 		if f.Newest == nil || h.R.LastSeen.After(f.Newest.R.LastSeen) {
 			f.Newest = h
@@ -549,6 +563,7 @@ var hostFilters = []struct {
 	{"stale", "Stale", func(h fleetHost) bool { return h.Stale }},
 	{"anomalies", "Anomalies", func(h fleetHost) bool { return h.Anomalies > 0 }},
 	{"collector", "Collector", func(h fleetHost) bool { return h.CollectorBehind || h.ChangeWatch == "off" }},
+	{"privilege", "Privilege watch", func(h fleetHost) bool { return h.HasPrivilege && !h.Privilege.Full }},
 	{"waiting", "Waiting", func(h fleetHost) bool { return !h.Reported }},
 }
 

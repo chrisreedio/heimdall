@@ -26,6 +26,9 @@ const (
 	PrivilegeHeader = "X-Heimdall-Privilege"
 	// PrivilegeWatchHeader: on, off or partial.
 	PrivilegeWatchHeader = "X-Heimdall-Privilege-Watch"
+	// PrivilegeDetailHeader: what the hook records, when it's installed:
+	// kinds, users or sources (store.PrivilegeKinds…).
+	PrivilegeDetailHeader = "X-Heimdall-Privilege-Detail"
 
 	maxPrivilegeHeader = 12 << 10
 	maxPrivilegeEvents = 200
@@ -106,6 +109,14 @@ func parsePrivilege(v string, now time.Time) []store.PrivilegeEvent {
 }
 
 // parsePrivilegeWatch returns on, off or partial, or "" for anything else.
+func parsePrivilegeDetail(v string) string {
+	switch v = strings.TrimSpace(v); v {
+	case store.PrivilegeKinds, store.PrivilegeUsers, store.PrivilegeSources:
+		return v
+	}
+	return ""
+}
+
 func parsePrivilegeWatch(v string) string {
 	switch v = strings.TrimSpace(v); v {
 	case "on", "off", "partial":
@@ -132,7 +143,8 @@ func (h *Handler) recordPrivilege(ctx context.Context, log *slog.Logger, host st
 	if len(events) == 0 && state == "" {
 		return
 	}
-	fresh, prev, err := h.store.RecordPrivilege(ctx, host.ID, events, state, now)
+	detail := parsePrivilegeDetail(onlyHeader(r, PrivilegeDetailHeader))
+	fresh, prev, err := h.store.RecordPrivilege(ctx, host.ID, events, state, detail, now)
 	if err != nil {
 		log.Error("could not store privilege events", "err", err)
 		return

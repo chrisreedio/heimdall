@@ -17,14 +17,18 @@ func TestHostPagePrivilege(t *testing.T) {
 		t.Helper()
 		return e.get("/hosts/acme/web-01", signedIn(e)).Body.String()
 	}
-	if strings.Contains(page(), "Privileged access") {
-		t.Fatal("privilege line shown for a host that never enabled the watch")
+	// Never enabled: flagged, with the command that turns it on.
+	for _, want := range []string{"Privileged access", "Not watched", ">privilege watch off</span>",
+		"<code>sudo heimdall-collect upgrade --watch-privilege-users</code>"} {
+		if !strings.Contains(page(), want) {
+			t.Errorf("unwatched host page missing %q", want)
+		}
 	}
 	ctx := t.Context()
 	at := testNow.Add(-time.Hour).Truncate(time.Second)
 	events := []store.PrivilegeEvent{{At: at, Kind: "sudo"}, {At: at.Add(time.Second), Kind: "sudo"},
 		{At: at.Add(2 * time.Second), Kind: "root-ssh"}, {At: testNow.Add(-48 * time.Hour), Kind: "su"}}
-	if _, _, err := e.st.RecordPrivilege(ctx, host.ID, events, "on", testNow); err != nil {
+	if _, _, err := e.st.RecordPrivilege(ctx, host.ID, events, "on", "", testNow); err != nil {
 		t.Fatal(err)
 	}
 	body := page()
@@ -38,7 +42,7 @@ func TestHostPagePrivilege(t *testing.T) {
 	}
 	who := []store.PrivilegeEvent{{At: at.Add(3 * time.Second), Kind: "sudo", User: "chris", Source: "203.0.113.7"},
 		{At: at.Add(4 * time.Second), Kind: "root-ssh", User: "root", Source: "2001:db8::1"}}
-	if _, _, err := e.st.RecordPrivilege(ctx, host.ID, who, "on", testNow); err != nil {
+	if _, _, err := e.st.RecordPrivilege(ctx, host.ID, who, "on", "", testNow); err != nil {
 		t.Fatal(err)
 	}
 	body = page()
@@ -47,7 +51,27 @@ func TestHostPagePrivilege(t *testing.T) {
 			t.Errorf("host page missing %q", want)
 		}
 	}
-	if _, _, err := e.st.RecordPrivilege(ctx, host.ID, nil, "partial", testNow); err != nil {
+	// What the hook records, as the collector reports it.
+	for detail, want := range map[string]string{"": "privilege detail unknown", store.PrivilegeKinds: "who not recorded",
+		store.PrivilegeUsers: "no source IP", store.PrivilegeSources: ""} {
+		if _, _, err := e.st.RecordPrivilege(ctx, host.ID, nil, "on", detail, testNow); err != nil {
+			t.Fatal(err)
+		}
+		body, hosts := page(), e.get("/hosts?only=privilege", signedIn(e)).Body.String()
+		if want == "" {
+			if strings.Contains(body, "priv-fix") || strings.Contains(hosts, `href="/hosts/acme/web-01"`) {
+				t.Errorf("%s: flagged a fully watched host", detail)
+			}
+			if !strings.Contains(e.get("/", signedIn(e)).Body.String(), "all record who and where") {
+				t.Error("dashboard should say every Linux host is fully watched")
+			}
+			continue
+		}
+		if !strings.Contains(body, ">"+want+"</span>") || !strings.Contains(hosts, `href="/hosts/acme/web-01"`) || !strings.Contains(hosts, ">"+want+"</span>") {
+			t.Errorf("%q: host page or list doesn't flag %q", detail, want)
+		}
+	}
+	if _, _, err := e.st.RecordPrivilege(ctx, host.ID, nil, "partial", "", testNow); err != nil {
 		t.Fatal(err)
 	}
 	if body := page(); !strings.Contains(body, "privilege watch partly removed") {

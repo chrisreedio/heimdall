@@ -11,6 +11,14 @@ import (
 	"time"
 )
 
+// What a server's privilege hook records (the collector's
+// X-Heimdall-Privilege-Detail header).
+const (
+	PrivilegeKinds   = "kinds"   // when, and sudo, su or root SSH
+	PrivilegeUsers   = "users"   // ...and who (--watch-privilege-users)
+	PrivilegeSources = "sources" // ...and where from (hooks from 0.4.23)
+)
+
 // PrivilegeRetention is how long privilege events are kept.
 const PrivilegeRetention = 180 * 24 * time.Hour
 
@@ -28,9 +36,11 @@ type PrivilegeEvent struct {
 
 // RecordPrivilege stores a host's reported events, skipping ones already
 // stored (collectors resend the last 7 days on every push), and its watch
-// state ("" if it didn't report one). It returns the events that were new
+// state ("" if it didn't report one) with what its hook records (detail:
+// PrivilegeKinds, PrivilegeUsers or PrivilegeSources, "" when the collector
+// is too old to say). It returns the events that were new
 // and the state the host reported before this one ("" if none).
-func (s *Store) RecordPrivilege(ctx context.Context, hostID int64, events []PrivilegeEvent, state string, now time.Time) (fresh []PrivilegeEvent, prev string, err error) {
+func (s *Store) RecordPrivilege(ctx context.Context, hostID int64, events []PrivilegeEvent, state, detail string, now time.Time) (fresh []PrivilegeEvent, prev string, err error) {
 	ts := now.UTC().Format(timeLayout)
 	err = s.tx(ctx, func(tx *sql.Tx) error {
 		for _, ev := range events {
@@ -56,10 +66,10 @@ func (s *Store) RecordPrivilege(ctx context.Context, hostID int64, events []Priv
 			return nil
 		}
 		_, err = tx.ExecContext(ctx, `
-			INSERT INTO privilege_watch (host_id, state, ever_on, updated_at) VALUES (?, ?, ?, ?)
-			ON CONFLICT (host_id) DO UPDATE SET state = excluded.state,
+			INSERT INTO privilege_watch (host_id, state, ever_on, updated_at, detail) VALUES (?, ?, ?, ?, ?)
+			ON CONFLICT (host_id) DO UPDATE SET state = excluded.state, detail = excluded.detail,
 			  ever_on = max(ever_on, excluded.ever_on), updated_at = excluded.updated_at`,
-			hostID, state, state == "on", ts)
+			hostID, state, state == "on", ts, detail)
 		return err
 	})
 	return fresh, prev, err
@@ -68,6 +78,7 @@ func (s *Store) RecordPrivilege(ctx context.Context, hostID int64, events []Priv
 // PrivilegeSummary is what the host page shows about privileged access.
 type PrivilegeSummary struct {
 	State  string // last reported watch state; "" if never reported
+	Detail string // what the hook records (PrivilegeKinds…), "" if unknown
 	EverOn bool   // the host has reported "on" at least once
 	Counts map[string]int
 	Last   time.Time // newest event, zero if none
@@ -76,8 +87,8 @@ type PrivilegeSummary struct {
 // PrivilegeSummary counts a host's events since a time.
 func (s *Store) PrivilegeSummary(ctx context.Context, hostID int64, since time.Time) (PrivilegeSummary, error) {
 	var sum PrivilegeSummary
-	err := s.db.QueryRowContext(ctx, `SELECT state, ever_on FROM privilege_watch WHERE host_id = ?`, hostID).
-		Scan(&sum.State, &sum.EverOn)
+	err := s.db.QueryRowContext(ctx, `SELECT state, ever_on, detail FROM privilege_watch WHERE host_id = ?`, hostID).
+		Scan(&sum.State, &sum.EverOn, &sum.Detail)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return sum, err
 	}

@@ -269,7 +269,14 @@ sudo sh install.sh --hub https://ingest.example.com --watch-privilege        # t
 sudo sh install.sh --hub https://ingest.example.com --watch-privilege-users  # also who, and from which IP
 sudo sh install.sh --hub https://ingest.example.com --no-watch-privilege     # remove it
 ```
-Re-running `install.sh`, and `sudo heimdall-collect upgrade` (which runs it), keeps the current choice. It's stored as `HEIMDALL_PRIVILEGE_WATCH=on|users|off` in `collect.env`.
+On a server that already has the collector (0.4.23 or later), `upgrade` takes the same options, with no hub URL to repeat:
+
+```sh
+sudo heimdall-collect upgrade --watch-privilege-users
+```
+Re-running `install.sh`, and a plain `sudo heimdall-collect upgrade` (which runs it), keeps the current choice. It's stored as `HEIMDALL_PRIVILEGE_WATCH=on|users|off` in `collect.env`.
+
+**Finding the servers that aren't watched:** the collector reports what its hook records. The host list's **Privilege** column and its *Privilege watch* filter (`/hosts?only=privilege`) show every Linux server that doesn't record who and from where: watch off, partly removed, time and kind only, no source IP (a hook from before 0.4.23), or a collector too old to say. The dashboard's Fleet card counts them, and the host page says what's missing and the command that fixes it.
 
 **What it installs** (as root; the logic is in `privilege-watch.sh`, fetched and checksum-verified with the other release files):
 - `/usr/local/lib/heimdall/privilege-hook`, a short root-owned POSIX sh script.

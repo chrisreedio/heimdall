@@ -63,6 +63,11 @@ func TestParsePrivilege(t *testing.T) {
 	if got := parsePrivilege("v1 "+strings.Join(many, ","), now); len(got) != maxPrivilegeEvents {
 		t.Errorf("kept %d events, want %d", len(got), maxPrivilegeEvents)
 	}
+	for v, want := range map[string]string{"sources": "sources", " users ": "users", "kinds": "kinds", "all": "", "": ""} {
+		if got := parsePrivilegeDetail(v); got != want {
+			t.Errorf("parsePrivilegeDetail(%q) = %q, want %q", v, got, want)
+		}
+	}
 	for v, want := range map[string]string{"on": "on", " partial ": "partial", "off": "off", "ON": "", "maybe": ""} {
 		if got := parsePrivilegeWatch(v); got != want {
 			t.Errorf("parsePrivilegeWatch(%q) = %q, want %q", v, got, want)
@@ -193,14 +198,43 @@ func TestPrivilegeRetention(t *testing.T) {
 	e := newEnv(t, nil)
 	ctx := t.Context()
 	old := []store.PrivilegeEvent{{At: e.now.Add(-store.PrivilegeRetention - time.Hour).Truncate(time.Second), Kind: "sudo"}}
-	if _, _, err := e.st.RecordPrivilege(ctx, e.host.ID, old, "on", e.now.Add(-store.PrivilegeRetention)); err != nil {
+	if _, _, err := e.st.RecordPrivilege(ctx, e.host.ID, old, "on", "", e.now.Add(-store.PrivilegeRetention)); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := e.st.RecordPrivilege(ctx, e.host.ID, nil, "on", e.now); err != nil {
+	if _, _, err := e.st.RecordPrivilege(ctx, e.host.ID, nil, "on", "", e.now); err != nil {
 		t.Fatal(err)
 	}
 	sum, err := e.st.PrivilegeSummary(ctx, e.host.ID, time.Unix(0, 0))
 	if err != nil || !sum.Last.IsZero() || len(sum.Counts) != 0 {
 		t.Fatalf("old event not pruned: %+v, %v", sum, err)
+	}
+}
+
+func TestPrivilegeDetail(t *testing.T) {
+	e := newEnv(t, nil)
+	push := func(detail string) string {
+		t.Helper()
+		hr := httptest.NewRequest(http.MethodPost, Path, bytes.NewReader(e.body))
+		hr.Header.Set("Authorization", "Bearer "+e.token)
+		hr.Header.Set("Content-Type", "application/json")
+		hr.Header.Set(PrivilegeWatchHeader, "on")
+		if detail != "" {
+			hr.Header.Set(PrivilegeDetailHeader, detail)
+		}
+		w := httptest.NewRecorder()
+		e.h.ServeHTTP(w, hr)
+		if w.Code >= 300 {
+			t.Fatalf("push status %d: %s", w.Code, w.Body.String())
+		}
+		sum, err := e.st.PrivilegeSummary(t.Context(), e.host.ID, e.now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sum.Detail
+	}
+	for _, c := range [][2]string{{"sources", "sources"}, {"kinds", "kinds"}, {"bogus", ""}, {"", ""}} {
+		if got := push(c[0]); got != c[1] {
+			t.Errorf("detail %q stored as %q, want %q", c[0], got, c[1])
+		}
 	}
 }

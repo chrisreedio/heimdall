@@ -216,6 +216,9 @@ type HostState struct {
 	PendingSecurity  int
 	Triggers         string // the collector's raw trigger state ("" if it doesn't report one)
 	News             int    // threat-news incidents confirmed on the host
+	PackageManager   string
+	// The privilege watch's last reported state and detail ("" if never).
+	PrivilegeState, PrivilegeDetail string
 }
 
 // HostStates returns the latest-report state of every host that has
@@ -226,8 +229,10 @@ func (s *Store) HostStates(ctx context.Context) (map[int64]HostState, error) {
 		       coalesce(h.triggers, ''),
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id AND p.pending_version IS NOT NULL),
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id AND p.pending_security = 1),
-		       (SELECT count(*) FROM news_matches m WHERE m.host_id = h.id AND m.kind = 'confirmed')
-		FROM hosts h JOIN snapshots s ON s.id = h.last_snapshot_id`)
+		       (SELECT count(*) FROM news_matches m WHERE m.host_id = h.id AND m.kind = 'confirmed'),
+		       s.package_manager, coalesce(pw.state, ''), coalesce(pw.detail, '')
+		FROM hosts h JOIN snapshots s ON s.id = h.last_snapshot_id
+		LEFT JOIN privilege_watch pw ON pw.host_id = h.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +244,7 @@ func (s *Store) HostStates(ctx context.Context) (map[int64]HostState, error) {
 		var received string
 		var reboot sql.NullInt64
 		if err := rows.Scan(&id, &received, &st.CollectorVersion, &reboot, &st.Triggers,
-			&st.PendingUpdates, &st.PendingSecurity, &st.News); err != nil {
+			&st.PendingUpdates, &st.PendingSecurity, &st.News, &st.PackageManager, &st.PrivilegeState, &st.PrivilegeDetail); err != nil {
 			return nil, err
 		}
 		st.ReceivedAt = parseTime(received)

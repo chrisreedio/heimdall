@@ -141,7 +141,7 @@ type hostBody struct {
 	Packages        []store.InventoryPackage
 	Commands        []command
 	Anomalies       []store.AnomalyRow
-	Privilege       *privilegeView // nil unless the privilege watch was ever on
+	Privilege       *privilegeView // nil on Windows
 	PackageMgr      string
 	ShowOrgName     bool
 	News            []newsRow // incidents in the news affecting this host
@@ -303,7 +303,7 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		}
 		body.News = newsRows(entries)
 	}
-	if body.Privilege, err = s.privilegeFor(ctx, host.ID); err != nil {
+	if body.Privilege, err = s.privilegeFor(ctx, host.ID, body.PackageMgr); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}
