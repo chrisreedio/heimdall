@@ -32,6 +32,9 @@ func newIPResolver(cfg config.Config, s *store.Store, log *slog.Logger) (*ipinfo
 		syncers = append(syncers, ts)
 	}
 	// (Cloudflare)
+	if cfg.Cloudflare.Enabled { // edge ranges, zones, DNS, security events, Radar (cloudflare.go)
+		syncers = append(syncers, newCloudflare(cfg, s, log, r)...)
+	}
 
 	return r, syncers
 }

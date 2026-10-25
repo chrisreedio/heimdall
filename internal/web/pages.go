@@ -778,6 +778,8 @@ type siteBody struct {
 	HandoffURL   string // "Hand off to agent", when allowed and there's something to fix
 	HandoffNote  string // fixed text after a hand-off
 	HandoffError bool
+
+	Cloudflare cloudflareHTML // the Cloudflare card, or "" (cloudflare.go)
 }
 
 // sitePage shows one site (a web root on a host): its stack, lifecycle and
@@ -848,6 +850,7 @@ func (s *server) sitePage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	}
 	hn := r.URL.Query().Get("handoff")
 	body.HandoffNote, body.HandoffError = handoffNotices[hn], hn == "failed"
+	body.Cloudflare = s.cloudflareCard(ctx, v, host.OrgID, host.Name, root)
 	name := root
 	if len(body.Site.ServerNames) > 0 && body.Site.ServerNames[0] != "_" {
 		name = body.Site.ServerNames[0]

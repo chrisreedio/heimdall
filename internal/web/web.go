@@ -78,6 +78,9 @@ type Config struct {
 	// sign-ins); nil knows only the built-in ranges.
 	IPs *ipinfo.Resolver
 
+	// Cloudflare: [cloudflare] is on, so operators get the overview link.
+	Cloudflare bool
+
 	// Tailnet: [tailscale] is on, so host pages show their tailnet device
 	// and /hosts can filter for hosts not on the tailnet (tailscale.go).
 	Tailnet bool
@@ -197,6 +200,7 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /ips/labels/{id}/remove", s.requireAuth(s.ipLabelRemove))
 	mux.HandleFunc("POST /ips/policy", s.requireAuth(s.ipPolicySet))
 	mux.HandleFunc("GET /ips/{addr}", s.requireAuth(s.withScope(s.ipPage)))
+	mux.HandleFunc("GET /cloudflare", s.requireAuth(s.cloudflarePage)) // Cloudflare overview (cloudflare.go)
 	mux.HandleFunc("POST /admin/users/mcp-revoke", s.requireAuth(s.requireAdmin(s.adminTokenRevoke)))
 	if cfg.AI != nil { // AI analysis: regenerate a brief or explain a host (operator+)
 		mux.HandleFunc("POST /ai/brief/{org}", s.requireAuth(s.aiBriefRun))
@@ -419,6 +423,7 @@ type page struct {
 	Update  *updates.Release // a newer release, shown to admins
 	News    bool             // threat news is on (shows the nav item)
 	MCP     bool             // MCP is on (shows the AI assistants link)
+	CF      bool             // [cloudflare] is on (shows the Cloudflare link to operators)
 	Body    any
 }
 
@@ -451,6 +456,7 @@ func (s *server) renderPage(w http.ResponseWriter, r *http.Request, status int, 
 	p.Version = s.cfg.Version
 	p.News = s.cfg.News
 	p.MCP = s.cfg.MCP.Enabled
+	p.CF = s.cfg.Cloudflare
 	if p.Viewer != nil {
 		p.CSRF = auth.CSRFToken(p.Viewer.SessionToken)
 	}
@@ -487,6 +493,7 @@ func parsePages() (map[string]*template.Template, error) {
 		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "enroll", "site", "news", "handoff"}
 	names = append(names, "assistants") // AI assistants (MCP tokens)
 	names = append(names, "ips", "ip")  // IP awareness (ips.go)
+	names = append(names, "cloudflare") // Cloudflare overview (cloudflare.go)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/ai.html", "templates/"+n+".html")
