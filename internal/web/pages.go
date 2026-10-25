@@ -80,6 +80,7 @@ func (s *server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 		s.render(w, r, status, "login", nil, "Sign in", "", body)
 		return
 	}
+	s.noteTailscaleUser(r, token) // tsproxy.go
 	s.setSession(w, token, int(s.cfg.SessionMax.Seconds()))
 	http.Redirect(w, r, next, http.StatusSeeOther)
 }
@@ -303,7 +304,7 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		}
 		body.News = newsRows(entries)
 	}
-	if body.Privilege, err = s.privilegeFor(ctx, host.ID, body.PackageMgr); err != nil {
+	if body.Privilege, err = s.privilegeFor(ctx, host, body.PackageMgr); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}

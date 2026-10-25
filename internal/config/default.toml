@@ -12,6 +12,10 @@ listen       = "127.0.0.1:8080"
 base_url     = "http://127.0.0.1:8080"
 session_idle = "30m"
 session_max  = "12h"
+# Behind `tailscale serve`, every sign-in comes from 127.0.0.1. true takes
+# the client address (and tailnet user) from tailscale serve's headers, on
+# requests from loopback only. Leave false behind anything else.
+behind_tailscale_serve = false
 
 [auth]
 # Break-glass local accounts (password + TOTP). Set false once SSO works.

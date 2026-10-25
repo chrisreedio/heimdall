@@ -104,6 +104,7 @@ func (s *server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 		s.loginError(w, r, http.StatusInternalServerError, next, msgSSOFailed)
 		return
 	}
+	s.noteTailscaleUser(r, token) // tsproxy.go
 	s.setSession(w, token, int(s.cfg.SessionMax.Seconds()))
 	s.renderPage(w, r, http.StatusOK, "signedin", page{Title: "Signed in", Refresh: next, Body: next})
 }

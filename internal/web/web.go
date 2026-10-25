@@ -77,6 +77,9 @@ type Config struct {
 	// IPs says what's known about addresses (privilege sessions' sources,
 	// sign-ins); nil knows only the built-in ranges.
 	IPs *ipinfo.Resolver
+	// BehindTailscaleServe trusts tailscale serve's client address and
+	// identity headers on requests from loopback (tsproxy.go).
+	BehindTailscaleServe bool
 }
 
 // CSP is the Content-Security-Policy sent with every response.
@@ -179,6 +182,12 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /account/assistants", s.requireAuth(s.assistantCreate))
 	mux.HandleFunc("POST /account/assistants/revoke", s.requireAuth(s.assistantRevoke))
 	mux.HandleFunc("GET /account/assistants/heimdall.mcpb", s.requireAuth(s.assistantBundle))
+	// IP awareness: labels and policy (org admins), what's known about an address (ips.go).
+	mux.HandleFunc("GET /ips", s.requireAuth(s.ipsPage))
+	mux.HandleFunc("POST /ips/labels", s.requireAuth(s.ipLabelAdd))
+	mux.HandleFunc("POST /ips/labels/{id}/remove", s.requireAuth(s.ipLabelRemove))
+	mux.HandleFunc("POST /ips/policy", s.requireAuth(s.ipPolicySet))
+	mux.HandleFunc("GET /ips/{addr}", s.requireAuth(s.withScope(s.ipPage)))
 	mux.HandleFunc("POST /admin/users/mcp-revoke", s.requireAuth(s.requireAdmin(s.adminTokenRevoke)))
 	if cfg.AI != nil { // AI analysis: regenerate a brief or explain a host (operator+)
 		mux.HandleFunc("POST /ai/brief/{org}", s.requireAuth(s.aiBriefRun))
@@ -188,7 +197,7 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("/", s.requireAuth(func(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
 		s.notFound(w, r, v)
 	}))
-	return s.headers(mux), nil
+	return s.headers(s.fromTailscaleServe(mux)), nil
 }
 
 func (s *server) headers(next http.Handler) http.Handler {
@@ -468,6 +477,7 @@ func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
 		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "site", "news", "handoff"}
 	names = append(names, "assistants") // AI assistants (MCP tokens)
+	names = append(names, "ips", "ip")  // IP awareness (ips.go)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/ai.html", "templates/"+n+".html")

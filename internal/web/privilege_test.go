@@ -46,7 +46,8 @@ func TestHostPagePrivilege(t *testing.T) {
 		t.Fatal(err)
 	}
 	body = page()
-	for _, want := range []string{"by chris from 203.0.113.7", "root SSH <span class=\"priv-who\">by root from 2001:db8::1</span>"} {
+	for _, want := range []string{`by chris from <a href="/ips/203.0.113.7">203.0.113.7</a>`,
+		`root SSH <span class="priv-who">by root from <a href="/ips/2001:db8::1">2001:db8::1</a></span>`} {
 		if !strings.Contains(body, want) {
 			t.Errorf("host page missing %q", want)
 		}

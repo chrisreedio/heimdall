@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chrisreedio/heimdall/internal/ipinfo"
 	"github.com/chrisreedio/heimdall/internal/store"
 )
 
@@ -57,6 +58,7 @@ func Who(ev store.PrivilegeEvent) string {
 type Rules struct {
 	Store *store.Store
 	Now   func() time.Time
+	IPs   *ipinfo.Resolver // what's known about sessions' sources; nil: labels and built-ins only
 }
 
 // OnReport runs the privilege watch rules on what a push reported:
@@ -67,6 +69,8 @@ type Rules struct {
 //     per host per (UTC) day, its count growing as more arrive.
 //   - privilege_watch_disabled: the host reported "on" before and now
 //     reports "off" or "partial". Hosts that never enabled it never alert.
+//   - privilege_unknown_source, privilege_off_tailnet: where sessions came
+//     from (source.go).
 func (e *Rules) OnReport(ctx context.Context, host store.IngestHost, snapshotID int64,
 	fresh []store.PrivilegeEvent, prev, cur string) ([]store.Anomaly, error) {
 	var raised []store.Anomaly
@@ -142,5 +146,6 @@ func (e *Rules) OnReport(ctx context.Context, host store.IngestHost, snapshotID 
 			raised = append(raised, a)
 		}
 	}
-	return raised, nil
+	more, err := e.sourceRules(ctx, host, snapshotID, fresh, windows, now) // source.go
+	return append(raised, more...), err
 }

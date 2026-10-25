@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -177,6 +178,11 @@ func TestPrivilegeWindowsAndSuppression(t *testing.T) {
 	e.pushPrivilege("v1 "+at(-2*time.Hour)+":sudo:alice", "on")
 	if a := e.openAnomalies(); len(a) != 0 {
 		t.Fatalf("event inside a window raised %v", a)
+	}
+	// A known address, so only privileged_access applies (source_test.go has the source rules).
+	if _, err := e.st.AddIPLabel(ctx, "test", store.IPLabel{OrgID: e.host.OrgID, Prefix: netip.MustParsePrefix("198.51.100.4/32"),
+		Kind: store.IPKindStaff, Name: "Office"}); err != nil {
+		t.Fatal(err)
 	}
 	e.pushPrivilege("v1 "+at(-time.Minute)+":su:bob:198.51.100.4", "on")
 	as := e.openAnomalies()

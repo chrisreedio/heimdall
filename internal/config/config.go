@@ -277,6 +277,8 @@ type UI struct {
 	BaseURL     string   `toml:"base_url"`
 	SessionIdle Duration `toml:"session_idle"`
 	SessionMax  Duration `toml:"session_max"`
+	// BehindTailscaleServe: see internal/web/tsproxy.go and docs/ip-awareness.md.
+	BehindTailscaleServe bool `toml:"behind_tailscale_serve"`
 }
 
 type Auth struct {
