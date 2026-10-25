@@ -147,6 +147,8 @@ type hostBody struct {
 	News            []newsRow // incidents in the news affecting this host
 	ChangeWatch     string    // "on", "off", or "" if the collector doesn't report its triggers
 	AI              *aiView   // AI triage card (nil when [ai] is off); see ai.go
+
+	Tailnet *tailnetView // the host's tailnet device (nil when [tailscale] is off); see tailscale.go
 }
 
 type command struct {
@@ -308,6 +310,10 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		return
 	}
 	if body.AI, err = s.aiHostFor(r, v, host); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if body.Tailnet, err = s.tailnetFor(ctx, host.ID, host.Name); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}

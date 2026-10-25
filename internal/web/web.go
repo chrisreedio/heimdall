@@ -77,6 +77,10 @@ type Config struct {
 	// IPs says what's known about addresses (privilege sessions' sources,
 	// sign-ins); nil knows only the built-in ranges.
 	IPs *ipinfo.Resolver
+
+	// Tailnet: [tailscale] is on, so host pages show their tailnet device
+	// and /hosts can filter for hosts not on the tailnet (tailscale.go).
+	Tailnet bool
 }
 
 // CSP is the Content-Security-Policy sent with every response.
@@ -475,6 +479,9 @@ func parsePages() (map[string]*template.Template, error) {
 			return nil, fmt.Errorf("web: template %s: %w", n, err)
 		}
 		pages[n] = t
+	}
+	if err := parseTailnetCard(pages); err != nil { // tailscale.go
+		return nil, fmt.Errorf("web: template tailnet: %w", err)
 	}
 	return pages, nil
 }

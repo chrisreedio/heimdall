@@ -583,6 +583,7 @@ Builds on M6 patch plans and M7 history. See [docs/anomaly-signals.md](docs/anom
 - [x] **Site labels:** each site is Production, Staging or Development, suggested from its name (`staging.`, `dev.`, `test.`…) and overridable by org admins. Sites can be filtered by label, and the host page shows the labels.
 - [x] **Event-driven reports:** a report about a minute after packages change (one per `apt upgrade`, however many packages), 3 minutes after boot so "reboot required" clears quickly, and after deploys with a one-line, sudoers-limited snippet. See [When it reports](docs/collector.md#when-it-reports).
 - [x] **AI analysis (optional):** a daily fleet brief and "Explain this host" from your own Azure AI Foundry deployment, advisory only, with strict output checks and a command allowlist. Not yet tried against a real deployment. See [docs/ai.md](docs/ai.md).
+- [x] **Tailscale (optional):** names the person and device behind each tailnet address from the read-only Tailscale API, shows each host's tailnet device, and lists hosts not on the tailnet. See [docs/tailscale.md](docs/tailscale.md).
 - [ ] **Threat news (draft, Phase 1 built):** cross-reference a curated "what's being exploited now" feed such as pwn.watch with the inventory, so the UI can say "this is in the news and it affects 3 of your hosts". Phase 1 (feed, confirmed CVE matches, News page, dashboard strip, Patch first boost) is in; turn it on with `[news] enabled = true`. See [docs/threat-news.md](docs/threat-news.md).
 
 ---

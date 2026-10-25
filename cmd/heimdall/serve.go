@@ -209,6 +209,7 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.
 		MCP:          web.MCPSetup{Enabled: cfg.MCP.Enabled, BaseURL: cfg.MCP.BaseURL},
 		Agents:       handoffAgents(cfg, log.With("component", "handoff")),
 		IPs:          ips,
+		Tailnet:      cfg.Tailscale.Enabled,
 	}
 	if aiSvc != nil {
 		wcfg.AI = aiSvc

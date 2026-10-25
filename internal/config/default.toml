@@ -119,6 +119,18 @@ max_output_tokens = 8000          # includes reasoning tokens
 max_input_tokens  = 24000         # per run (estimated); facts are trimmed to fit
 timeout           = "2m"
 
+[tailscale]
+# Names the person and device behind each tailnet address (100.x, fd7a:…),
+# so a privilege session from the tailnet shows "alice@example.com's
+# laptop-01". Read only: Heimdall lists the tailnet's devices with the
+# Tailscale API and never changes anything there. The credential (an OAuth
+# client with the devices:core:read scope, or an API access token) is never
+# in this file: run `sudo heimdall tailscale set-key`, then
+# `heimdall tailscale sync`. See docs/tailscale.md.
+enabled    = false
+tailnet    = "-"     # "-" = the credential's tailnet
+sync_every = "15m"
+
 # Coding agents for "Hand off to agent" (off unless listed). Each is a
 # Discord bot that reads a channel and can open pull requests. Heimdall
 # posts a fix request for one site's vulnerable Composer/npm packages to

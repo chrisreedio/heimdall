@@ -41,6 +41,7 @@ type Config struct {
 	Agents []Agent `toml:"agents"`
 
 	DeployServices DeployServices `toml:"deploy_services"` // services.go
+	Tailscale      Tailscale      `toml:"tailscale"`       // see tailscale.go
 }
 
 // Agent is one coding agent: a Discord bot that reads a channel and can
@@ -362,6 +363,7 @@ func Default() Config {
 		AI: AI{API: AIResponses, BriefEvery: Duration{24 * time.Hour}, MaxOutputTokens: 8000,
 			MaxInputTokens: 24000, Timeout: Duration{2 * time.Minute}},
 		DeployServices: DefaultDeployServices(),
+		Tailscale:      defaultTailscale,
 	}
 }
 
@@ -530,6 +532,7 @@ func (c Config) Validate() error {
 	c.AI.validate(add)
 	validateAgents(c.Agents, add)
 	c.DeployServices.validate(add)
+	c.Tailscale.validate(add)
 	return errors.Join(errs...)
 }
 
