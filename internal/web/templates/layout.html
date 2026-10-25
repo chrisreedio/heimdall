@@ -32,6 +32,7 @@
     {{$ipAdmin := .Viewer.IsAdmin}}{{range .Viewer.Scope.Orgs}}{{if eq . "admin"}}{{$ipAdmin = true}}{{end}}{{end}}{{if $ipAdmin}}<a href="/ips"{{if eq .Nav "ips"}} aria-current="page"{{end}}>IP addresses</a>{{end}}
     {{if .CF}}{{$cfOp := .Viewer.IsAdmin}}{{range .Viewer.Scope.Orgs}}{{if or (eq . "admin") (eq . "operator")}}{{$cfOp = true}}{{end}}{{end}}{{if $cfOp}}<a href="/cloudflare"{{if eq .Nav "cloudflare"}} aria-current="page"{{end}}>Cloudflare</a>{{end}}{{end}}
     {{if or .Viewer.IsAdmin .Viewer.Scope.Orgs}}<a href="/offenders"{{if eq .Nav "offenders"}} aria-current="page"{{end}}>Offenders</a>{{end}}
+    {{$sfOp := .Viewer.IsAdmin}}{{range .Viewer.Scope.Orgs}}{{if or (eq . "admin") (eq . "operator")}}{{$sfOp = true}}{{end}}{{end}}{{if $sfOp}}<a href="/surface"{{if eq .Nav "surface"}} aria-current="page"{{end}}>Surface</a>{{end}}
   </nav>
   <div class="who">
     {{if .MCP}}<a class="who-link" href="/account/assistants"{{if eq .Nav "assistants"}} aria-current="page"{{end}}>AI assistants</a>{{end}}

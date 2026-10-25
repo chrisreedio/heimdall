@@ -82,6 +82,8 @@ Commands:
                                Read-only Cloudflare (DNS, security events): store the token (never echoed), check, sync now
   offenders [--since 24h] [--json]
                                Addresses failing SSH logins across your hosts, ranked (login watch)
+  surface [--org X] [--json] [--changes]
+                               Attack-surface map: every public name, the host and site behind it, worst first
   upgrade [--check]            Upgrade this hub to the latest release (sudo)
   restart                      Restart the hub (after config changes) and check it's up (sudo)
   ingest cert                  Install a certificate for public ingest, e.g. a Cloudflare Origin cert (sudo)
@@ -138,6 +140,7 @@ var commands = map[string]command{
 
 	"cloudflare": group("cloudflare", map[string]command{
 		"set-token": cmdCloudflareSetToken, "status": cmdCloudflareStatus, "sync": cmdCloudflareSync}),
+	"surface": cmdSurface, // surface.go
 	"sso":     group("sso", map[string]command{"setup": cmdSSOSetup, "set-secret": cmdSSOSetSecret}),
 	"ai":      group("ai", map[string]command{"set-key": cmdAISetKey, "status": cmdAIStatus, "test": cmdAITest}),
 	"ip":      group("ip", ipCommands), // ip.go

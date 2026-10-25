@@ -24,6 +24,8 @@ Heimdall never writes anything to Cloudflare.
    | Zone > DNS > Read | DNS records |
    | Zone > Analytics > Read | security events and request totals (GraphQL Analytics API) |
    | Account > Radar > Read | network names for unknown addresses (only with `radar = true`) |
+   | Zone > Zone Settings > Read | optional: SSL/TLS mode, Always Use HTTPS and minimum TLS on the [attack surface](surface.md) |
+   | Zone > SSL and Certificates > Read | optional: edge certificate expiry on the [attack surface](surface.md) |
 
    Under **Zone Resources**, pick *Include > All zones from an account*, or just the zones you want. Nothing else: no Edit permissions, no account settings. A client IP filter (your hub's address) and an expiry date are good ideas.
 

@@ -203,6 +203,7 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("GET /cloudflare", s.requireAuth(s.cloudflarePage)) // Cloudflare overview (cloudflare.go)
 	// Failed logins: repeat offenders across the viewer's hosts (logins.go).
 	mux.HandleFunc("GET /offenders", s.requireAuth(s.withScope(s.offendersPage)))
+	mux.HandleFunc("GET /surface", s.requireAuth(s.surfacePage)) // attack-surface map (surface.go)
 	mux.HandleFunc("POST /admin/users/mcp-revoke", s.requireAuth(s.requireAdmin(s.adminTokenRevoke)))
 	if cfg.AI != nil { // AI analysis: regenerate a brief or explain a host (operator+)
 		mux.HandleFunc("POST /ai/brief/{org}", s.requireAuth(s.aiBriefRun))
@@ -497,6 +498,7 @@ func parsePages() (map[string]*template.Template, error) {
 	names = append(names, "ips", "ip")  // IP awareness (ips.go)
 	names = append(names, "cloudflare") // Cloudflare overview (cloudflare.go)
 	names = append(names, "offenders")  // failed logins (logins.go)
+	names = append(names, "surface")    // attack-surface map (surface.go)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/ai.html", "templates/"+n+".html")
