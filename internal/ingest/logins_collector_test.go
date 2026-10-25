@@ -153,6 +153,22 @@ func TestLoginWatchIncremental(t *testing.T) {
 	}
 }
 
+// A server with no failed logins yet (the first run on a quiet box) still
+// gets its files.
+func TestLoginWatchNothingYet(t *testing.T) {
+	for _, sh := range shells(t) {
+		t.Run(filepath.Base(sh), func(t *testing.T) {
+			dir := t.TempDir()
+			if got := count(t, sh, dir, "", fixtureNow, 0); len(got) != 0 {
+				t.Errorf("rows from nothing: %v", got)
+			}
+			if _, err := os.Stat(filepath.Join(dir, "users")); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+}
+
 func TestLoginWatchTimes(t *testing.T) {
 	sh := shells(t)[0]
 	// Local time (traditional syslog has no zone) at UTC-5.
