@@ -10,11 +10,14 @@ import (
 
 	"github.com/chrisreedio/heimdall/internal/kernel"
 	"github.com/chrisreedio/heimdall/internal/report"
+	"github.com/chrisreedio/heimdall/internal/store"
 )
 
 // A host's OS findings can number in the thousands, so the host page shows
 // them one row per package by default, with severity and fixable filters
 // and paging. "All findings" lists them individually, a page at a time.
+// Unfiltered, it shows only what needs attention (needsAction); the rest,
+// with no fix and little sign of exploitation, is one click away.
 
 const findingsPerPage = 50
 
@@ -40,14 +43,19 @@ type findingsView struct {
 	PM      string // dpkg, rpm, apk or composer: what the patch command uses
 	Sev     string // "" or kev, critical, high, medium, low, unknown
 	Fixable bool
-	Total   int // findings after filters
-	Groups  []pkgGroup
-	Rows    []report.Finding
-	Page    int
-	Pages   int
+	// Focus: no filter is set and show=all isn't, so only the findings
+	// that need attention are shown; Hidden counts the rest.
+	Focus  bool
+	Hidden int
+	Total  int // findings after filters
+	Groups []pkgGroup
+	Rows   []report.Finding
+	Page   int
+	Pages  int
 	// Links, built here so templates don't assemble query strings.
 	SevLinks          map[string]string
-	AllSevLink        string
+	AllSevLink        string // every finding, no filters
+	FocusLink         string // the default: what needs attention
 	FixLink, ViewLink map[string]string
 	PrevLink          string
 	NextLink          string
@@ -87,6 +95,21 @@ func oldKernelCommand(pkgs []string, findings int) *command {
 		Note: "These kernels are installed but not running (apt keeps the previous one as a boot fallback), so upgrading never clears their findings. " +
 			"Check that uname -r shows the kernel you expect first; afterwards there's no older kernel to fall back to at boot."}
 }
+
+// live reports whether a finding is live exposure: not on an old kernel
+// that isn't running, nor only on kernel userland packages.
+func live(f report.Finding) bool { return !f.NotRunning && f.KernelStatus != kernel.StatusUserland }
+
+// needsAction reports whether a finding needs attention: it's live, and
+// fixable now or, with no fix yet, still worth watching (known-exploited,
+// in the news, or likely to be exploited). report.Counts.Attention counts
+// the same.
+func needsAction(f report.Finding) bool {
+	return live(f) && (f.Fixed != "" || watched(f))
+}
+
+// watched: worth watching even with no fix (report.Counts.Watch).
+func watched(f report.Finding) bool { return f.KEV || f.InNews || f.EPSS >= store.WatchEPSS }
 
 // kernelInfo is what the findings view needs about the host's kernels.
 type kernelInfo struct{ Running, Newer string }
@@ -187,12 +210,18 @@ func buildFindingsView(base, pm string, q url.Values, list []report.Finding, pkg
 		fv.Sev = ""
 	}
 	fv.Page, _ = strconv.Atoi(q.Get("page"))
+	showAll := q.Get("show") == "all"
+	fv.Focus = !showAll && fv.Sev == "" && !fv.Fixable
 
 	var kept []report.Finding
 	for _, f := range list {
+		if fv.Focus && !needsAction(f) {
+			fv.Hidden++
+			continue
+		}
 		// Like the chips' counts, the known-exploited and fixable filters
 		// leave out what isn't live kernel exposure.
-		notLive := f.NotRunning || f.KernelStatus == kernel.StatusUserland
+		notLive := !live(f)
 		if fv.Fixable && (f.Fixed == "" || notLive) {
 			continue
 		}
@@ -237,13 +266,15 @@ func buildFindingsView(base, pm string, q url.Values, list []report.Finding, pkg
 				v.Set(k, val)
 			}
 		}
-		cur := map[string]string{"view": fv.View, "sev": fv.Sev, "fix": map[bool]string{true: "1"}[fv.Fixable]}
+		cur := map[string]string{"view": fv.View, "sev": fv.Sev, "fix": map[bool]string{true: "1"}[fv.Fixable],
+			"show": map[bool]string{true: "all"}[showAll]}
 		for k, val := range change {
 			cur[k] = val
 		}
 		set("view", cur["view"], "packages")
 		set("sev", cur["sev"], "")
 		set("fix", cur["fix"], "")
+		set("show", cur["show"], "")
 		set("page", change["page"], "1") // any other change goes back to page 1
 		if len(v) == 0 {
 			return base + "#findings"
@@ -258,7 +289,8 @@ func buildFindingsView(base, pm string, q url.Values, list []report.Finding, pkg
 		}
 		fv.SevLinks[s] = link(map[string]string{"sev": target})
 	}
-	fv.AllSevLink = link(map[string]string{"sev": ""})
+	fv.AllSevLink = link(map[string]string{"sev": "", "fix": "", "show": "all"})
+	fv.FocusLink = link(map[string]string{"sev": "", "fix": "", "show": ""})
 	fv.FixLink = map[string]string{"on": link(map[string]string{"fix": "1"}), "off": link(map[string]string{"fix": ""})}
 	fv.ViewLink = map[string]string{"packages": link(map[string]string{"view": "packages"}), "all": link(map[string]string{"view": "all"})}
 	if fv.Page > 1 {

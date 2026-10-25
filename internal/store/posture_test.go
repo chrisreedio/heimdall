@@ -40,6 +40,9 @@ func tallyOpen(t *testing.T, s *Store, hostID int64) map[string]FindingCounts {
 			}
 		} else {
 			c.NoFix++
+			if f.KEV || f.InNews || f.EPSS >= WatchEPSS {
+				c.Watch++
+			}
 		}
 		if f.FixPending {
 			c.FixPending++
@@ -126,7 +129,16 @@ func TestFindingCountsStayCurrent(t *testing.T) {
 	if c := checkCounts(t, s, h.ID, "after patching"); c[""].Total != 1 || c["/srv/app"].Total != 0 {
 		t.Errorf("after patching: %+v", c)
 	}
-	checkCounts(t, s, other.ID, "other host")
+	if c := checkCounts(t, s, other.ID, "other host"); c[""].Watch != 0 {
+		t.Errorf("other host watches %+v", c)
+	}
+	// An EPSS score crossing WatchEPSS puts a finding with no fix on watch.
+	if err := s.PutEPSS(ctx, []EPSSScore{{CVE: "CVE-2099-0009", Score: WatchEPSS + 0.01, Date: newsNow}}); err != nil {
+		t.Fatal(err)
+	}
+	if c := checkCounts(t, s, other.ID, "after PutEPSS"); c[""].Watch != 1 {
+		t.Errorf("EPSS watch: %+v", c)
+	}
 	if err := s.RemoveHost(ctx, "test", "acme", "web-01"); err != nil {
 		t.Fatal(err)
 	}

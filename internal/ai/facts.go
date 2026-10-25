@@ -117,17 +117,19 @@ type hostFact struct {
 	PendingUpdates  int           `json:"pending_updates"`
 	PendingSecurity int           `json:"pending_security_updates"`
 	Counts          report.Counts `json:"finding_counts"`
-	InNews          int           `json:"findings_in_news,omitempty"`
-	NewFindings     *int          `json:"new_findings_in_period,omitempty"`
-	Resolved        *int          `json:"resolved_findings_in_period,omitempty"`
-	Runtimes        []runtimeFact `json:"runtimes,omitempty"`
-	Top             []findingFact `json:"top_findings"`
-	NoFix           []noFixFact   `json:"no_fix_yet_by_package,omitempty"`
-	Sites           []siteFact    `json:"sites,omitempty"`
-	Anomalies       []anomalyFact `json:"open_anomalies,omitempty"`
-	News            []newsFact    `json:"in_the_news,omitempty"`
-	InOpenPlan      bool          `json:"in_open_patch_plan,omitempty"`
-	Commands        []commandFact `json:"suggested_commands,omitempty"`
+	// Attention is report.Counts.Attention: fixable, plus watch.
+	Attention   int           `json:"findings_needing_attention"`
+	InNews      int           `json:"findings_in_news,omitempty"`
+	NewFindings *int          `json:"new_findings_in_period,omitempty"`
+	Resolved    *int          `json:"resolved_findings_in_period,omitempty"`
+	Runtimes    []runtimeFact `json:"runtimes,omitempty"`
+	Top         []findingFact `json:"top_findings"`
+	NoFix       []noFixFact   `json:"no_fix_yet_by_package,omitempty"`
+	Sites       []siteFact    `json:"sites,omitempty"`
+	Anomalies   []anomalyFact `json:"open_anomalies,omitempty"`
+	News        []newsFact    `json:"in_the_news,omitempty"`
+	InOpenPlan  bool          `json:"in_open_patch_plan,omitempty"`
+	Commands    []commandFact `json:"suggested_commands,omitempty"`
 }
 
 type runtimeFact struct {
@@ -457,7 +459,7 @@ func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 		Name: clip(d.host.Name, 253), Env: clip(d.env, 63), OS: clip(d.rep.OS, 80), OSLife: life(d.rep.OSLife),
 		LastReport: d.sum.ReceivedAt.UTC().Format(time.RFC3339), RebootRequired: reboot, PackageManager: d.pm,
 		PendingUpdates: d.sum.PendingUpdates, PendingSecurity: d.sum.PendingSecurity, Counts: d.rep.Counts,
-		InOpenPlan: d.inPlan, Top: []findingFact{},
+		Attention: d.rep.Counts.Attention(), InOpenPlan: d.inPlan, Top: []findingFact{},
 	}
 	hf.Stale = src.StaleAfter > 0 && src.Now.Sub(d.sum.ReceivedAt) > src.StaleAfter
 	hf.RunningKernel = clip(d.sum.Kernel, 100)

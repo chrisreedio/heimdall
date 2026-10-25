@@ -47,7 +47,7 @@
 <section id="findings">
   <div class="section-head"><h2>Composer findings</h2>{{with .HandoffURL}}<a class="button secondary handoff-btn" href="{{.}}">Hand off to agent</a>{{end}}</div>
   {{if not .Site.Readable}}<p class="empty">The collector couldn't read this site's composer.json or composer.lock, so its packages can't be checked. Make them readable by the collector's user.</p>
-  {{else if .View.Total}}{{template "chips" (chipsFor .Site.Counts .View)}}{{template "osfindings" .View}}
+  {{else if or .View.Total .View.Hidden}}{{template "chips" (chipsFor .Site.Counts .View)}}{{template "osfindings" .View}}
   {{else if or .View.Sev .View.Fixable}}{{template "chips" (chipsFor .Site.Counts .View)}}<p class="empty">No findings match the filter.</p>
   {{else}}<p class="empty">No open findings in this site's {{.Site.Packages}} Composer packages.</p>{{end}}
 </section>

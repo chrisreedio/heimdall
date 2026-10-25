@@ -110,10 +110,11 @@ func (s *Store) Migrate(ctx context.Context) ([]string, error) {
 		}
 		applied = append(applied, m.name)
 	}
-	// 0014 changed how finding_counts tallies kernels, which takes Go.
-	if slices.ContainsFunc(applied, func(n string) bool { return strings.HasPrefix(n, "0014_") }) {
+	// 0014 changed how finding_counts tallies kernels, which takes Go, and
+	// 0016 added a column the recount fills.
+	if slices.ContainsFunc(applied, func(n string) bool { return strings.HasPrefix(n, "0014_") || strings.HasPrefix(n, "0016_") }) {
 		if err := s.RecountFindings(ctx); err != nil {
-			return applied, fmt.Errorf("recounting findings after 0014: %w", err)
+			return applied, fmt.Errorf("recounting findings after migrating: %w", err)
 		}
 	}
 	return applied, nil

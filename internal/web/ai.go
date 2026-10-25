@@ -11,6 +11,7 @@ import (
 
 	"github.com/chrisreedio/heimdall/internal/ai"
 	"github.com/chrisreedio/heimdall/internal/auth"
+	"github.com/chrisreedio/heimdall/internal/report"
 	"github.com/chrisreedio/heimdall/internal/store"
 )
 
@@ -44,6 +45,7 @@ type aiView struct {
 	// Handoffs are "Hand off to agent" buttons per action index, on
 	// Composer steps only (see aiHandoffs).
 	Handoffs map[int][]handoffLink
+	Links    *aiLinker // links the org's hosts and sites in the text
 }
 
 // aiBriefs is the dashboard's brief card: one brief per visible org.
@@ -59,6 +61,13 @@ func (s *server) aiView(ctx context.Context, r *http.Request, v *auth.Viewer, or
 	}
 	view := aiView{View: ai.ViewOf(runs, s.now(), s.cfg.AI.Stale()), Org: org, CanRun: v.Scope.CanOperate(org.ID),
 		CSRF: auth.CSRFToken(v.SessionToken), Notice: aiNotices[r.URL.Query().Get("ai")]}
+	if view.Result != nil {
+		rep, err := report.Build(ctx, s.st, report.Filter{Org: org.Slug, Scope: v.Scope, CountsOnly: true}, s.now())
+		if err != nil {
+			return aiView{}, err
+		}
+		view.Links = newAILinker(org.Slug, rep.Hosts)
+	}
 	if view.Running && view.Notice == aiNotices["started"] {
 		view.Notice = "" // the running line says it
 	}
