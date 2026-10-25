@@ -971,3 +971,23 @@ details.repo-pick form { flex-wrap: wrap; align-items: flex-end; max-width: 560p
 button.danger { background: var(--crit-fg); color: #fff; }
 #bans-status .row, #status .row { align-items: center; gap: 12px; }
 article.card h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+/* Attack surface map (surface.html) */
+.surface-map .sf-name { min-width: 14rem; }
+.surface-map .sf-name .id { word-break: break-all; }
+.surface-map .sf-record { white-space: nowrap; }
+.surface-map .sf-serves { min-width: 16rem; }
+.surface-map .sf-host { margin-bottom: 4px; }
+.surface-map .sf-site { margin: 2px 0 0 14px; }
+.surface-map .sf-host a, .surface-map .sf-site a { white-space: nowrap; }
+.surface-map .sf-findings { min-width: 9rem; }
+.surface-map .sf-findings .pills, .surface-map .sf-name .pills { margin-top: 4px; gap: 4px; }
+.surface-map .sf-findings .pills { margin-top: 0; }
+@media (max-width: 640px) {
+  /* One card per name: the four columns stack. */
+  .surface-map thead { display: none; }
+  .surface-map, .surface-map tbody, .surface-map tr, .surface-map td { display: block; width: auto; min-width: 0; }
+  .surface-map tr { border-bottom: 1px solid var(--border); padding: 6px 0; }
+  .surface-map td { border-bottom: 0; padding: 3px 10px; }
+  .surface-map .sf-record { white-space: normal; }
+  .surface-map .sf-record .id { overflow-wrap: anywhere; }
+}
