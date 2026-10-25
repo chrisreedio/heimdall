@@ -43,6 +43,7 @@ type Config struct {
 	DeployServices DeployServices `toml:"deploy_services"` // services.go
 	Tailscale      Tailscale      `toml:"tailscale"`       // see tailscale.go
 	Cloudflare     Cloudflare     `toml:"cloudflare"`      // cloudflare.go
+	Bans           Bans           `toml:"bans"`            // bans.go
 }
 
 // Agent is one coding agent: a Discord bot that reads a channel and can
@@ -368,6 +369,7 @@ func Default() Config {
 		DeployServices: DefaultDeployServices(),
 		Tailscale:      defaultTailscale,
 		Cloudflare:     CloudflareDefaults,
+		Bans:           BansDefaults,
 	}
 }
 
@@ -538,6 +540,7 @@ func (c Config) Validate() error {
 	c.DeployServices.validate(add)
 	c.Tailscale.validate(add)
 	c.Cloudflare.validate(add)
+	c.Bans.validate(c.Cloudflare, add)
 	return errors.Join(errs...)
 }
 

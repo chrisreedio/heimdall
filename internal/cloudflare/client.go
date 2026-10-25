@@ -5,7 +5,8 @@
 // from the GraphQL Analytics API, and Radar's ASN for unknown addresses.
 // It also fetches Cloudflare's published edge ranges (no token), so the
 // hub knows Cloudflare's own addresses and can trust CF-Connecting-IP from
-// them only. Nothing here writes to Cloudflare.
+// them only. Nothing here writes to Cloudflare, except lists.go: the ban
+// list and rules (internal/bans), with a second token of their own.
 //
 // API references (checked Oct 2026):
 //   - token verify: https://developers.cloudflare.com/api/resources/user/subresources/tokens/methods/verify/

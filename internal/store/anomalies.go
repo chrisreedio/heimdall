@@ -18,6 +18,8 @@ var AnomalyRules = []string{"silence", "replay", "clock_skew", "package_change",
 	"privileged_access", "privilege_watch_disabled",
 	"privilege_unknown_source", "privilege_off_tailnet", // IP awareness (internal/privilege/source.go)
 	"silent_online", // not reporting, yet up on the tailnet (internal/anomaly/tailnet.go)
+	// Failed logins and the surface map (internal/anomaly/bans.go).
+	"login_then_succeeded", "dns_unproxied", "cname_takeover",
 	// Reports that don't add up (consistency with the host's own history).
 	"uptime_inconsistent", "inventory_reverted", "package_drop", "collector_downgrade", "os_changed"}
 

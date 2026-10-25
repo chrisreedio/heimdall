@@ -966,3 +966,8 @@ details.repo-pick form { flex-wrap: wrap; align-items: flex-end; max-width: 560p
 .ip-attn { margin: 0 0 12px; }
 .ip-verdict .pill { font-size: 13px; }
 .ip-labels { margin: 8px 0 0; padding-left: 18px; }
+
+/* Bans (bans.go): the pause switch and the proposal cards */
+button.danger { background: var(--crit-fg); color: #fff; }
+#bans-status .row, #status .row { align-items: center; gap: 12px; }
+article.card h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }

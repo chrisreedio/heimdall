@@ -8,7 +8,8 @@
 //
 // The one exception is the Alert (alert.go): it names the hosts that
 // stopped or resumed reporting, or raised a high-signal anomaly (with a
-// fixed label for the rule), and nothing else about them.
+// fixed label for the rule), and nothing else about them. A ban card
+// (ban.go) also names the attacker's address and the hosts it tried.
 package notify
 
 import (

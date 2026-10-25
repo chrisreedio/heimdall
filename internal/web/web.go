@@ -25,6 +25,7 @@ import (
 
 	"github.com/chrisreedio/heimdall/internal/auth"
 	"github.com/chrisreedio/heimdall/internal/auth/entra"
+	"github.com/chrisreedio/heimdall/internal/bans"
 	"github.com/chrisreedio/heimdall/internal/handoff"
 	"github.com/chrisreedio/heimdall/internal/ipinfo"
 	"github.com/chrisreedio/heimdall/internal/report"
@@ -87,6 +88,9 @@ type Config struct {
 	// BehindTailscaleServe trusts tailscale serve's client address and
 	// identity headers on requests from loopback (tsproxy.go).
 	BehindTailscaleServe bool
+
+	// Bans: [bans] (internal/bans); nil when it isn't set up.
+	Bans *bans.Service
 }
 
 // CSP is the Content-Security-Policy sent with every response.
@@ -204,6 +208,12 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	// Failed logins: repeat offenders across the viewer's hosts (logins.go).
 	mux.HandleFunc("GET /offenders", s.requireAuth(s.withScope(s.offendersPage)))
 	mux.HandleFunc("GET /surface", s.requireAuth(s.surfacePage)) // attack-surface map (surface.go)
+	// Bans: proposals, approvals, per-zone opt-in and the pause switch (bans.go).
+	mux.HandleFunc("GET /bans", s.requireAuth(s.bansPage))
+	mux.HandleFunc("POST /bans/{id}/{action}", s.requireAuth(s.banAction))
+	mux.HandleFunc("POST /bans/pause", s.requireAuth(s.banPause(true)))
+	mux.HandleFunc("POST /bans/resume", s.requireAuth(s.banPause(false)))
+	mux.HandleFunc("POST /bans/zones", s.requireAuth(s.banZone))
 	mux.HandleFunc("POST /admin/users/mcp-revoke", s.requireAuth(s.requireAdmin(s.adminTokenRevoke)))
 	if cfg.AI != nil { // AI analysis: regenerate a brief or explain a host (operator+)
 		mux.HandleFunc("POST /ai/brief/{org}", s.requireAuth(s.aiBriefRun))
@@ -499,6 +509,7 @@ func parsePages() (map[string]*template.Template, error) {
 	names = append(names, "cloudflare") // Cloudflare overview (cloudflare.go)
 	names = append(names, "offenders")  // failed logins (logins.go)
 	names = append(names, "surface")    // attack-surface map (surface.go)
+	names = append(names, "bans")       // bans (bans.go)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/ai.html", "templates/"+n+".html")

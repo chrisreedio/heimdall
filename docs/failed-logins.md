@@ -2,7 +2,7 @@
 
 Every server on the internet gets SSH password guesses. One server's log only tells you about that server. Heimdall adds up the failures across the whole fleet and shows which addresses keep coming back: the ones trying many of your hosts, the ones trying hardest, and, most importantly, any that **failed and then got in**.
 
-This is **read-only**. Heimdall never bans anyone, changes a firewall, or touches sshd. It only counts.
+This is **read-only**. The login watch never bans anyone, changes a firewall, or touches sshd. It only counts. (Bans at Cloudflare's edge are a separate, opt-in feature: see [bans.md](bans.md).)
 
 ## What's recorded, and what never is
 
@@ -128,9 +128,9 @@ heimdall offenders [--org acme] [--since 24h|7d|30d] [--json]
 
 Everything is scoped by org: a user sees failures only on hosts in orgs they can view. An address's host count, failures and "then succeeded" only include those hosts, so one org never learns another's.
 
-## Bans (not yet)
+## Bans
 
-There are no bans. The ranked list that excludes everything IP awareness vouches for (`logins.Ranker.Offenders` in the code, `heimdall offenders --json` from the CLI) is what a later "propose a ban" step will read, for example to suggest entries for a Cloudflare account-level IP list with one-click approval.
+The login watch itself never bans anyone. [Bans](bans.md) (off by default) read this ranked list, which already excludes everything IP awareness vouches for, score each address, and propose (or, in shadow mode, only record) bans at Cloudflare's edge, approved on `/bans`. An address that failed and then logged in from nowhere known also raises the `login_then_succeeded` anomaly, whatever the ban mode.
 
 ## Troubleshooting
 

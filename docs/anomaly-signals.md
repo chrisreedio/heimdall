@@ -38,6 +38,9 @@ Heimdall is good at catching **sloppy or automated attacks**, and just as often 
 | **Package drop** (`package_drop`) | The inventory was gutted to hide things | A big cleanup outside a maintenance window | [Consistency](#reports-that-dont-add-up) |
 | **Collector downgraded** (`collector_downgrade`) | An old or modified collector is sending the reports | You reinstalled from an older copy of `install.sh` | [Consistency](#reports-that-dont-add-up) |
 | **OS changed** (`os_changed`) | The reports aren't coming from this host | A reinstall or an in-place distro migration (CentOS to Rocky) outside a window | [Consistency](#reports-that-dont-add-up) |
+| **Failed, then logged in** (`login_then_succeeded`, high) | An address nobody knows guessed or stole a password: it failed SSH logins and then got in, the same day | A new colleague or a deploy service whose address isn't labelled yet: label it | [Bans](bans.md#alerts) |
+| **Name no longer proxied** (`dns_unproxied`, medium) | A DNS record that leads to one of your hosts was switched to DNS-only, so the origin's address is public | A deliberate change for debugging, or a service that can't go through Cloudflare | [Bans](bans.md#alerts) |
+| **CNAME takeover risk** (`cname_takeover`, high) | A name that leads to your host or site points (by CNAME) at a target that doesn't exist: whoever registers it can serve your name | A service you stopped using whose DNS record was left behind: delete the record | [Bans](bans.md#alerts) |
 
 "Odd one out" means a new service, runtime or package that a host's **tag peers** don't have. For example, one `web` host in `prod` suddenly has a package the other `web` hosts don't.
 

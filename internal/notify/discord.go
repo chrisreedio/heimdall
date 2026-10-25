@@ -3,6 +3,7 @@
 package notify
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -147,7 +148,7 @@ func discordPayload(m message) map[string]any {
 	}
 	link := safeLinkURL(m.URL)
 	if link != "" {
-		b.WriteString("\n\n[Open Heimdall](" + link + ") (sign-in required)")
+		b.WriteString("\n\n[" + cmp.Or(m.LinkText, "Open Heimdall") + "](" + link + ") (sign-in required)")
 	}
 	embed := map[string]any{
 		"title":       truncate(neutralize(m.Title), 256),
