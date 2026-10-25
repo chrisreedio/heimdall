@@ -99,6 +99,7 @@ Opt-in per server with `install.sh --watch-privilege` (see [collector.md](collec
 - **Privilege watch disabled** (`privilege_watch_disabled`, high): the host reported the watch `on` before and now reports `off` or `partial` (a PAM line, the hook or its events file is missing) while still checking in. It's compared with the host's own previous report, so hosts that never turned it on never alert. A push without the header (an older collector) changes nothing.
 
 - **Privileged access from an unknown address** (`privilege_unknown_source`, high) and **SSH from outside the tailnet** (`privilege_off_tailnet`, high, only with an org's tailnet-only policy): where sessions came from. See [IP awareness](ip-awareness.md#alerts).
+- **Stopped reporting, still on the tailnet** (`silent_online`, high): a host's collector has been quiet for `hosts.alert_after` (or `stale_after`) while Tailscale still saw its device online, or online well after its last report. The server is running, so the collector was likely stopped or blocked. A server that's powered off or unplugged drops off the tailnet too and raises only `silence`. Needs the [Tailscale integration](tailscale.md) and a sync less than an hour old; maintenance windows and suppressions apply.
 
 All of them use the usual [suppression](#keeping-the-noise-down): `heimdall anomaly suppress --rule privileged_access ...`.
 

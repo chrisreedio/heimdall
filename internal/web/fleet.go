@@ -758,6 +758,7 @@ var anomalyRules = map[string]string{
 	"inventory_reverted": "inventory reverted", "package_drop": "packages dropped",
 	"collector_downgrade": "collector downgraded", "os_changed": "OS changed",
 	"privilege_unknown_source": "privileged access from an unknown address", "privilege_off_tailnet": "SSH from outside the tailnet",
+	"silent_online": "stopped reporting while still on the tailnet",
 }
 
 func ruleLabel(rule string) string {

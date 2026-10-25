@@ -22,7 +22,8 @@ CREATE TABLE ip_policies (
 CREATE INDEX audit_log_ip ON audit_log (ip) WHERE ip <> '';
 CREATE INDEX privilege_events_source ON privilege_events (source) WHERE source NOT IN ('', '?');
 
--- New anomaly rules: privilege_unknown_source, privilege_off_tailnet. SQLite
+-- New anomaly rules: privilege_unknown_source, privilege_off_tailnet and
+-- silent_online (not reporting while up on the tailnet). SQLite
 -- can't change a CHECK in place, so the table is rebuilt, exactly as in
 -- 0009 plus the new rule names.
 CREATE TABLE anomalies_new (
@@ -34,7 +35,8 @@ CREATE TABLE anomalies_new (
                         'kernel_no_reboot', 'unexpected_reboot', 'collector_changed', 'peer_outlier',
                         'trigger_disabled', 'privileged_access', 'privilege_watch_disabled',
                         'uptime_inconsistent', 'inventory_reverted', 'package_drop', 'collector_downgrade',
-                        'os_changed', 'privilege_unknown_source', 'privilege_off_tailnet')),
+                        'os_changed', 'privilege_unknown_source', 'privilege_off_tailnet',
+                        'silent_online')),
     severity        TEXT    NOT NULL CHECK (severity IN ('high', 'medium', 'low')),
     summary         TEXT    NOT NULL,
     detail          TEXT    NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
