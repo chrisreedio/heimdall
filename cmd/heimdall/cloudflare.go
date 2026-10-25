@@ -111,6 +111,7 @@ func cmdCloudflareSetToken(a *app, args []string) error {
 		if err != nil {
 			return errors.New("stdin is not a terminal; use --stdin to pipe the token")
 		}
+		printCloudflareTokenURL(a.stderr)
 		if token, err = in.line("Cloudflare API token (input hidden): ", true); err != nil {
 			return err
 		}
@@ -370,4 +371,19 @@ func cmdCloudflareSync(a *app, args []string) error {
 		return fmt.Errorf("sync finished with errors (the last good data is kept): %w", serr)
 	}
 	return nil
+}
+
+// cmdCloudflareTokenURL prints the dashboard link that pre-fills a
+// read-only token with exactly the permissions Heimdall uses.
+func cmdCloudflareTokenURL(a *app, args []string) error {
+	if _, err := parse(a.flags("cloudflare token-url", ""), args, 0); err != nil {
+		return err
+	}
+	printCloudflareTokenURL(a.stdout)
+	return nil
+}
+
+func printCloudflareTokenURL(w io.Writer) {
+	fmt.Fprintf(w, "Create the token here (permissions pre-filled, read-only; check them, then Create):\n\n  %s\n\nAlso add by hand: %s.\nThen paste it into: sudo heimdall cloudflare set-token\n\n",
+		cloudflare.TokenURL("Heimdall (read-only)", cloudflare.ReadPerms), cloudflare.ReadManual)
 }
