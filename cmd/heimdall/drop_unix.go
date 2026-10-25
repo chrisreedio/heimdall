@@ -27,7 +27,7 @@ var rootCommands = map[string]bool{"upgrade": true, "restart": true, "sso": true
 // so the database never gets a root-owned file.
 var keyCommands = map[string]bool{"tailscale status": true, "tailscale sync": true,
 	"cloudflare status": true, "cloudflare sync": true, "ip-services status": true, "ip-services sync": true,
-	"bans status": true}
+	"bans status": true, "notify send": true}
 
 // Seams for tests.
 var (
@@ -85,6 +85,9 @@ func dropInProcess(u *user.User) error {
 	paths := []string{defaultCloudflareTokenFile, defaultTailscaleKeyFile, defaultBansTokenFile}
 	for _, id := range tokenServices() {
 		paths = append(paths, serviceTokenFile(id))
+	}
+	if ps, err := filepath.Glob(filepath.Join(notifySecretDir, "notify-*")); err == nil {
+		paths = append(paths, ps...)
 	}
 	for _, p := range paths {
 		if fi, err := os.Stat(p); err == nil && fi.Mode().IsRegular() && fi.Size() <= 4096 {

@@ -51,16 +51,12 @@ func credentialFile(name, fallback string) (string, string, error) {
 	if path == "" {
 		return "", "", fmt.Errorf("missing secret: add `LoadCredential=%s:<file>` to the unit, or set %s", name, env)
 	}
-	fi, err := os.Stat(path)
+	perm, b, err := readKeyFile(path)
 	if err != nil {
 		return "", path, err
 	}
-	if !fromSystemd && fi.Mode().Perm()&0o077 != 0 {
+	if !fromSystemd && perm&0o077 != 0 {
 		return "", path, fmt.Errorf("%s is readable by other users; run `chmod 600 %s`", path, path)
-	}
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return "", path, err
 	}
 	v := strings.TrimSpace(string(b))
 	if v == "" || len(v) > 4096 {
@@ -90,7 +86,10 @@ var notifyHTTPClient = func(hosts []string) *http.Client {
 var notifyRetry notify.Retry
 
 // senders builds the hub's configured destinations.
-func senders(cfg config.Config) ([]notify.Destination, error) { return destinations(cfg, false) }
+// From the CLI (`notify send`), stored secrets read as root count too.
+func senders(cfg config.Config) ([]notify.Destination, error) {
+	return destinations(cfg, keyFallback(false))
+}
 
 // destinations builds every configured destination it can. A destination
 // that can't be built (a missing secret, say) is left out and reported in

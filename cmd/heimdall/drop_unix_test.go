@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -97,5 +98,55 @@ func TestReadKeyFilePreloaded(t *testing.T) {
 	perm, b, err := readKeyFile(path)
 	if err != nil || perm != 0o600 || string(b) != "secret\n" || !keyFallback(false) {
 		t.Fatalf("preloaded = %v %q %v", perm, b, err)
+	}
+}
+
+// hubUserCommands run as the hub user under sudo: they read the config and
+// database only, never a root-owned key file.
+var hubUserCommands = map[string]bool{
+	"ai status": true, "anomaly ack": true, "anomaly list": true, "anomaly suppress": true, "backup": true,
+	"bans approve": true, "bans list": true, "bans pause": true, "bans reject": true, "bans resume": true,
+	"bans token-url": true, "bans unban": true, "cloudflare token-url": true, "collector list": true,
+	"collector trust": true, "config update": true, "drift": true, "enroll approve": true, "enroll create": true,
+	"enroll list": true, "enroll pending": true, "enroll revoke": true, "env create": true, "env list": true,
+	"feeds status": true, "feeds sync": true, "host add": true, "host diff": true, "host history": true,
+	"host list": true, "host rename": true, "host rm": true, "host show": true, "host token": true,
+	"import": true, "init": true, "ip label": true, "ip policy": true, "ip show": true, "migrate": true,
+	"notify preview": true, "offenders": true, "org create": true, "org list": true, "plan add": true,
+	"plan close": true, "plan create": true, "plan done": true, "plan list": true, "plan rm": true,
+	"plan show": true, "plan undo": true, "report": true, "sbom": true, "serve": true, "surface": true,
+	"user create": true, "user disable": true, "user enable": true, "user grant": true, "user list": true,
+	"user mcp-token": true, "user passwd": true, "user reset-totp": true, "user revoke": true,
+	"window add": true, "window list": true, "window rm": true,
+}
+
+// TestEveryCommandRunsAsTheRightUser: `sudo heimdall <command>` runs as
+// root (rootCommands), reads key files as root and then drops
+// (keyCommands), or runs as the hub user. A new command must be put in one
+// of the three on purpose: a key-reading command left as the hub user
+// can't read its root-owned file on an installed hub.
+func TestEveryCommandRunsAsTheRightUser(t *testing.T) {
+	for name := range commands {
+		paths := []string{name}
+		if subs, ok := groupSubs[name]; ok {
+			paths = paths[:0]
+			for _, s := range subs {
+				paths = append(paths, name+" "+s)
+			}
+		}
+		for _, p := range paths {
+			root := rootCommands[p] || rootCommands[strings.Fields(p)[0]]
+			n := 0
+			for _, in := range []bool{root, keyCommands[p], hubUserCommands[p]} {
+				if in {
+					n++
+				}
+			}
+			if n != 1 {
+				t.Errorf("%q is in %d of rootCommands, keyCommands and hubUserCommands; put it in exactly one "+
+					"(root: needs root itself; key: reads a root-owned key file, then uses the database; "+
+					"hub user: everything else)", p, n)
+			}
+		}
 	}
 }
