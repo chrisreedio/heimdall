@@ -57,7 +57,18 @@ func (v Verdict) Unknown() bool { return v.Kind() == store.IPKindUnknown }
 // count: the "forge" account logging in from somewhere other than Forge's
 // ranges is exactly what a stolen deploy key looks like.
 func (v Verdict) UnknownAddress() bool {
-	return !slices.ContainsFunc(v.Labels, func(l Label) bool {
+	_, ok := v.AddressLabel()
+	return !ok
+}
+
+// AddressLabel is the most telling label about the address itself (not
+// one matched by the account name), if any: what makes it known.
+func (v Verdict) AddressLabel() (Label, bool) {
+	i := slices.IndexFunc(v.Labels, func(l Label) bool {
 		return l.Kind != store.IPKindUnknown && l.Prefix.IsValid() && l.Prefix.Contains(v.Addr)
 	})
+	if i < 0 {
+		return Label{}, false
+	}
+	return v.Labels[i], true
 }

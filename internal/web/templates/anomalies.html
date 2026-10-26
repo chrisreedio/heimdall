@@ -27,4 +27,20 @@
     {{else}}<span class="muted">operator role needed</span>{{end}}</td>
   </tr>{{else}}<tr><td colspan="6" class="muted">No open anomalies.</td></tr>{{end}}</tbody>
 </table></div>
+
+<section class="card" aria-labelledby="closed-h">
+  <h2 id="closed-h">Closed in the last 30 days</h2>
+  <p class="muted small">Acknowledged by someone, or <span class="pill ok">auto-resolved</span> by Heimdall when what it flagged stopped holding (an unknown address that's known now).</p>
+  {{if .Closed}}<div class="scroll"><table class="cards-sm">
+    <thead><tr><th>Closed</th><th>Host</th><th>Signal</th><th>Summary</th><th>By</th><th>Note</th></tr></thead>
+    <tbody>{{range .Closed}}<tr>
+      <td class="nowrap" data-label="Closed" title="{{time .ClosedAt}}">{{dayAgo (timep .ClosedAt)}}</td>
+      <td data-label="Host"><a href="{{hostURL .Host.OrgSlug .Host.Name}}">{{.Host.Name}}</a></td>
+      <td data-label="Signal">{{.Rule}}</td>
+      <td class="full" data-label="Summary">{{.Summary}}</td>
+      <td data-label="By">{{if .Auto}}<span class="pill ok" title="Closed by Heimdall itself; see the audit log (anomaly.resolve)">auto-resolved</span>{{else if .By}}{{.By}}{{else}}<span class="muted">CLI</span>{{end}}</td>
+      <td class="full" data-label="Note">{{.Note}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>{{else}}<p class="empty">Nothing closed lately.</p>{{end}}
+</section>
 {{end}}{{end}}

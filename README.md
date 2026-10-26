@@ -17,7 +17,7 @@ It's meant for people who look after a handful to a few hundred servers spread a
 
 **Status:** pre-1.0. Milestones M0–M11 are implemented. The remaining steps before 1.0 are an independent security review and a run on real servers.
 
-**Guides:** [Getting started](docs/getting-started.md) · [Hosting](docs/hosting.md) · [Deployment](docs/deployment.md) · [MCP](docs/mcp.md) · [Threat list](docs/threats.md) · [Collector](docs/collector.md) · [Snapshot format](docs/snapshot-format.md) · [Anomaly signals](docs/anomaly-signals.md)
+**Guides:** [Getting started](docs/getting-started.md) · [Hosting](docs/hosting.md) · [Deployment](docs/deployment.md) · [SSO and roles](docs/sso.md) · [MCP](docs/mcp.md) · [Threat list](docs/threats.md) · [Collector](docs/collector.md) · [Snapshot format](docs/snapshot-format.md) · [Anomaly signals](docs/anomaly-signals.md)
 
 ---
 
@@ -247,7 +247,7 @@ Heimdall acts as a confidential OIDC client using the **authorization code flow 
   - `tid` is in `allowed_tenants`
 - **Identity:** users are keyed by the immutable **`tid` + `oid`** pair, never by email or UPN, which can change or be reused.
 - **No silent self-signup:** an Entra user has to be provisioned in Heimdall first, either by `oid` or by an email that is bound to the `oid` on first login, and only within an allowed tenant. Unknown users are rejected, and the rejection is logged.
-- **Roles:** granted in Heimdall, or optionally mapped from Entra **app roles** in the token (`Heimdall.Admin`, `Heimdall.Operator`, `Heimdall.Viewer`). Per-org role names such as `Heimdall.Org.acme.Viewer` only matter on multi-org installs. Group claims aren't used, because of the group overage limit.
+- **Roles:** granted in Heimdall, or optionally mapped from Entra **app roles** in the token (`Heimdall.Admin`, `Heimdall.Operator`, `Heimdall.Viewer`). Per-org role names such as `Heimdall.Org.acme.Viewer` only matter on multi-org installs. Group claims aren't used, because of the group overage limit. How roles, app roles and Entra groups fit together, and what changes at each sign-in: [docs/sso.md](docs/sso.md).
 - **MFA and device policy:** enforced on the Entra side through Conditional Access. Heimdall doesn't ask for TOTP again for SSO users.
 - **Credentials:** a client secret or certificate is loaded from systemd credentials, never from the config file. A certificate is preferred. `sudo heimdall sso setup` walks through it: it shows the redirect URI to register, asks for the IDs and the secret (echo off), writes the config, the secret (`/etc/heimdall/entra-secret`, owner-only) and the unit's `LoadCredential` line, and restarts the hub. `heimdall sso set-secret` rotates the secret.
 - **Sessions:** a Heimdall session is created after login and is limited by the same idle and absolute timeouts. No refresh tokens are kept, and Heimdall calls no Graph APIs and requests only the `openid profile email` scopes.
