@@ -68,7 +68,7 @@ heimdall user create --admin you@example.com   # password twice, then scan the Q
 heimdall serve                                 # UI on 127.0.0.1:8080, ingest on its own port
 ```
 
-- **On the hub itself, or over an SSH tunnel:** `ssh -L 8080:127.0.0.1:8080 hub`, then open http://127.0.0.1:8080.
+- **On the hub itself, or over an SSH tunnel:** `ssh -L 8080:127.0.0.1:8080 hub`, then open `http://127.0.0.1:8080`.
 - **Over your tailnet:** run `tailscale serve --bg 8080` on the hub and set `ui.base_url` to the `https://…ts.net` address it prints. Caddy works the same way.
 - **Plain http is refused off loopback**, because session cookies must never cross the network unencrypted.
 - **Sign-in needs** email, password and the current 6-digit code. Each code works only once.
