@@ -964,6 +964,57 @@ push() {
 
 RELEASES=${HEIMDALL_RELEASES:-https://github.com/realmwatch/heimdall/releases/download}
 
+# ── Release signature ── (keep this block the same in collect.sh, install.sh
+# and install-hub.sh; the pins are also in cmd/heimdall/signature.go and
+# install-windows.ps1, and TestSignaturePinsMatch checks they agree.)
+# A release's SHA256SUMS must carry a Sigstore signature made by this repo's
+# release workflow for a v* tag. cosign checks it: a pinned build, fetched
+# once into /usr/local/lib/heimdall and checked against its hash each use.
+COSIGN_VERSION=v3.1.4
+RELEASE_SIGNER='^https://github.com/(chrisreedio|realmwatch)/heimdall/\.github/workflows/release\.yml@refs/tags/v'
+
+# cosign_bin: print the path of the cosign to check signatures with,
+# fetching the pinned build first if it's missing or doesn't match.
+cosign_bin() {
+	case $(uname -m) in
+	x86_64 | amd64) c=amd64 s=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa ;;
+	aarch64 | arm64) c=arm64 s=ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2 ;;
+	armv7l) c=arm s=09e77a313910cf5c4774508d85d017d9c60983f41bf657f83ecbd3892f7952cb ;;
+	*) command -v cosign; return ;; # no pinned build: an installed cosign, if any
+	esac
+	b=/usr/local/lib/heimdall/cosign-$COSIGN_VERSION-$c
+	if [ ! -x "$b" ] || ! printf '%s  %s\n' "$s" "$b" | sha256sum -c - >/dev/null 2>&1; then
+		printf '==> Fetching cosign %s (once) to check the release signature\n' "$COSIGN_VERSION" >&2
+		u=https://github.com/sigstore/cosign/releases/download/$COSIGN_VERSION/cosign-linux-$c
+		install -d -m 0755 /usr/local/lib/heimdall
+		if command -v curl >/dev/null 2>&1; then
+			curl -fsSL --proto '=https' --tlsv1.2 -o "$b.tmp" "$u" || return 1
+		else
+			wget -q -O "$b.tmp" "$u" || return 1
+		fi
+		if ! printf '%s  %s\n' "$s" "$b.tmp" | sha256sum -c - >/dev/null 2>&1; then
+			rm -f "$b.tmp"
+			echo "the cosign download doesn't match its pinned hash" >&2
+			return 1
+		fi
+		chmod 0755 "$b.tmp" && mv "$b.tmp" "$b"
+	fi
+	echo "$b"
+}
+
+# verify_release DIR: check DIR/SHA256SUMS against its Sigstore signature
+# (DIR/SHA256SUMS.sigstore.json), or exit.
+verify_release() {
+	[ -s "$1/SHA256SUMS.sigstore.json" ] || die "the release has no signature (SHA256SUMS.sigstore.json); not installing it"
+	cosign=$(cosign_bin) || cosign=''
+	[ -n "$cosign" ] || die "can't check the release signature: no cosign for $(uname -m); install cosign, or pass --skip-signature-check"
+	HOME=$1 "$cosign" verify-blob "$1/SHA256SUMS" --bundle "$1/SHA256SUMS.sigstore.json" \
+		--certificate-identity-regexp "$RELEASE_SIGNER" \
+		--certificate-oidc-issuer https://token.actions.githubusercontent.com >"$1/cosign.log" 2>&1 ||
+		die "SHA256SUMS signature verification FAILED; not installing it: $(tail -n 1 "$1/cosign.log")"
+	printf '==> Sigstore signature verified\n' >&2
+}
+
 # newer A B: is version A (x.y.z) newer than B?
 newer() {
 	[ "$1" != "$2" ] || return 1
@@ -974,17 +1025,19 @@ newer() {
 }
 
 # upgrade [vX.Y.Z] [--watch-privilege-users | --watch-privilege |
-# --no-watch-privilege] [--watch-logins | --no-watch-logins]: reinstall
+# --no-watch-privilege] [--watch-logins | --no-watch-logins]
+# [--skip-signature-check]: reinstall
 # this collector from the release the hub runs (or the one given), keeping
 # its hub, token and settings, and changing the privilege or login watch
 # when asked (even when already up to date).
 # Root only: it replaces /usr/local/bin/heimdall-collect.
 upgrade() {
-	given='' priv='' logins=''
+	given='' priv='' logins='' sigcheck=1
 	for a in "$@"; do
 		case $a in
 		--watch-privilege | --watch-privilege-users | --no-watch-privilege) priv=$a ;;
 		--watch-logins | --no-watch-logins) logins=$a ;;
+		--skip-signature-check) sigcheck=0 ;;
 		v[0-9]*) given=$a ;;
 		*) usage ;;
 		esac
@@ -1025,9 +1078,16 @@ upgrade() {
 	echo "heimdall-collect: upgrading $VERSION -> $want" >&2
 	work=$(mktemp -d)
 	trap 'rm -rf "$work"' EXIT
-	for f in install.sh SHA256SUMS; do
+	files='install.sh SHA256SUMS'
+	[ "$sigcheck" = 0 ] || files="$files SHA256SUMS.sigstore.json"
+	for f in $files; do
 		curl -fsSL --proto '=https' --tlsv1.2 -o "$work/$f" "$RELEASES/$want/$f" || die "download failed: $RELEASES/$want/$f"
 	done
+	if [ "$sigcheck" = 1 ]; then
+		verify_release "$work"
+	else
+		echo "heimdall-collect: WARNING: not checking the release's signature (--skip-signature-check); only its checksums" >&2
+	fi
 	(cd "$work" && grep -E ' install\.sh$' SHA256SUMS | sha256sum -c - >/dev/null) ||
 		die "install.sh from $want doesn't match its SHA256SUMS; not running it"
 	set -- --hub "$url" --token-file "$token_file" --version "$want"
@@ -1035,6 +1095,7 @@ upgrade() {
 	[ -z "$lockfiles" ] || set -- "$@" --lockfiles "$lockfiles"
 	[ -z "$priv" ] || set -- "$@" "$priv"
 	[ -z "$logins" ] || set -- "$@" "$logins"
+	[ "$sigcheck" = 1 ] || set -- "$@" --skip-signature-check
 	sh "$work/install.sh" "$@"
 }
 
@@ -1046,6 +1107,7 @@ usage: heimdall-collect --print | --push | --site-repos | --logins | --version
        sudo heimdall-collect upgrade [vX.Y.Z] [--watch-privilege-users |
                                      --watch-privilege | --no-watch-privilege]
                                      [--watch-logins | --no-watch-logins]
+                                     [--skip-signature-check]
 
   --print       write a snapshot to stdout (for review or 'heimdall import')
   --push        send a snapshot to $HEIMDALL_URL using $HEIMDALL_TOKEN_FILE
@@ -1055,14 +1117,14 @@ usage: heimdall-collect --print | --push | --site-repos | --logins | --version
   --version     print the collector version
   upgrade       reinstall from the release the hub runs (or the one given),
                 keeping the hub, token and settings; checked against the
-                release's SHA256SUMS. A privilege or login watch option
+                release's signed SHA256SUMS. A privilege or login watch option
                 changes it (see install.sh --help), even when already up
                 to date
 EOF
 	exit 2
 }
 
-if [ "${1:-}" = upgrade ] && [ $# -le 4 ]; then
+if [ "${1:-}" = upgrade ] && [ $# -le 5 ]; then
 	shift
 	upgrade "$@"
 	exit 0

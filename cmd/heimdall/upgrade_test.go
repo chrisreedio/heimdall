@@ -4,11 +4,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -34,6 +38,10 @@ func TestUpgrade(t *testing.T) {
 			w.Write([]byte(sums))
 		case strings.HasSuffix(r.URL.Path, "/install-hub.sh"):
 			w.Write(script)
+		case strings.HasSuffix(r.URL.Path, "/SHA256SUMS.sigstore.json"):
+			w.Write([]byte(`{"bundle":1}`))
+		case r.URL.Path == "/cosign/v3.1.4/cosign-linux-amd64":
+			w.Write(fakeCosign)
 		default:
 			http.NotFound(w, r)
 		}
@@ -54,6 +62,8 @@ func TestUpgrade(t *testing.T) {
 	})
 	root := false
 	stub(t, &isRoot, func() bool { return root })
+	sigOK := true
+	stubCosign(t, srv.URL+"/cosign/", func(args []string) bool { return sigOK })
 
 	var out, errb bytes.Buffer
 	if err := run(t.Context(), []string{"upgrade", "--check"}, &out, &errb); err != nil || !strings.Contains(out.String(), "v9.0.0 is available") {
@@ -74,6 +84,19 @@ func TestUpgrade(t *testing.T) {
 	ran = nil
 	if err := run(t.Context(), []string{"upgrade"}, &out, &errb); err == nil || ran != nil {
 		t.Fatalf("tampered script: err=%v ran=%v", err, ran)
+	}
+	// A bad signature: never run.
+	sums = hex.EncodeToString(sum[:]) + "  install-hub.sh\n"
+	sigOK = false
+	if err := run(t.Context(), []string{"upgrade"}, &out, &errb); err == nil || ran != nil || !strings.Contains(err.Error(), "signature verification FAILED") {
+		t.Fatalf("bad signature: err=%v ran=%v", err, ran)
+	}
+	// ...unless told to skip it; the installer is told too.
+	if err := run(t.Context(), []string{"upgrade", "--skip-signature-check"}, &out, &errb); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(ran, " ") != "--version v9.0.0 --skip-signature-check" {
+		t.Errorf("installer args = %q", ran)
 	}
 	// Already current.
 	stub(t, &version, "v9.0.0")
@@ -147,5 +170,113 @@ func TestSSOSetup(t *testing.T) {
 	if err := run(t.Context(), []string{"-c", cfgPath, "sso", "setup", "--tenant", tid, "--client-id", cid, "--secret-stdin",
 		"--secret-file", dir + "/entra-secret", "--unit", unit, "--no-restart"}, &out, &errb); err == nil {
 		t.Error("secret ID accepted as the secret")
+	}
+}
+
+var fakeCosign = []byte("#!/bin/sh\n# not really cosign\n")
+
+// stubCosign serves fakeCosign from base and pins its hash; verify decides
+// each verify-blob call.
+func stubCosign(t *testing.T, base string, verify func(args []string) bool) {
+	sum := sha256.Sum256(fakeCosign)
+	stub(t, &cosignDir, t.TempDir())
+	stub(t, &cosignBase, base)
+	stub(t, &cosignArch, "amd64")
+	stub(t, &cosignSHA256, map[string]string{"amd64": hex.EncodeToString(sum[:])})
+	stub(t, &runCosign, func(_ context.Context, bin, _ string, args ...string) ([]byte, error) {
+		if b, err := os.ReadFile(bin); err != nil || !bytes.Equal(b, fakeCosign) {
+			t.Errorf("ran %s, not the pinned cosign", bin)
+		}
+		if len(args) < 6 || args[0] != "verify-blob" || !slices.Contains(args, releaseSigner) || !slices.Contains(args, releaseIssuer) {
+			t.Errorf("cosign args = %q", args)
+		}
+		if !verify(args) {
+			return []byte("Error: invalid signature\n"), errors.New("exit status 1")
+		}
+		return []byte("Verified OK\n"), nil
+	})
+}
+
+func TestPinnedCosign(t *testing.T) {
+	served := fakeCosign
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		w.Write(served)
+	}))
+	defer srv.Close()
+	stubCosign(t, srv.URL+"/", func([]string) bool { return true })
+	hc := netx.NewForTest(srv.Client())
+	var errb bytes.Buffer
+	a := &app{ctx: t.Context(), stdout: &errb, stderr: &errb}
+	bin, err := pinnedCosign(a, hc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pinnedCosign(a, hc); err != nil || hits != 1 {
+		t.Fatalf("second call fetched again (hits %d): %v", hits, err)
+	}
+	// A swapped cached copy is fetched again.
+	os.WriteFile(bin, []byte("evil"), 0o755)
+	if _, err := pinnedCosign(a, hc); err != nil || hits != 2 {
+		t.Fatalf("swapped copy kept (hits %d): %v", hits, err)
+	}
+	// A download that doesn't match the pin is never used.
+	os.Remove(bin)
+	served = []byte("evil")
+	if _, err := pinnedCosign(a, hc); err == nil || !strings.Contains(err.Error(), "pinned hash") {
+		t.Fatalf("bad download: %v", err)
+	}
+	if _, err := os.Stat(bin); err == nil {
+		t.Error("bad download installed")
+	}
+	stub(t, &cosignArch, "s390x")
+	if _, err := pinnedCosign(a, hc); err == nil || !strings.Contains(err.Error(), "--skip-signature-check") {
+		t.Fatalf("unknown arch: %v", err)
+	}
+}
+
+// TestSignaturePinsMatch: the cosign pins and the signer identity are the
+// same in every installer as here.
+func TestSignaturePinsMatch(t *testing.T) {
+	read := func(p string) string {
+		b, err := os.ReadFile(filepath.Join("..", "..", p))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	block := func(s string) string {
+		i, j := strings.Index(s, "# ── Release signature ──"), strings.Index(s, "printf '==> Sigstore signature verified\\n' >&2\n}\n")
+		if i < 0 || j < i {
+			t.Fatal("no release signature block")
+		}
+		return s[i:j]
+	}
+	sh := []string{"collector/collect.sh", "collector/install.sh", "deploy/install-hub.sh"}
+	first := block(read(sh[0]))
+	for _, p := range sh[1:] {
+		if block(read(p)) != first {
+			t.Errorf("%s's release signature block differs from %s's", p, sh[0])
+		}
+	}
+	ps := read("collector/install-windows.ps1")
+	for name, want := range map[string]string{
+		"COSIGN_VERSION=" + cosignVersion:                       first,
+		"RELEASE_SIGNER='" + releaseSigner + "'":                first,
+		"c=amd64 s=" + cosignSHA256["amd64"]:                    first,
+		"c=arm64 s=" + cosignSHA256["arm64"]:                    first,
+		"$CosignVersion = '" + cosignVersion + "'":              ps,
+		"$ReleaseSigner = '" + releaseSigner + "'":              ps,
+		"'linux-amd64'       = '" + cosignSHA256["amd64"] + "'": ps,
+	} {
+		if !strings.Contains(want, name) {
+			t.Errorf("pin %q missing", name)
+		}
+	}
+	for _, p := range append(sh, "collector/install-windows.ps1") {
+		if strings.Contains(read(p), "have cosign") {
+			t.Errorf("%s still makes the signature check optional", p)
+		}
 	}
 }

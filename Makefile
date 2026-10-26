@@ -36,8 +36,8 @@ SHELLCHECK_IMAGE := koalaman/shellcheck:v0.10.0
 COLLECTOR_OUT ?= $(CURDIR)/bin/collector-out
 
 shellcheck:
-	docker run --rm -v "$(CURDIR)/collector:/mnt:ro" $(SHELLCHECK_IMAGE) -s sh /mnt/collect.sh /mnt/privilege-watch.sh /mnt/privilege-hook /mnt/login-watch.sh /mnt/test/run-containers.sh /mnt/test/sites-fixture.sh
-	docker run --rm -v "$(CURDIR)/deploy/test:/mnt:ro" $(SHELLCHECK_IMAGE) -s sh /mnt/installed-smoke.sh
+	docker run --rm -v "$(CURDIR)/collector:/mnt:ro" $(SHELLCHECK_IMAGE) -s sh /mnt/collect.sh /mnt/install.sh /mnt/privilege-watch.sh /mnt/privilege-hook /mnt/login-watch.sh /mnt/test/run-containers.sh /mnt/test/sites-fixture.sh
+	docker run --rm -v "$(CURDIR)/deploy:/mnt:ro" $(SHELLCHECK_IMAGE) -s sh /mnt/install-hub.sh /mnt/test/installed-smoke.sh
 
 # Runs collect.sh as an unprivileged user on Debian, Ubuntu, Rocky and
 # Alpine, then validates every snapshot with the hub's strict decoder.
