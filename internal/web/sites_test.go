@@ -93,16 +93,34 @@ func TestHostPageSites(t *testing.T) {
 	if !strings.Contains(b, "run in the site root") {
 		t.Error("site root note missing")
 	}
-	if !strings.Contains(b, "<h3>OS packages</h3>") || !strings.Contains(b, "<h2>Sites</h2>") {
+	if !strings.Contains(b, `<h3 id="os-packages">OS packages</h3>`) || !strings.Contains(b, "<h2>Sites</h2>") {
 		t.Error("OS and site sections missing")
 	}
 	if strings.Contains(b, "<img src=x") || !strings.Contains(b, "&lt;img src=x onerror=alert(1)&gt;") {
 		t.Error("advisory summary not escaped")
 	}
+	// Folded by package (closed: there are several sites, listed above
+	// them), and the line under the chips points at them.
+	for _, want := range []string{`<details class="site-findings">`, `<ul class="site-index small">`, `<a href="#site-0">`, `class="pkg-list"`, `<a href="#sites">1 site' Composer packages</a>: 1 fixable now`} {
+		if !strings.Contains(b, want) {
+			t.Errorf("host page missing %q", want)
+		}
+	}
 	// The Composer finding belongs to its site, not the OS table.
 	os, sites, _ := strings.Cut(b, "<h2>Sites</h2>")
 	if strings.Contains(os, "CVE-2099-1111") || !strings.Contains(sites, "CVE-2099-1111") {
 		t.Error("site finding rendered in the wrong section")
+	}
+}
+
+func TestAttnText(t *testing.T) {
+	for _, c := range []struct {
+		fixable, watch int
+		want           string
+	}{{46, 16, "46 fixable now · 16 to watch (no fix yet)"}, {3, 0, "3 fixable now"}, {0, 2, "2 to watch (no fix yet)"}, {0, 0, "nothing needs attention"}} {
+		if got := attnText(c.fixable, c.watch); got != c.want {
+			t.Errorf("attnText(%d, %d) = %q", c.fixable, c.watch, got)
+		}
 	}
 }
 

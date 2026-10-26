@@ -68,9 +68,25 @@
 </div>{{end}}
 {{if $calm}}{{else if eq .View "packages"}}
   {{if .Groups}}
+  {{template "pkggroups" .Groups}}
+  {{else}}<p class="empty">No findings match the filter.</p>{{end}}
+{{else}}
+  {{if .Rows}}{{template "findings" .Rows}}{{else}}<p class="empty">No findings match the filter.</p>{{end}}
+{{end}}
+{{if and .Focus .Total .Hidden}}<p class="muted small focus-more">Plus {{num .Hidden}} finding{{if ne .Hidden 1}}s{{end}} with no fix released yet and little sign of exploitation. <a href="{{.AllSevLink}}">Show all findings</a></p>{{end}}
+{{if gt .Pages 1}}<nav class="pager" aria-label="Pages">
+  {{with .PrevLink}}<a class="button secondary" href="{{.}}">← Previous</a>{{else}}<span></span>{{end}}
+  <span class="muted small">Page {{.Page}} of {{.Pages}}</span>
+  {{with .NextLink}}<a class="button secondary" href="{{.}}">Next →</a>{{else}}<span></span>{{end}}
+</nav>{{end}}
+{{end}}
+
+{{/* pkggroups: findings folded one row per package ([]pkgGroup), each
+     opening to its findings. */}}
+{{define "pkggroups"}}
   <div class="pkg-list" role="table" aria-label="Findings by package">
     <div class="pkg-grid pkg-head" role="row"><span>Package</span><span>Installed</span><span>Worst</span><span class="num">KEV</span><span class="num">Crit</span><span class="num">High</span><span class="num">Med</span><span class="num">Low</span><span class="num">Fixable</span></div>
-    {{range .Groups}}<details class="pkg-row">
+    {{range .}}<details class="pkg-row">
       <summary class="pkg-grid" role="row">
         <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span>{{template "kernelbadge" .KernelStatus}}{{if .News}} <span class="badge news" title="{{.News}} named by a live incident in the news">in the news</span>{{end}}</span>
         <span class="ver">{{.Version}}</span>
@@ -86,16 +102,6 @@
       </div>
     </details>{{end}}
   </div>
-  {{else}}<p class="empty">No findings match the filter.</p>{{end}}
-{{else}}
-  {{if .Rows}}{{template "findings" .Rows}}{{else}}<p class="empty">No findings match the filter.</p>{{end}}
-{{end}}
-{{if and .Focus .Total .Hidden}}<p class="muted small focus-more">Plus {{num .Hidden}} finding{{if ne .Hidden 1}}s{{end}} with no fix released yet and little sign of exploitation. <a href="{{.AllSevLink}}">Show all findings</a></p>{{end}}
-{{if gt .Pages 1}}<nav class="pager" aria-label="Pages">
-  {{with .PrevLink}}<a class="button secondary" href="{{.}}">← Previous</a>{{else}}<span></span>{{end}}
-  <span class="muted small">Page {{.Page}} of {{.Pages}}</span>
-  {{with .NextLink}}<a class="button secondary" href="{{.}}">Next →</a>{{else}}<span></span>{{end}}
-</nav>{{end}}
 {{end}}
 
 {{/* epssbadge: an EPSS score worth watching (store.WatchEPSS or more), with a leading space. */}}
@@ -122,7 +128,7 @@
      include findings nobody can act on yet, browse everything. */}}
 {{define "chips"}}
   <div class="chips" aria-label="Filter findings">
-    <a class="chip{{if .C.Attention}} chip-attn{{else}} chip-ok{{end}}{{if $.V.Focus}} active{{end}}" href="{{$.V.FocusLink}}" title="{{.C.Fixable}} fixable now, and {{.C.Watch}} with no fix yet that are known-exploited, in the news or likely to be exploited (EPSS {{watchEPSS}} or more)"><strong>{{.C.Attention}}</strong> need{{if eq .C.Attention 1}}s{{end}} attention</a>
+    <a class="chip{{if .C.Attention}} chip-attn{{else}} chip-ok{{end}}{{if $.V.Focus}} active{{end}}" href="{{$.V.FocusLink}}" title="{{.C.Fixable}} fixable now, and {{.C.Watch}} with no fix yet that are known-exploited, in the news or likely to be exploited (EPSS {{watchEPSS}} or more)">{{if and .C.Fixable .C.Watch}}<strong>{{.C.Fixable}}</strong> fixable · <strong>{{.C.Watch}}</strong> to watch{{else if .C.Watch}}<strong>{{.C.Watch}}</strong> to watch, no fix yet{{else}}<strong>{{.C.Attention}}</strong> need{{if eq .C.Attention 1}}s{{end}} attention{{end}}</a>
     <a class="chip{{if .C.KEV}} chip-kev{{end}}{{if eq $.V.Sev "kev"}} active{{end}}" href="{{index $.V.SevLinks "kev"}}" title="CISA Known Exploited Vulnerabilities"><strong>{{.C.KEV}}</strong> known-exploited</a>
     {{if $.V.Fixable}}<a class="chip active" href="{{index $.V.FixLink "off"}}" title="{{.C.FixPending}} via updates already pending on the host"><strong>{{.C.Fixable}}</strong> fixable now</a>
     {{else}}<a class="chip" href="{{index $.V.FixLink "on"}}" title="Show only findings an update fixes ({{.C.FixPending}} already pending on the host)"><strong>{{.C.Fixable}}</strong> fixable now</a>{{end}}

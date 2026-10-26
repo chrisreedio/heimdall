@@ -91,17 +91,20 @@
 <section id="findings">
   <h2>Findings</h2>
   {{template "chips" (chipsFor .Report.Counts .OSView)}}
-  <h3>OS packages</h3>
+  {{with .Attn}}{{if or .Sites .Lockfiles}}<p class="small attn-where">{{if or .OSFixable .OSWatch}}<a href="#os-packages">OS packages</a>: {{attn .OSFixable .OSWatch}}{{end}}{{if .Sites}}{{if or .OSFixable .OSWatch}} · {{end}}<a href="#sites">{{.Sites}} site{{if ne .Sites 1}}s{{end}}' Composer packages</a>: {{attn .SiteFixable .SiteWatch}}{{end}}{{if .Lockfiles}}{{if or .OSFixable .OSWatch .Sites}} · {{end}}<a href="#lockfiles">{{.Lockfiles}} lockfile{{if ne .Lockfiles 1}}s{{end}}</a>: {{attn .LockFixable .LockWatch}}{{end}}</p>{{end}}{{end}}
+  <h3 id="os-packages">OS packages</h3>
+  {{if and .OSView.Focus .Attn.OSWatch (not .Attn.OSFixable)}}<p class="muted small attn-note">None of these can be fixed by updating yet: no fix is released. They're listed because they're known-exploited, in the news or likely to be exploited. Heimdall shows the fix here once one ships.</p>{{end}}
   {{if not .Report.Ecosystem}}<p class="empty">Vulnerability matching isn't supported for this OS yet.</p>
   {{else if .OSFindings}}{{template "osfindings" .OSView}}
   {{else}}<p class="empty">No open findings in OS packages.</p>{{end}}
 </section>
 
 {{if .Sites}}
-<section>
+<section id="sites">
   <h2>Sites</h2>
+  {{if gt (len .Sites) 1}}<ul class="site-index small">{{range .Sites}}<li><a href="#{{.ID}}">{{with first .ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}}</a> {{if or .Fixable .Watch}}<span class="muted">{{attn .Fixable .Watch}}</span>{{else if .Findings}}<span class="muted">nothing to act on</span>{{else}}<span class="muted">no findings</span>{{end}}</li>{{end}}</ul>{{end}}
   {{range .Sites}}
-  <div class="card site">
+  <div class="card site" id="{{.ID}}">
     <h3><a href="{{siteURL $.Body.Org $.Body.Name .Root}}">{{with first .ServerNames}}{{if eq . "_"}}Default server{{else}}{{.}}{{end}}{{else}}{{.Root}}{{end}}</a> {{with .Label}}<span class="site-label label-{{.}}">{{.}}</span>{{end}} {{template "sitebadges" .Site}}</h3>
     <p class="site-root"><code class="path">{{pathBreak .Root}}</code>{{if and .DocumentRoot (ne .DocumentRoot .Root)}} <span class="muted">serving</span> <code class="path">{{pathBreak (relPath .Root .DocumentRoot)}}</code>{{end}}{{if gt (len .ServerNames) 1}} <span class="muted">· also</span> {{join (slice .ServerNames 1) ", "}}{{end}}</p>
     <ul class="site-facts">
@@ -121,8 +124,27 @@
       <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
     </div>
     {{end}}
-    {{template "findingsSplit" (findings .Findings $.Body.ShowAll (print (hostURL $.Body.Org $.Body.Name) "?findings=all#findings"))}}
+    <details class="site-findings"{{if eq (len $.Body.Sites) 1}} open{{end}}>
+      <summary>{{len .Findings}} finding{{if ne (len .Findings) 1}}s{{end}} in {{len .Groups}} package{{if ne (len .Groups) 1}}s{{end}}{{if or .Fixable .Watch}} · {{attn .Fixable .Watch}}{{end}}</summary>
+      {{template "pkggroups" .Groups}}
+    </details>
     {{else if .Readable}}<p class="empty">No open findings in Composer packages.</p>{{end}}
+  </div>
+  {{end}}
+</section>
+{{end}}
+
+{{if .Lockfiles}}
+<section id="lockfiles">
+  <h2>Application lockfiles</h2>
+  <p class="muted small">npm and PyPI lockfiles the collector is allowed to read. Update the packages in the project that owns each one.</p>
+  {{range .Lockfiles}}
+  <div class="card site" id="{{.ID}}">
+    <h3><code class="path">{{pathBreak .Root}}</code></h3>
+    {{if .Findings}}<details class="site-findings"{{if eq (len $.Body.Lockfiles) 1}} open{{end}}>
+      <summary>{{len .Findings}} finding{{if ne (len .Findings) 1}}s{{end}} in {{len .Groups}} package{{if ne (len .Groups) 1}}s{{end}}{{if or .Fixable .Watch}} · {{attn .Fixable .Watch}}{{end}}</summary>
+      {{template "pkggroups" .Groups}}
+    </details>{{else}}<p class="empty">No open findings.</p>{{end}}
   </div>
   {{end}}
 </section>
@@ -155,11 +177,6 @@
     <thead><tr><th>Name</th><th>Image</th><th>Tag</th><th>State</th></tr></thead>
     <tbody>{{range .Report.Containers}}<tr><td>{{.Name}}</td><td>{{.Image}}</td><td>{{.Tag}}</td><td>{{.State}}</td></tr>{{end}}</tbody>
   </table></div>
-  </section>{{end}}
-  {{if .Report.Lockfiles}}<section class="card">
-  <h2>Application lockfiles</h2>
-  <ul>{{range .Report.Lockfiles}}<li><code>{{.}}</code></li>{{end}}</ul>
-  <p class="muted">Findings for these appear in the findings table with the lockfile path.</p>
   </section>{{end}}
   <details>
     <summary>All installed packages ({{len .Packages}})</summary>
