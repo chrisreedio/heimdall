@@ -6,7 +6,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"strconv"
 	"time"
 
 	"github.com/realmwatch/heimdall/internal/kernel"
@@ -71,15 +70,21 @@ func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]Fin
 // countsSQL recounts open findings into finding_counts for host ?1 (0 = all
 // hosts). It counts exactly what OpenFindings returns: KEV through the
 // advisory's ID or any alias, news through a live incident naming the
-// advisory or one of its CVE aliases. ?2 is each host's kernel package
-// sets (kernelSets), so an OS finding is not_running when every binary is
-// an old kernel's package, and reboot_pending when every binary is the
-// running kernel's while a newer one is installed, and userland when every
-// binary is a kernel userland package (?3, kernel.Userland's list):
-// kernel.State.Status. ?4 is WatchEPSS: watch counts findings with no fix
+// advisory or one of its CVE aliases. temp.kernel_old and temp.kernel_boot
+// hold each host's kernel package sets (kernelSets), so an OS finding is
+// not_running when every binary is an old kernel's package, and
+// reboot_pending when every binary is the running kernel's while a newer
+// one is installed, and userland when every binary is a kernel userland
+// package (temp.kernel_userland, kernel.Userland's list):
+// kernel.State.Status. ?2 is WatchEPSS: watch counts findings with no fix
 // that are known-exploited, in the news, or scored at least that. A
 // finding on an npm dev dependency (findings.dev) counts in total and dev
 // only (report.Counts.Dev).
+//
+// The sets are indexed tables, not JSON arrays: a host with tens of
+// thousands of findings and a hundred old-kernel packages made
+// "NOT IN (SELECT value FROM json_each(...))" re-parse the set for every
+// binary of every finding, and a recount took over a minute.
 const countsSQL = `
 	WITH kev AS (
 		SELECT k.cve_id AS id FROM kev_entries k
@@ -90,25 +95,24 @@ const countsSQL = `
 		SELECT cve AS id FROM news_cve
 		UNION SELECT aa.advisory_id FROM advisory_aliases aa JOIN news_cve ON news_cve.cve = aa.alias),
 	hot AS (
-		SELECT e.cve_id AS id FROM epss_scores e WHERE e.score >= ?4
-		UNION SELECT aa.advisory_id FROM advisory_aliases aa JOIN epss_scores e ON e.cve_id = aa.alias WHERE e.score >= ?4),
-	ks AS (
-		SELECT CAST(key AS INTEGER) AS host_id, json_extract(value, '$.old') AS old, json_extract(value, '$.boot') AS boot
-		FROM json_each(?2)),
+		SELECT e.cve_id AS id FROM epss_scores e WHERE e.score >= ?2
+		UNION SELECT aa.advisory_id FROM advisory_aliases aa JOIN epss_scores e ON e.cve_id = aa.alias WHERE e.score >= ?2),
 	fs AS (
 		SELECT f.host_id, f.site_root, a.severity AS sev, f.dev AS dev,
 		       coalesce(f.fixed_version, '') != '' AS fixable, f.fix_pending AS pending,
 		       f.advisory_id IN (SELECT id FROM kev) AS kev, f.advisory_id IN (SELECT id FROM news) AS news,
 		       f.advisory_id IN (SELECT id FROM hot) AS hot,
 		       coalesce(f.site_root = '' AND json_array_length(f.binaries) > 0 AND h.dpkg AND NOT EXISTS (
-		           SELECT 1 FROM json_each(f.binaries) b WHERE b.value NOT IN (SELECT value FROM json_each(?3))
+		           SELECT 1 FROM json_each(f.binaries) b
+		           WHERE NOT EXISTS (SELECT 1 FROM temp.kernel_userland kl WHERE kl.name = b.value)
 		           AND b.value NOT LIKE 'linux-source-%'), 0) AS ku,
-		       coalesce(f.site_root = '' AND json_array_length(f.binaries) > 0 AND ks.old IS NOT NULL AND NOT EXISTS (
-		           SELECT 1 FROM json_each(f.binaries) b WHERE b.value NOT IN (SELECT value FROM json_each(ks.old))), 0) AS nr0,
-		       coalesce(f.site_root = '' AND json_array_length(f.binaries) > 0 AND ks.boot IS NOT NULL AND NOT EXISTS (
-		           SELECT 1 FROM json_each(f.binaries) b WHERE b.value NOT IN (SELECT value FROM json_each(ks.boot))), 0) AS rb
+		       coalesce(f.site_root = '' AND json_array_length(f.binaries) > 0 AND NOT EXISTS (
+		           SELECT 1 FROM json_each(f.binaries) b
+		           WHERE NOT EXISTS (SELECT 1 FROM temp.kernel_old ko WHERE ko.host_id = f.host_id AND ko.name = b.value)), 0) AS nr0,
+		       coalesce(f.site_root = '' AND json_array_length(f.binaries) > 0 AND NOT EXISTS (
+		           SELECT 1 FROM json_each(f.binaries) b
+		           WHERE NOT EXISTS (SELECT 1 FROM temp.kernel_boot kb WHERE kb.host_id = f.host_id AND kb.name = b.value)), 0) AS rb
 		FROM findings f JOIN advisories a INDEXED BY advisories_tally ON a.id = f.advisory_id
-		LEFT JOIN ks ON ks.host_id = f.host_id
 		JOIN (SELECT h.id, coalesce(s.package_manager = 'dpkg', 0) AS dpkg FROM hosts h
 		      LEFT JOIN snapshots s ON s.id = h.last_snapshot_id WHERE ?1 = 0 OR h.id = ?1) h ON h.id = f.host_id
 		WHERE f.resolved_at IS NULL AND a.withdrawn IS NULL),
@@ -126,6 +130,25 @@ const countsSQL = `
 	FROM fk
 	GROUP BY host_id, site_root`
 
+// kernelTables are countsSQL's per-connection sets. The store has one
+// connection, so they're emptied after every recount (and before, in case
+// a failed one left rows behind).
+var kernelTables = []string{
+	`CREATE TEMP TABLE IF NOT EXISTS kernel_old (host_id INTEGER, name TEXT, PRIMARY KEY (host_id, name)) WITHOUT ROWID`,
+	`CREATE TEMP TABLE IF NOT EXISTS kernel_boot (host_id INTEGER, name TEXT, PRIMARY KEY (host_id, name)) WITHOUT ROWID`,
+	`CREATE TEMP TABLE IF NOT EXISTS kernel_userland (name TEXT PRIMARY KEY) WITHOUT ROWID`,
+}
+
+// clearKernelTables empties kernelTables.
+func clearKernelTables(ctx context.Context, tx *sql.Tx) error {
+	for _, t := range []string{"kernel_old", "kernel_boot", "kernel_userland"} {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM temp.`+t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // refreshFindingCounts rewrites finding_counts for one host (0 = every
 // host) inside tx. Callers: SetFindings (the host's findings changed, and
 // with them any advisory updates fetched for it, or its kernels), ReplaceKEV,
@@ -135,24 +158,63 @@ func refreshFindingCounts(ctx context.Context, tx *sql.Tx, hostID int64) error {
 	if err != nil {
 		return err
 	}
+	return writeFindingCounts(ctx, tx, hostID, sets)
+}
+
+// writeFindingCounts is refreshFindingCounts with the kernel sets given.
+func writeFindingCounts(ctx context.Context, tx *sql.Tx, hostID int64, sets map[int64]kernelSet) error {
+	for _, q := range kernelTables {
+		if _, err := tx.ExecContext(ctx, q); err != nil {
+			return err
+		}
+	}
+	if err := clearKernelTables(ctx, tx); err != nil {
+		return err
+	}
+	fill := func(table string, host int64, names []string) error {
+		b, _ := json.Marshal(names)
+		_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO temp.`+table+` (host_id, name)
+			SELECT ?, value FROM json_each(?)`, host, string(b))
+		return err
+	}
+	for id, ks := range sets {
+		if err := fill("kernel_old", id, ks.Old); err != nil {
+			return err
+		}
+		if err := fill("kernel_boot", id, ks.Boot); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO temp.kernel_userland (name) SELECT value FROM json_each(?)`,
+		userlandJSON); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM finding_counts WHERE ?1 = 0 OR host_id = ?1`, hostID); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, countsSQL, hostID, sets, userlandJSON, WatchEPSS)
-	return err
+	if _, err := tx.ExecContext(ctx, countsSQL, hostID, WatchEPSS); err != nil {
+		return err
+	}
+	return clearKernelTables(ctx, tx)
 }
 
-// userlandJSON is kernel.Userland's exact names, for countsSQL.
+// userlandJSON is kernel.Userland's exact names, for temp.kernel_userland.
 var userlandJSON = func() string {
 	b, _ := json.Marshal(kernel.UserlandNames())
 	return string(b)
 }()
 
-// kernelSets is, as JSON, each Debian/Ubuntu host's old-kernel and
-// reboot-pending package names ({"<host id>": {"old": [...], "boot": [...]}})
-// from its latest snapshot, for host hostID (0 = every host). Hosts with
-// neither are left out. It reads only the linux-* packages.
-func kernelSets(ctx context.Context, tx *sql.Tx, hostID int64) (string, error) {
+// kernelSet is one host's old-kernel and reboot-pending package names.
+type kernelSet struct {
+	Old  []string `json:"old"`
+	Boot []string `json:"boot"`
+}
+
+// kernelSets is each Debian/Ubuntu host's old-kernel and reboot-pending
+// package names from its latest snapshot, for host hostID (0 = every
+// host). Hosts with neither are left out. It reads only the linux-*
+// packages.
+func kernelSets(ctx context.Context, tx *sql.Tx, hostID int64) (map[int64]kernelSet, error) {
 	rows, err := tx.QueryContext(ctx, `
 		SELECT h.id, coalesce(s.kernel, ''), p.name, p.version, p.arch
 		FROM hosts h JOIN snapshots s ON s.id = h.last_snapshot_id
@@ -160,14 +222,10 @@ func kernelSets(ctx context.Context, tx *sql.Tx, hostID int64) (string, error) {
 		WHERE (?1 = 0 OR h.id = ?1) AND s.package_manager = 'dpkg'
 		ORDER BY h.id`, hostID)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer rows.Close()
-	type sets struct {
-		Old  []string `json:"old"`
-		Boot []string `json:"boot"`
-	}
-	out := map[string]sets{}
+	out := map[int64]kernelSet{}
 	running := map[int64]string{}
 	pkgs := map[int64][]kernel.Installed{}
 	var order []int64
@@ -176,7 +234,7 @@ func kernelSets(ctx context.Context, tx *sql.Tx, hostID int64) (string, error) {
 		var k string
 		var p kernel.Installed
 		if err := rows.Scan(&id, &k, &p.Name, &p.Version, &p.Arch); err != nil {
-			return "", err
+			return nil, err
 		}
 		if _, ok := running[id]; !ok {
 			order = append(order, id)
@@ -185,23 +243,15 @@ func kernelSets(ctx context.Context, tx *sql.Tx, hostID int64) (string, error) {
 		pkgs[id] = append(pkgs[id], p)
 	}
 	if err := rows.Err(); err != nil {
-		return "", err
+		return nil, err
 	}
 	for _, id := range order {
 		st := kernel.HostState("dpkg", running[id], pkgs[id])
 		if len(st.Old) > 0 || len(st.Boot) > 0 {
-			out[strconv.FormatInt(id, 10)] = sets{Old: nonNilStrings(st.Old), Boot: nonNilStrings(st.Boot)}
+			out[id] = kernelSet{Old: st.Old, Boot: st.Boot}
 		}
 	}
-	b, err := json.Marshal(out)
-	return string(b), err
-}
-
-func nonNilStrings(s []string) []string {
-	if s == nil {
-		return []string{}
-	}
-	return s
+	return out, nil
 }
 
 // RecountFindings rewrites every host's finding_counts (after a migration

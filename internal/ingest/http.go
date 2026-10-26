@@ -4,6 +4,7 @@ package ingest
 
 import (
 	"compress/gzip"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -61,6 +63,12 @@ type Handler struct {
 	authFail    *limiter
 	enrolls     *limiter
 
+	// hostByToken is store.HostByToken (replaced in tests), bounded by
+	// lookupTimeout so a busy store answers 503 while the collector can
+	// still read the reply.
+	hostByToken   func(context.Context, [32]byte) (store.IngestHost, error)
+	lookupTimeout time.Duration
+
 	// OnStored, if set, is called after a new snapshot is stored (e.g. to
 	// recompute the host's findings). It must not block.
 	OnStored func(store.IngestHost)
@@ -87,6 +95,9 @@ func NewHandler(st *store.Store, cfg config.Ingest, log *slog.Logger, now func()
 		perHost:     newLimiter(cfg.RatePerHost.N, cfg.RatePerHost.Per, maxLimiterKeys, now),
 		authFail:    newLimiter(authFailuresPerMinute, time.Minute, maxLimiterKeys, now),
 		enrolls:     newLimiter(enrollsPerMinute, time.Minute, maxLimiterKeys, now),
+
+		hostByToken:   st.HostByToken,
+		lookupTimeout: tokenLookupTimeout,
 	}
 	for _, c := range cfg.AllowCIDRs {
 		_, n, err := net.ParseCIDR(c)
@@ -96,6 +107,21 @@ func NewHandler(st *store.Store, cfg config.Ingest, log *slog.Logger, now func()
 		h.allow = append(h.allow, n)
 	}
 	return h, nil
+}
+
+// tokenLookupTimeout bounds the wait for the store to look up a token: well
+// inside Server's WriteTimeout, so a busy hub's 503 still reaches the
+// collector.
+const tokenLookupTimeout = 15 * time.Second
+
+// retryAfter is the Retry-After on a 503, in seconds (the collector's own
+// retry delay).
+const retryAfter = "10"
+
+// unavailable answers 503 with Retry-After, which collectors retry.
+func unavailable(w http.ResponseWriter, msg string) {
+	w.Header().Set("Retry-After", retryAfter)
+	respond(w, http.StatusServiceUnavailable, msg)
 }
 
 // respond ends a request with a short plain-text message. Bodies are for
@@ -138,8 +164,30 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.enroll(w, r, ip, key, log) // enroll.go
 		return
 	}
-	host, ok := h.authenticate(r)
+	token, ok := bearerToken(r)
 	if !ok {
+		h.authFail.allow(ip.String())
+		log.Warn("ingest rejected: invalid token")
+		respond(w, http.StatusUnauthorized, "invalid token")
+		return
+	}
+	// The body is read before the token is looked up, so a wait for the
+	// store can't use up the server's read deadline (and turn a good
+	// report into a 400). Only a well-formed token gets this far, and the
+	// read is capped on the wire and decompressed (readBody).
+	var raw []byte
+	var bodyCode int
+	var bodyErr error
+	if r.Method == http.MethodPost {
+		raw, bodyCode, bodyErr = h.readBody(w, r)
+	}
+	host, found, err := h.authenticate(r.Context(), token)
+	if err != nil {
+		log.Error("ingest deferred: token lookup failed", "err", err)
+		unavailable(w, "hub busy, retry later")
+		return
+	}
+	if !found {
 		h.authFail.allow(ip.String())
 		log.Warn("ingest rejected: invalid token")
 		respond(w, http.StatusUnauthorized, "invalid token")
@@ -168,17 +216,19 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Enrolled and waiting for an admin's approval: answered, so the
 	// collector stays quiet, but nothing it sends is stored.
 	if host.Awaiting {
-		io.Copy(io.Discard, http.MaxBytesReader(w, r.Body, h.maxBody))
 		log.Info("ingest ignored: host waiting for approval")
 		w.Header().Set(PendingHeader, "1")
 		respond(w, http.StatusAccepted, "waiting for approval")
 		return
 	}
 
-	raw, status, err := h.readBody(w, r)
-	if err != nil {
-		log.Warn("ingest rejected: bad body", "status", status, "err", err)
-		respond(w, status, err.Error())
+	if bodyErr != nil {
+		log.Warn("ingest rejected: bad body", "status", bodyCode, "err", bodyErr)
+		if bodyCode == http.StatusServiceUnavailable {
+			unavailable(w, bodyErr.Error())
+		} else {
+			respond(w, bodyCode, bodyErr.Error())
+		}
 		return
 	}
 
@@ -241,19 +291,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	respond(w, res.Status, res.Message)
 }
 
-func (h *Handler) authenticate(r *http.Request) (store.IngestHost, bool) {
+// bearerToken is the request's ingest token, if it has a well-formed one.
+func bearerToken(r *http.Request) (string, bool) {
 	token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	if !ok || !secret.LooksLike(token, secret.IngestPrefix) {
-		return store.IngestHost{}, false
+	return token, ok && secret.LooksLike(token, secret.IngestPrefix)
+}
+
+// authenticate looks up token's host. found is false for an unknown or
+// revoked token; err is the store failing or too slow to answer.
+func (h *Handler) authenticate(ctx context.Context, token string) (host store.IngestHost, found bool, err error) {
+	ctx, cancel := context.WithTimeout(ctx, h.lookupTimeout)
+	defer cancel()
+	host, err = h.hostByToken(ctx, secret.Hash(token))
+	if errors.Is(err, store.ErrNotFound) {
+		return host, false, nil
 	}
-	host, err := h.store.HostByToken(r.Context(), secret.Hash(token))
-	if err != nil {
-		if !errors.Is(err, store.ErrNotFound) {
-			h.log.Error("token lookup failed", "err", err)
-		}
-		return store.IngestHost{}, false
-	}
-	return host, true
+	return host, err == nil, err
 }
 
 // readBody enforces the content type and the size cap on both the wire
@@ -268,7 +321,7 @@ func (h *Handler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, int,
 	case "gzip":
 		zr, err := gzip.NewReader(body)
 		if err != nil {
-			return nil, bodyStatus(err), fmt.Errorf("invalid gzip body")
+			return nil, bodyStatus(err), bodyError(err, "invalid gzip body")
 		}
 		defer zr.Close()
 		body = zr
@@ -277,7 +330,7 @@ func (h *Handler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, int,
 	}
 	raw, err := io.ReadAll(io.LimitReader(body, h.maxBody+1))
 	if err != nil {
-		return nil, bodyStatus(err), errors.New("could not read body")
+		return nil, bodyStatus(err), bodyError(err, "could not read body")
 	}
 	if int64(len(raw)) > h.maxBody {
 		return nil, http.StatusRequestEntityTooLarge, errors.New("snapshot too large")
@@ -285,10 +338,25 @@ func (h *Handler) readBody(w http.ResponseWriter, r *http.Request) ([]byte, int,
 	return raw, 0, nil
 }
 
+// bodyError is msg, or for a read that timed out, says so.
+func bodyError(err error, msg string) error {
+	if bodyStatus(err) == http.StatusServiceUnavailable {
+		return errors.New("timed out reading the body, retry later")
+	}
+	return errors.New(msg)
+}
+
+// bodyStatus is the answer to a failed body read: 413 over the cap, 503
+// when the read deadline passed (a slow link or a stalled hub, not a bad
+// report: collectors retry a 503), else 400.
 func bodyStatus(err error) int {
 	var tooBig *http.MaxBytesError
 	if errors.As(err, &tooBig) {
 		return http.StatusRequestEntityTooLarge
+	}
+	var ne net.Error
+	if errors.Is(err, os.ErrDeadlineExceeded) || errors.As(err, &ne) && ne.Timeout() {
+		return http.StatusServiceUnavailable
 	}
 	return http.StatusBadRequest
 }

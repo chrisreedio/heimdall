@@ -18,7 +18,7 @@ import (
 // test run and copied, since migrating takes a few hundred milliseconds
 // under the race detector (storetest does the same for other packages,
 // which this package's tests can't import).
-func newStore(t *testing.T) *Store {
+func newStore(t testing.TB) *Store {
 	t.Helper()
 	templateOnce.Do(func() { template, templateErr = buildTemplate() })
 	if templateErr != nil {
