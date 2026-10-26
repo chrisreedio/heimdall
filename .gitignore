@@ -7,3 +7,6 @@
 /heimdall.toml
 /dist/
 /demo/
+
+# Locally built binary
+/heimdall
