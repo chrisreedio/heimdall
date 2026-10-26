@@ -316,12 +316,13 @@ func Build(in Input) Map {
 			switch c, ok := in.CNAMEs[t]; {
 			case inZone && !hasName(in.Records, t):
 				addFlag(r, Flag{Kind: "dangling-cname", Level: Medium, Note: "CNAME to " + t + ", which has no record in its zone"})
+			case !inZone && ok && c.Status == store.CNAMEUnregistered:
+				addFlag(r, Flag{Kind: "takeover", Level: High, Note: "CNAME target " + t + " doesn't exist and " + c.Note + ": anyone who registers it can serve " + r.Name})
+			case !inZone && ok && c.Status == store.CNAMENXDomain && svc != "":
+				addFlag(r, Flag{Kind: "takeover", Level: High, Note: "CNAME target " + t + " doesn't exist: anyone who creates it on " + svc + " can serve " + r.Name})
 			case !inZone && ok && c.Status == store.CNAMENXDomain:
-				who := "anyone who registers it"
-				if svc != "" {
-					who = "anyone who creates it on " + svc
-				}
-				addFlag(r, Flag{Kind: "takeover", Level: High, Note: "CNAME target " + t + " doesn't exist (NXDOMAIN): " + who + " can serve " + r.Name})
+				// Its domain is someone's: only they can bring it back.
+				addFlag(r, Flag{Kind: "dead-cname", Level: Info, Note: "CNAME target " + t + " doesn't exist; its domain is someone's, so it's no takeover. Remove the record if the service is gone (some publish theirs later: Microsoft 365's DKIM selector2 appears only when keys rotate)"})
 			}
 		}
 		for _, h := range r.Hosts {

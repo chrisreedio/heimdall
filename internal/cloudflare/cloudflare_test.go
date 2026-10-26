@@ -88,7 +88,7 @@ func (f *fakeAPI) handler(t *testing.T) http.Handler {
 			} else {
 				env(w, []Record{
 					{Name: "www.example.com", Type: "CNAME", Content: "origin.example.com", TTL: 1},
-					{Name: "old.example.com", Type: "A", Content: "192.0.2.99", Proxied: true, TTL: 1},
+					{Name: "old.example.com", Type: "A", Content: "203.0.113.199", Proxied: true, TTL: 1},
 					{Name: "office.example.com", Type: "A", Content: "198.51.100.5", TTL: 1},
 				}, 2, 2)
 			}

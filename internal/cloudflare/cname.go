@@ -46,9 +46,15 @@ func ThirdParty(target string) string {
 	return ""
 }
 
-// Resolver looks up a name's addresses; *net.Resolver is one.
+// Resolver looks up DNS records; *net.Resolver is one. Go reports a name
+// that exists without addresses (a DKIM key, say: TXT only) the same way
+// as one that doesn't exist, so the other lookups tell them apart.
 type Resolver interface {
 	LookupHost(ctx context.Context, host string) ([]string, error)
+	LookupCNAME(ctx context.Context, host string) (string, error)
+	LookupTXT(ctx context.Context, name string) ([]string, error)
+	LookupMX(ctx context.Context, name string) ([]*net.MX, error)
+	LookupNS(ctx context.Context, name string) ([]*net.NS, error)
 }
 
 // CNAME check bounds: lookups run a few at a time, each with a timeout,
@@ -59,9 +65,11 @@ const (
 	cnameMax     = 500
 )
 
-// CheckCNAMEs resolves each target. A target that doesn't exist
-// (NXDOMAIN) is store.CNAMENXDomain; a lookup that fails otherwise is
-// store.CNAMEError, which the store doesn't let replace an earlier answer.
+// CheckCNAMEs resolves each target. A target that doesn't exist (no
+// addresses and no other records) is store.CNAMENXDomain, or
+// store.CNAMEUnregistered when its domain isn't registered either; a lookup
+// that fails otherwise is store.CNAMEError, which the store doesn't let
+// replace an earlier answer.
 func CheckCNAMEs(ctx context.Context, r Resolver, targets []string) []store.CNAMECheck {
 	if r == nil {
 		r = net.DefaultResolver
@@ -92,16 +100,70 @@ func checkOne(ctx context.Context, r Resolver, target string) store.CNAMECheck {
 	defer cancel()
 	c := store.CNAMECheck{Target: target, Status: store.CNAMEOK}
 	addrs, err := r.LookupHost(ctx, target)
-	var de *net.DNSError
 	switch {
-	case errors.As(err, &de) && de.IsNotFound:
-		c.Status, c.Note = store.CNAMENXDomain, "no such host"
-	case err != nil:
+	case err != nil && !notFound(err):
 		c.Status, c.Note = store.CNAMEError, clip(err.Error())
-	case len(addrs) == 0:
-		c.Status, c.Note = store.CNAMENXDomain, "no addresses"
+		return c
+	case len(addrs) > 0:
+		return c
+	}
+	// No addresses: does the name hold other records?
+	cname, err := r.LookupCNAME(ctx, target)
+	if err == nil && cname != "" {
+		c.Note = "no addresses; it's a CNAME to " + clip(strings.TrimSuffix(cname, "."))
+		return c
+	}
+	txt, terr := r.LookupTXT(ctx, target)
+	if terr == nil && len(txt) > 0 {
+		c.Note = "no addresses; it has TXT records"
+		return c
+	}
+	mx, merr := r.LookupMX(ctx, target)
+	if merr == nil && len(mx) > 0 {
+		c.Note = "no addresses; it has MX records"
+		return c
+	}
+	for _, err := range []error{err, terr, merr} {
+		if err != nil && !notFound(err) {
+			c.Status, c.Note = store.CNAMEError, clip(err.Error())
+			return c
+		}
+	}
+	c.Status, c.Note = store.CNAMENXDomain, "no such name"
+	// Can anyone register its domain? Every registered domain has NS records.
+	if d := registrable(target); d != "" {
+		ns, err := r.LookupNS(ctx, d)
+		if notFound(err) || (err == nil && len(ns) == 0) {
+			c.Status, c.Note = store.CNAMEUnregistered, d+" isn't registered"
+		}
 	}
 	return c
+}
+
+func notFound(err error) bool {
+	var de *net.DNSError
+	return errors.As(err, &de) && de.IsNotFound
+}
+
+// secondLevel are the labels that, under a two-letter country TLD, are
+// usually a public suffix (co.uk, com.au), not a registrable domain. Without
+// the public suffix list this is an approximation; the third-party list
+// covers the hosting suffixes (github.io and the like).
+var secondLevel = map[string]bool{"co": true, "com": true, "net": true, "org": true, "gov": true, "edu": true, "ac": true, "ltd": true, "plc": true, "me": true, "sch": true, "nhs": true}
+
+// registrable returns the domain someone would register to own name
+// (example.com for a.b.example.com, example.co.uk for x.example.co.uk), or
+// "" when name is too short to have one.
+func registrable(name string) string {
+	l := strings.Split(strings.TrimSuffix(strings.ToLower(name), "."), ".")
+	n := 2
+	if len(l) >= 2 && len(l[len(l)-1]) == 2 && secondLevel[l[len(l)-2]] {
+		n = 3
+	}
+	if len(l) < n {
+		return ""
+	}
+	return strings.Join(l[len(l)-n:], ".")
 }
 
 // ForeignTargets returns the CNAME targets outside every zone, sorted:

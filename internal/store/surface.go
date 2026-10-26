@@ -96,9 +96,10 @@ func (s *Store) SurfaceSettingsAll(ctx context.Context) (map[string]SurfaceSetti
 
 // CNAME check statuses.
 const (
-	CNAMEOK       = "ok"
-	CNAMENXDomain = "nxdomain" // the target doesn't exist: a takeover risk
-	CNAMEError    = "error"    // the lookup failed (timeout, SERVFAIL)
+	CNAMEOK           = "ok"
+	CNAMENXDomain     = "nxdomain"     // the target doesn't exist (no records at all)
+	CNAMEUnregistered = "unregistered" // ...nor does its domain: anyone can register it
+	CNAMEError        = "error"        // the lookup failed (timeout, SERVFAIL)
 )
 
 // CNAMECheck is the last DNS answer for a CNAME target outside our zones.

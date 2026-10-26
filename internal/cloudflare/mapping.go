@@ -159,8 +159,17 @@ func resolve(byName map[string][]store.CloudflareRecord, r store.CloudflareRecor
 // public: an address on the internet (not private, loopback, link-local
 // or the tailnet).
 func public(a netip.Addr) bool {
-	return a.IsGlobalUnicast() && !a.IsPrivate() && !ipinfo.Tailnet.Contains(a) && !ipinfo.Tailnet6.Contains(a)
+	return a.IsGlobalUnicast() && !a.IsPrivate() && !ipinfo.Tailnet.Contains(a) && !ipinfo.Tailnet6.Contains(a) &&
+		!placeholder4.Contains(a) && !placeholder6.Contains(a)
 }
+
+// The addresses Cloudflare documents for a proxied name with no origin (a
+// redirect rule or a Worker answers): 192.0.2.0/24 (TEST-NET-1) and 100::/64
+// (discard-only). Nobody else can be at them.
+var (
+	placeholder4 = netip.MustParsePrefix("192.0.2.0/24")
+	placeholder6 = netip.MustParsePrefix("100::/64")
+)
 
 // siteName normalizes a server name, or returns "" for one that isn't a
 // DNS name (nginx's "_", regexes, wildcards, addresses, localhost).

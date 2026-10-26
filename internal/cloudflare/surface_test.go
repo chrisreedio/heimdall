@@ -73,11 +73,49 @@ func (f *surfaceAPI) handler(t *testing.T) http.Handler {
 	})
 }
 
-// fakeResolver answers from a map; a missing name is NXDOMAIN.
+// fakeResolver answers from maps; a name in none is NXDOMAIN, and every
+// domain is registered unless listed in unregistered.
 type fakeResolver struct {
-	mu      sync.Mutex
-	answers map[string][]string
-	asked   []string
+	mu           sync.Mutex
+	answers      map[string][]string
+	txt          map[string][]string
+	unregistered map[string]bool
+	asked        []string
+}
+
+func nxdomain(name string) error {
+	return &net.DNSError{Err: "no such host", Name: name, IsNotFound: true}
+}
+
+func (f *fakeResolver) LookupCNAME(_ context.Context, host string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if _, ok := f.answers[host]; ok {
+		return host + ".", nil
+	}
+	return "", nxdomain(host)
+}
+
+func (f *fakeResolver) LookupTXT(_ context.Context, name string) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if t, ok := f.txt[name]; ok {
+		return t, nil
+	}
+	return nil, nxdomain(name)
+}
+
+func (f *fakeResolver) LookupMX(_ context.Context, name string) ([]*net.MX, error) {
+	return nil, nxdomain(name)
+}
+
+func (f *fakeResolver) LookupNS(_ context.Context, name string) ([]*net.NS, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.unregistered[name] {
+		return nil, nxdomain(name)
+	}
+	return []*net.NS{{Host: "ns1." + name + "."}}, nil
 }
 
 func (f *fakeResolver) LookupHost(_ context.Context, host string) ([]string, error) {
@@ -90,7 +128,7 @@ func (f *fakeResolver) LookupHost(_ context.Context, host string) ([]string, err
 	if a, ok := f.answers[host]; ok {
 		return a, nil
 	}
-	return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
+	return nil, nxdomain(host)
 }
 
 func TestZoneSettingsPermissionFallback(t *testing.T) {
@@ -135,18 +173,36 @@ func TestThirdParty(t *testing.T) {
 }
 
 func TestCheckCNAMEs(t *testing.T) {
-	r := &fakeResolver{answers: map[string][]string{"live.herokuapp.com": {"198.51.100.7"}}}
+	r := &fakeResolver{
+		answers:      map[string][]string{"live.herokuapp.com": {"198.51.100.7"}},
+		txt:          map[string][]string{"key1.dkim.mail.example.net": {"v=DKIM1; p=MIIB"}},
+		unregistered: map[string]bool{"lapsed-example.com": true, "lapsed-example.co.uk": true},
+	}
 	var targets []string
 	for range 30 { // more targets than workers
 		targets = append(targets, "live.herokuapp.com")
 	}
-	targets = append(targets, "gone.herokuapp.com", "slow.example.org")
+	targets = append(targets, "gone.herokuapp.com", "slow.example.org",
+		"key1.dkim.mail.example.net", // a DKIM key: TXT only, no addresses
+		"app.lapsed-example.com", "www.lapsed-example.co.uk")
 	got := CheckCNAMEs(t.Context(), r, targets)
 	if len(got) != len(targets) || len(r.asked) != len(targets) {
 		t.Fatalf("%d checks, %d asked", len(got), len(r.asked))
 	}
-	if got[0].Status != store.CNAMEOK || got[30].Status != store.CNAMENXDomain || got[31].Status != store.CNAMEError {
-		t.Errorf("statuses: %+v %+v %+v", got[0], got[30], got[31])
+	for i, want := range map[int]string{0: store.CNAMEOK, 30: store.CNAMENXDomain, 31: store.CNAMEError,
+		32: store.CNAMEOK, 33: store.CNAMEUnregistered, 34: store.CNAMEUnregistered} {
+		if got[i].Status != want {
+			t.Errorf("%s: %+v, want %s", targets[i], got[i], want)
+		}
+	}
+	if got[33].Note != "lapsed-example.com isn't registered" {
+		t.Errorf("note %q", got[33].Note)
+	}
+	for name, want := range map[string]string{"a.b.example.com": "example.com", "x.example.co.uk": "example.co.uk",
+		"example.com": "example.com", "co.uk": "", "com": "", "x.y.example.de": "example.de"} {
+		if got := registrable(name); got != want {
+			t.Errorf("registrable(%s) = %q, want %q", name, got, want)
+		}
 	}
 	zones := []store.CloudflareZone{{ID: zoneA, Name: "example.com"}}
 	ft := ForeignTargets(zones, []store.CloudflareRecord{
