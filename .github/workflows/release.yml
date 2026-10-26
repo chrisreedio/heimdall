@@ -128,3 +128,19 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+
+      # Rebuild docs.realmwatch.dev so this release's docs/ go live now, not
+      # at the docs site's nightly rebuild. DOCS_DEPLOY_HOOK is a Cloudflare
+      # Workers Builds deploy hook URL. Best effort: a missing secret or a
+      # failed request never fails the release.
+      - name: Rebuild the docs site
+        continue-on-error: true
+        env:
+          DOCS_DEPLOY_HOOK: ${{ secrets.DOCS_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$DOCS_DEPLOY_HOOK" ]; then
+            echo "DOCS_DEPLOY_HOOK is not set; skipping."
+            exit 0
+          fi
+          curl --fail --silent --show-error --max-time 30 -X POST "$DOCS_DEPLOY_HOOK" > /dev/null
+          echo "Docs rebuild requested."
