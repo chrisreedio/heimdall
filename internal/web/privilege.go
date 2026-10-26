@@ -4,11 +4,13 @@ package web
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/realmwatch/heimdall/internal/ipinfo"
 	"github.com/realmwatch/heimdall/internal/privilege"
 	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/updates"
 )
 
 // privilegeView is the host page's "Privileged access" line. It's nil on
@@ -34,6 +36,9 @@ type privilegeCoverage struct {
 	Label string // what's missing: "privilege watch off", "no source IP"…
 	Why   string // a sentence for the host page and tooltips
 	Fix   string // the command that closes the gap, on the server
+	// PreSources: the collector predates 0.4.23, which must be upgraded
+	// plainly before --watch-privilege-users is accepted.
+	PreSources bool
 }
 
 const watchUsersCmd = "sudo heimdall-collect upgrade --watch-privilege-users"
@@ -62,6 +67,13 @@ func coverageOf(pm, state, detail string) (c privilegeCoverage, ok bool) {
 	return c, true
 }
 
+// preSources reports whether fix needs a plain upgrade first: the
+// collector (its reported version, "" if unknown) predates 0.4.23, which
+// added --watch-privilege-users.
+func preSources(fix, collector string) bool {
+	return fix == watchUsersCmd && collector != "" && updates.Newer("v0.4.23", "v"+strings.TrimPrefix(collector, "v"))
+}
+
 type privilegeEvent struct {
 	At     time.Time
 	Kind   string // "sudo", "root SSH"
@@ -74,7 +86,7 @@ type privilegeEvent struct {
 // recentPrivilege is how many events the host page lists.
 const recentPrivilege = 8
 
-func (s *server) privilegeFor(ctx context.Context, host store.IngestHost, pm string) (*privilegeView, error) {
+func (s *server) privilegeFor(ctx context.Context, host store.IngestHost, pm, collector string) (*privilegeView, error) {
 	sum, err := s.st.PrivilegeSummary(ctx, host.ID, s.now().Add(-24*time.Hour))
 	if err != nil {
 		return nil, err
@@ -83,6 +95,7 @@ func (s *server) privilegeFor(ctx context.Context, host store.IngestHost, pm str
 	if !ok {
 		return nil, nil
 	}
+	cov.PreSources = preSources(cov.Fix, collector)
 	v := &privilegeView{Counts: privilege.Counts(sum.Counts), State: sum.State, EverOn: sum.EverOn || !sum.Last.IsZero(),
 		Off: sum.EverOn && sum.State != "on", Coverage: cov}
 	if !sum.Last.IsZero() {

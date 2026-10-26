@@ -10,6 +10,20 @@ import (
 	"github.com/realmwatch/heimdall/internal/store"
 )
 
+func TestPreSources(t *testing.T) {
+	for _, c := range []struct {
+		fix, collector string
+		want           bool
+	}{
+		{watchUsersCmd, "0.4.22", true}, {watchUsersCmd, "v0.4.5", true}, {watchUsersCmd, "0.4.23", false},
+		{watchUsersCmd, "0.4.36", false}, {watchUsersCmd, "", false}, {"sudo heimdall-collect upgrade", "0.4.5", false},
+	} {
+		if got := preSources(c.fix, c.collector); got != c.want {
+			t.Errorf("preSources(%q, %q) = %v", c.fix, c.collector, got)
+		}
+	}
+}
+
 func TestHostPagePrivilege(t *testing.T) {
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	host := e.seed()
@@ -19,7 +33,7 @@ func TestHostPagePrivilege(t *testing.T) {
 	}
 	// Never enabled: flagged, with the command that turns it on.
 	for _, want := range []string{"Privileged access", "Not watched", ">privilege watch off</span>",
-		"<code>sudo heimdall-collect upgrade --watch-privilege-users</code>"} {
+		`id="cmd-privilege">`, "sudo heimdall-collect upgrade --watch-privilege-users</pre>"} {
 		if !strings.Contains(page(), want) {
 			t.Errorf("unwatched host page missing %q", want)
 		}
