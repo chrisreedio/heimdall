@@ -49,13 +49,9 @@
   <p class="muted">It arrives as soon as the installer finishes. After that the server reports hourly, about a minute after packages change, and 3 minutes after a reboot.</p>
   <details>
     <summary>Report after deploys</summary>
-    <p class="muted">To report right after a deploy too, end the deploy script (Laravel Forge's, for example) with this line. It returns at once and never fails the deploy.</p>
-    <div class="codebox"><pre id="cmd-deploy">sudo -n systemctl start --no-block heimdall-collect.service || true</pre><button type="button" class="copy" data-copy="cmd-deploy" hidden>Copy</button></div>
-    <p class="muted">The deploy user needs permission for exactly that command, without a password. Run this once on the server, with your deploy user in place of <code>forge</code>:</p>
-    <div class="codebox"><pre id="cmd-sudoers">echo 'forge ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block heimdall-collect.service' |
-  sudo tee /etc/sudoers.d/heimdall-collect
-sudo chmod 0440 /etc/sudoers.d/heimdall-collect && sudo visudo -cf /etc/sudoers.d/heimdall-collect</pre><button type="button" class="copy" data-copy="cmd-sudoers" hidden>Copy</button></div>
-    <p class="muted">Servers without systemd: see <a href="https://github.com/realmwatch/heimdall/blob/main/docs/collector.md#report-after-deploys">Report after deploys</a>.</p>
+    <p class="muted">With systemd, the server also reports about a minute after a site it found at install time deploys. To cover any site, end the deploy script (Laravel Forge's or Ploi's, for example) with this line. It needs no sudo, returns at once and never fails the deploy.</p>
+    <div class="codebox"><pre id="cmd-deploy">heimdall-collect deployed || true</pre><button type="button" class="copy" data-copy="cmd-deploy" hidden>Copy</button></div>
+    <p class="muted">Sites added later are watched after the next <code>sudo heimdall-collect upgrade</code>. Servers without systemd report deploys hourly: see <a href="https://github.com/realmwatch/heimdall/blob/main/docs/collector.md#reporting-after-deploys">Reporting after deploys</a>.</p>
   </details>
   <div class="actions start">
     {{if .Host.AutoName}}<a class="button" href="/hosts">Go to Hosts</a>{{else}}<a class="button" href="{{hostURL .Host.OrgSlug .Host.Name}}">Open {{.Host.Name}}</a>{{end}}

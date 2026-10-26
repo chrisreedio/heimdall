@@ -1,11 +1,11 @@
 # Heimdall collector: (re)start the 60s countdown to a report. Started by
-# heimdall-collect-changes.path on every package database change. Restarting
+# heimdall-collect-changes.path on every package database change or deploy. Restarting
 # the timer pushes the report back, so a burst of changes sends one report.
 # It only talks to systemd; the report itself runs as heimdall in
 # heimdall-collect.service.
 
 [Unit]
-Description=Schedule a Heimdall report after a package change
+Description=Schedule a Heimdall report after a package change or deploy
 Documentation=https://github.com/realmwatch/heimdall/blob/main/docs/collector.md
 # A big upgrade changes the database many times a minute. Never rate-limit
 # this, or the path unit would stop watching.

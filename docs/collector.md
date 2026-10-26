@@ -175,9 +175,10 @@ sudo install -m 0400 -o heimdall /dev/stdin /etc/heimdall/token   # paste the to
 # 4. Point it at the hub and schedule it
 sudo install -m 0644 collect.env.example /etc/heimdall/collect.env   # set HEIMDALL_URL
 sudo install -m 0644 heimdall-collect.service heimdall-collect.timer heimdall-collect-boot.timer heimdall-collect-soon.timer \
-  heimdall-collect-changes.service heimdall-collect-changes.path /etc/systemd/system/
+  heimdall-collect-soon.service heimdall-collect-changes.service heimdall-collect-changes.path /etc/systemd/system/
 #    (optional) delete the PathChanged= lines in heimdall-collect-changes.path for package
-#    managers this box doesn't have; install.sh does that for you
+#    managers this box doesn't have, and add your sites' deploy markers (see "Reporting
+#    after deploys"); install.sh does both for you
 sudo systemctl enable --now heimdall-collect.timer heimdall-collect-changes.path
 sudo systemctl enable heimdall-collect-boot.timer   # next boot on; started now it would fire at once
 
@@ -199,7 +200,7 @@ The service runs as `heimdall` under systemd sandboxing (`systemd-analyze securi
 | Hourly | `heimdall-collect.timer`: a fixed random offset of up to 15 minutes past each hour | cron (`/etc/periodic/hourly` or `/etc/cron.hourly`), after a random delay of up to 15 minutes | The `Heimdall collector` task, with a random delay of up to 15 minutes |
 | After boot | `heimdall-collect-boot.timer`, 3 minutes after boot (`OnBootSec=3min`, no random delay), so the hub sees the reboot and clears "reboot required" | Not yet | 3 minutes after boot, the same task |
 | After package changes | About a minute after the last change: `heimdall-collect-changes.path` | About a minute after the last change: an apk commit hook or an apt `DPkg::Post-Invoke` hook | About a minute after the last Windows Installer install or removal, or Windows Update install: the `Heimdall collector (changes)` task, see [Windows](#when-windows-reports) |
-| After a deploy | One line in your deploy script, see [below](#report-after-deploys) | The same, with `soon.sh` | `Start-ScheduledTask -TaskName 'Heimdall collector'` (as Administrator) |
+| After a deploy | About a minute after a site deploys (its `current` symlink swaps, or `composer.lock` changes), or after `heimdall-collect deployed` in the deploy script, no sudo needed: see [Reporting after deploys](#reporting-after-deploys) | Hourly only, unless the deploy script runs `soon.sh` with sudo | `Start-ScheduledTask -TaskName 'Heimdall collector'` (as Administrator) |
 
 The hub runs its tripwire rules on every report, so these event reports let it see changes within minutes instead of the next morning.
 
@@ -209,7 +210,7 @@ The hub runs its tripwire rules on every report, so these event reports let it s
 
 1. `heimdall-collect-changes.path` watches the package database: `/var/lib/dpkg/status` (dpkg), `/var/lib/rpm/rpmdb.sqlite` (rpm 4.16+, as on RHEL/Rocky/Alma 9) or `/var/lib/rpm/Packages` (older rpm), `/lib/apk/db/installed` (apk) and `/var/lib/pacman/local` (pacman). `install.sh` keeps only the paths that exist on the box.
 2. Each change starts `heimdall-collect-changes.service`, which only runs `systemctl restart --no-block heimdall-collect-soon.timer`. It runs as root (to talk to systemd) with no network, no capabilities and a read-only filesystem; `systemd-analyze security` rates it 1.1.
-3. `heimdall-collect-soon.timer` (`OnActiveSec=60s`) then starts the usual `heimdall-collect.service`.
+3. `heimdall-collect-soon.timer` (`OnActiveSec=60s`) then starts `heimdall-collect-soon.service`, which starts the usual `heimdall-collect.service`, at most 12 times per rolling hour (see [the cap](#the-cap-on-event-reports)). It's sandboxed like `heimdall-collect-changes.service`, and only writes its count in `/var/lib/heimdall-collect/events`. The hourly and boot timers start `heimdall-collect.service` directly, so the cap never touches them.
 
 Restarting the timer restarts its countdown, so the report goes out 60 seconds after the *last* change. A whole `apt upgrade` sends one report, about a minute after it ends. A change made while a report is running restarts the countdown too, so it gets a report of its own a minute later.
 
@@ -226,32 +227,123 @@ Both run `/usr/local/lib/heimdall-collect/soon.sh` as root. It returns at once a
 
 Event reports count toward the hub's rate limit of 30 reports per hour per host (`[ingest] rate_per_host`; hubs set up before v0.4.13 have `"10/h"` in their config, which still fits hourly reports plus a few events). The 60-second wait keeps a busy upgrade to one of them.
 
-### Report after deploys
+#### The cap on event reports
 
-Add this as the last line of your deploy script (for example, Laravel Forge's deploy script), so the hub sees new Composer packages right away:
+With systemd, at most **12 event reports** go out per rolling hour: those after package changes, site deploys, `heimdall-collect deployed` and the privilege watch. The hourly report is never capped. Anyone on the server can set off a deploy report, so without a cap a local user could keep the host over the hub's limit of 30 reports an hour, and the hub would reject its hourly reports too. With the cap, a host sends at most about 12 + 1 + (a boot) reports an hour, whatever happens on it.
 
-```sh
-sudo -n systemctl start --no-block heimdall-collect.service || true
+Past the cap, `heimdall-collect-soon.service` logs one line and skips that report:
+
+```
+heimdall-collect: skipping this event report: 12 already in the last hour (the limit is 12); the next hourly report includes the change
 ```
 
-It returns at once: `--no-block` doesn't wait for the report, and `|| true` means a problem with reporting never fails the deploy.
+Nothing is lost: every report is a full snapshot, so the next one (hourly, or an event report once the hour has room) includes the change. The count is the Unix times of the last hour's event reports, one a line, in `/var/lib/heimdall-collect/events` (root's, `0600`). The cap needs systemd 243 or later (`ExecCondition=`); older systemd ignores the line and doesn't cap. Without systemd, event reports come only from root's package hooks, so there's no cap.
 
-A deploy user like `forge` can't start system services by itself (`Access denied`), and a sudo password prompt would hang the deploy. So allow exactly this one command, and nothing else, with a sudoers drop-in:
+## Reporting after deploys
+
+A deploy changes a site's Composer packages, and so its findings. With systemd, the collector sends a report **about a minute after a deploy** instead of on the next hourly run, two ways, through the same path unit and 60-second wait as [package changes](#after-package-changes):
+
+1. **Automatically**, for the sites it found when it was installed: no change to your deploy scripts.
+2. **On request**, with `heimdall-collect deployed` at the end of a deploy script, for any site. It needs no sudo.
+
+Either one is enough. Using both is fine: a deploy that sets off both still sends one report, a minute after the last change.
+
+### What's watched automatically
+
+When `install.sh` runs (and so on `sudo heimdall-collect upgrade`, which runs it), it asks the collector for each site's deploy markers (`heimdall-collect --deploy-watches` prints them) and adds them to `heimdall-collect-changes.path` as `PathChanged=` lines:
+
+| Site layout | How it's recognized | Watched | Fires when |
+|---|---|---|---|
+| **Zero-downtime** (Forge, Ploi, Envoyer, Deployer): `/home/forge/example.com/current → releases/N` | The app root (or its parent) is a symlink to a folder next to it | The folder holding the symlink: `/home/forge/example.com` | The deploy swaps `current` to the new release |
+| **In place** (`git pull` then `composer install` in the site folder) | Anything else | `<root>/composer.lock` and `<root>/vendor/composer/installed.php`, if they exist | `composer.lock` changes (new packages), or Composer records a new deployed commit in `installed.php` |
+
+Why these paths, checked with real systemd (252 and 255) and Composer 2.10:
+
+- **A watch on `current` itself, or on `current/composer.lock`, never fires on a deploy.** systemd's `PathChanged=` follows a symlink to its target: it watches `releases/N`, and swapping the symlink (`ln -sfn`, or renaming a new symlink over it, as Forge and Ploi do) changes neither. systemd does re-resolve the symlink afterwards, so such a watch would only see later writes inside the new release. A watch on the folder holding `current` sees the swap itself.
+- **That folder also changes when** `.env` is saved (Forge and Ploi keep it there) or a new top-level entry appears. What happens inside `releases/` and `storage/` (logs, cache, new release folders) doesn't count: watches aren't recursive. So an `.env` edit sends a report too, which is harmless.
+- **`composer install` doesn't rewrite `vendor/autoload.php`** when nothing changed (Composer writes it only if its content differs), so it isn't watched. `vendor/composer/installed.php` holds the root package's commit, so Composer rewrites it whenever a new commit is installed. A `git pull` that changes `composer.lock` fires that watch as well.
+
+**Limits:**
+- **The first 50 sites**, in the order the collector finds them (nginx, then Apache, then `HEIMDALL_SITES`), at most 100 paths. Every watched path costs systemd an inotify watch on each folder along it. With more sites, `install.sh` prints `watching deploys of the first 50 of N sites`; use `heimdall-collect deployed` for the rest.
+- **The list is made at install and upgrade time.** A site added later, or one switched between in-place and zero-downtime deploys, is picked up the next time `install.sh` or `sudo heimdall-collect upgrade` runs. A plain `sudo heimdall-collect upgrade` with no newer release to install still refreshes the list and restarts the path unit, and changes nothing else. It says `watching 3 sites for deploys (was 2)` when the list changed, and nothing about it otherwise. Until then, `heimdall-collect deployed` covers a new site.
+- Only paths that exist when it runs are watched. `cat /etc/systemd/system/heimdall-collect-changes.path` shows the list; the site lines are at the end.
+- Sites are found as described in [Sites & Laravel](#sites--laravel). A site that isn't found (no vhost, not in `HEIMDALL_SITES`) isn't watched.
+
+### `heimdall-collect deployed`
+
+Add it as the last line of the deploy script, after the new release is live:
+
+**Laravel Forge:** the site's **Deployments** tab, **Deploy Script**. Add it at the end, after `$ACTIVATE_RELEASE()` on a zero-downtime site:
 
 ```sh
-echo 'forge ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block heimdall-collect.service' |
-  sudo tee /etc/sudoers.d/heimdall-collect
-sudo chmod 0440 /etc/sudoers.d/heimdall-collect && sudo visudo -cf /etc/sudoers.d/heimdall-collect
+heimdall-collect deployed || true
 ```
 
-sudo matches the arguments exactly, so the user can't stop the timer, start any other unit or even drop `--no-block`. The report still runs as `heimdall` in its sandbox. `/bin/systemctl` matches too, where `/bin` links to `/usr/bin`.
+**Ploi:** the site's **Deploy script**. Add it at the end:
 
-**Without systemd**, use the same debounced script as the package hooks, which also returns at once:
+```sh
+heimdall-collect deployed || true
+```
+
+**What it does:** it touches `/var/lib/heimdall-collect/deployed` and exits. It doesn't push anything and doesn't wait: the path unit sees the change and the report goes out about a minute later, as `heimdall` in its usual sandbox. It prints nothing when it works.
+
+**It needs no sudo.** Forge and Ploi run the deploy script as the site user (`forge`, `ploi`, or an isolated site user), and that's enough: the file is writable by everyone.
+
+**It never fails a deploy.** `deployed` always exits `0`. When it can't help, it says why on stderr (Forge and Ploi show it in the deploy log) and still exits `0`:
+
+| Message | Meaning |
+|---|---|
+| `/var/lib/heimdall-collect/deployed is missing; re-run the installer …` | The collector is older than this feature, or was installed by hand. Run `sudo heimdall-collect upgrade` |
+| `without systemd nothing watches deploys …` | See [Without systemd](#without-systemd) |
+| `couldn't touch /var/lib/heimdall-collect/deployed …` | The file's mode was changed; re-running the installer resets it to `0666` |
+
+The `|| true` covers a server where the collector isn't installed (`heimdall-collect: command not found`) or is too old to know `deployed` (it prints its usage and exits `2`). Without it, Forge or Ploi would mark the deploy failed there.
+
+### Security
+
+- **What anyone can do with the trigger file:** make the collector send one report, about a minute later. `/var/lib/heimdall-collect` is root's (`0755`), so nobody else can replace the file, link it elsewhere or add files next to it. The file itself is `0666` and its content is never read by anything: not by the collector, not by systemd, not by the hub. The report is the normal one, built from the server's own state as `heimdall`, so writing the file can't change what's reported, send data to the hub or run anything.
+- **What it can't do:** start a report sooner than 60 seconds after the last change (every change restarts the countdown), or stop the hourly report.
+- **The worst case is capped.** Touching it about once a minute would mean about 60 reports an hour, more than the hub's limit of 30 per hour per host (`[ingest] rate_per_host`). But event reports are [capped at 12 per rolling hour](#the-cap-on-event-reports), and the hourly report bypasses the cap, so the host stays well under the hub's limit and its hourly reports always get through. The same holds for anyone who can write a watched site file.
+- **What the cap costs:** while someone keeps the cap used up, a genuine event (a deploy, a package change, a `sudo` the privilege watch records) waits for the next hourly report instead of going out a minute later. It's still recorded and sent; only the minute-later report is skipped. Each skip leaves a `skipping this event report` line in `journalctl -u heimdall-collect-soon`, so a steady stream of them is visible.
+- **The disk:** anyone who can run commands on the server can already fill its disk through `/tmp`. The `0666` file adds no new way to do that.
+- **The automatic watches** need nothing from site users: systemd (root) watches the paths, and the collector still reads only `composer.json`, `composer.lock` and `.git/config`, as `heimdall`.
+- **Compared with the sudoers rule** this page used to suggest (`forge ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block heimdall-collect.service`), nothing is added to sudoers, and a deploy user who never had sudo needs none.
+
+### Checking that it worked
+
+After a deploy, on the server:
+
+```sh
+journalctl -u heimdall-collect-soon.timer -u heimdall-collect-soon -u heimdall-collect -n 20 --no-pager   # the countdown, the cap, the report
+systemctl list-timers heimdall-collect-soon.timer                                # a countdown in progress
+```
+
+Then on the hub, the host's page shows **Last report** a minute or so after the deploy, and the site's packages and findings match the new release.
+
+To see what's watched: `heimdall-collect --deploy-watches` (as `heimdall`, or as root with `HEIMDALL_ALLOW_ROOT=1`) and the end of `/etc/systemd/system/heimdall-collect-changes.path`.
+
+### Without systemd
+
+With cron (Alpine with OpenRC, Debian without systemd, containers), nothing watches deploys: `install.sh` makes no trigger file, and `heimdall-collect deployed` prints `without systemd nothing watches deploys; the next hourly report will include this deploy.` and exits `0`. The deploy shows up in the next hourly report, as before.
+
+To report sooner there, run the package hooks' debounced script as root, which also returns at once:
 
 ```sh
 sudo -n /usr/local/lib/heimdall-collect/soon.sh || true
 # sudoers: forge ALL=(root) NOPASSWD: /usr/local/lib/heimdall-collect/soon.sh
 ```
+
+### Other ways
+
+**Report right away**, with no 60-second wait, from a deploy user allowed this one command in sudoers:
+
+```sh
+sudo -n systemctl start --no-block heimdall-collect.service || true
+# sudoers (sudo visudo -f /etc/sudoers.d/heimdall-collect):
+#   forge ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block heimdall-collect.service
+```
+
+sudo matches the arguments exactly, so the user can't start any other unit.
 
 **By hand**, as a user who can already use sudo (this one waits for the push):
 
@@ -261,6 +353,8 @@ sudo -u heimdall sh -c 'set -a; . /etc/heimdall/collect.env; exec /usr/local/bin
 
 On the hub's own box the collector's settings are in `/etc/heimdall-collect/collect.env`.
 
+**Not recorded:** the snapshot doesn't say a deploy was announced, or for which site. A new snapshot field would make older hubs refuse the push (they reject unknown fields), and the trigger file is writable by everyone, so whatever it said about a site couldn't be trusted. The site's `deployed_at` (the `composer.lock` time) still shows when its packages last changed.
+
 ## Usage
 
 | Command | What it does |
@@ -268,6 +362,8 @@ On the hub's own box the collector's settings are in `/etc/heimdall-collect/coll
 | `heimdall-collect --print` | Write a snapshot to stdout, to review or to save for `heimdall import` |
 | `heimdall-collect --push` | Send a snapshot to the hub |
 | `heimdall-collect --site-repos` | Print the site repositories a push would send (see [Site repositories](#site-repositories)) |
+| `heimdall-collect --deploy-watches` | Print the site paths watched for deploys (see [What's watched automatically](#whats-watched-automatically)) |
+| `heimdall-collect deployed` | Ask for a report in about a minute, from a deploy script, as any user; always exits `0` (see [`heimdall-collect deployed`](#heimdall-collect-deployed)) |
 | `heimdall-collect --version` | Print the collector version |
 
 **Push mode settings** (environment variables, usually from a systemd `EnvironmentFile`):
@@ -410,6 +506,8 @@ sudo setfacl -d -m u:heimdall:rX /home/forge/example.com/releases
 | `0` | Success |
 | `1` | Error, with a one-line reason on stderr (see below) |
 | `2` | Wrong usage |
+
+`heimdall-collect deployed` is the exception: it always exits `0`, so it can't fail a deploy (see [`heimdall-collect deployed`](#heimdall-collect-deployed)).
 
 | Message | Fix |
 |---|---|

@@ -37,9 +37,9 @@ func TestAddHost(t *testing.T) {
 		t.Error("install command must never point at the hub")
 	}
 	for _, want := range []string{
-		`<pre id="cmd-deploy">sudo -n systemctl start --no-block heimdall-collect.service || true</pre>`,
+		`<pre id="cmd-deploy">heimdall-collect deployed || true</pre>`,
 		`data-copy="cmd-deploy"`,
-		`NOPASSWD: /usr/bin/systemctl start --no-block heimdall-collect.service`,
+		`collector.md#reporting-after-deploys`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("deploy hint missing %q", want)

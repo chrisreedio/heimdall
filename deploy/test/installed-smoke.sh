@@ -128,6 +128,107 @@ expect '192.0.2.77' sudo -u heimdall heimdall-collect --logins
 sudo systemctl start heimdall-collect.service || fail "collector push failed"
 expect '192.0.2.77' sudo heimdall offenders --json
 
+step "Deploys are watched: a zero-downtime site and an in-place one"
+# A Forge/Ploi zero-downtime layout (current -> releases/N, swapped at the
+# end of a deploy) and an in-place checkout. Re-running install.sh finds them.
+for r in /srv/zdt-site/releases/1 /srv/inplace-site/vendor/composer; do sudo mkdir -p "$r"; done
+for d in /srv/zdt-site/releases/1 /srv/inplace-site; do
+	printf '{"require": {"php": "^8.2"}}\n' | sudo tee "$d/composer.json" >/dev/null
+	printf '{\n    "packages": [\n        {\n            "name": "laravel/framework",\n            "version": "v11.0.0"\n        }\n    ]\n}\n' |
+		sudo tee "$d/composer.lock" >/dev/null
+done
+printf '<?php return array();\n' | sudo tee /srv/inplace-site/vendor/composer/installed.php >/dev/null
+sudo ln -sfn /srv/zdt-site/releases/1 /srv/zdt-site/current
+sudo sh "$dist/install.sh" --hub http://127.0.0.1:8443 --token-file /etc/heimdall-collect/token --from-dir "$dist" \
+	--skip-signature-check --no-push --sites "/srv/zdt-site/current /srv/inplace-site"
+unit=/etc/systemd/system/heimdall-collect-changes.path
+cat "$unit"
+for p in /var/lib/heimdall-collect/deployed /srv/zdt-site /srv/inplace-site/composer.lock /srv/inplace-site/vendor/composer/installed.php; do
+	grep -qx "PathChanged=$p" "$unit" || fail "$unit doesn't watch $p"
+done
+! grep -q '^PathChanged=/srv/zdt-site/current' "$unit" || fail "$unit watches through the current symlink"
+[ "$(stat -c '%U %a' /var/lib/heimdall-collect/deployed)" = "root 666" ] || fail "deploy trigger is $(stat -c '%U %a' /var/lib/heimdall-collect/deployed)"
+systemctl is-active --quiet heimdall-collect-changes.path || fail "the path unit isn't running"
+
+# reported_after LABEL CMD...: run CMD (a deploy), then wait for the debounced
+# report: heimdall-collect.service must start again, about 60s after CMD,
+# and succeed (a 2xx from the hub).
+idle() { # no report running (a oneshot is "activating" while it runs)
+	case $(systemctl show -P ActiveState heimdall-collect.service) in inactive | failed) ;; *) return 1 ;; esac
+}
+reported_after() {
+	label=$1; shift
+	n=0 quiet=0
+	while [ "$quiet" -lt 3 ]; do # no countdown or report for 3s in a row
+		if [ "$(systemctl show -P NextElapseUSecMonotonic heimdall-collect-soon.timer)" = infinity ] && idle; then
+			quiet=$((quiet + 1))
+		else
+			quiet=0
+		fi
+		n=$((n + 1)); [ "$n" -lt 150 ] || fail "$label: the collector never went quiet"; sleep 1
+	done
+	before=$(systemctl show -P InvocationID heimdall-collect.service)
+	t0=$(date +%s)
+	"$@" || fail "$label: the deploy step failed"
+	while :; do
+		now=$(systemctl show -P InvocationID heimdall-collect.service)
+		if [ "$now" != "$before" ] && idle; then break; fi
+		[ $(($(date +%s) - t0)) -lt 100 ] || fail "$label: no report within 100s"
+		sleep 1
+	done
+	took=$(($(date +%s) - t0))
+	[ "$(systemctl show -P Result heimdall-collect.service)" = success ] || fail "$label: the report failed"
+	[ "$took" -ge 55 ] || fail "$label: reported after ${took}s, before the 60s debounce"
+	printf '%s: reported after %ss\n' "$label" "$took"
+}
+zdt_deploy() { # a new release, then swap the symlink (rename over it)
+	sudo cp -a /srv/zdt-site/releases/1 /srv/zdt-site/releases/2 &&
+		sudo sed -i 's/v11.0.0/v11.0.1/' /srv/zdt-site/releases/2/composer.lock &&
+		sudo ln -sfn /srv/zdt-site/releases/2 /srv/zdt-site/current.new &&
+		sudo mv -T /srv/zdt-site/current.new /srv/zdt-site/current
+}
+inplace_deploy() { sudo sed -i 's/v11.0.0/v11.0.2/' /srv/inplace-site/composer.lock; }
+announced() { # as an unprivileged user, with no sudo
+	out=$(sudo -u nobody /usr/local/bin/heimdall-collect deployed 2>&1) || return 1
+	[ -z "$out" ] || { echo "deployed said: $out"; return 1; }
+}
+# The hourly report (at a random offset) mustn't pass for a deploy's.
+sudo systemctl stop heimdall-collect.timer
+reported_after "zero-downtime deploy" zdt_deploy
+sudo -u heimdall sh -c 'set -a; . /etc/heimdall-collect/collect.env; exec heimdall-collect --print' |
+	grep -q '"framework_version": "11.0.1"' || fail "the snapshot doesn't have the new release's packages"
+reported_after "in-place deploy" inplace_deploy
+reported_after "heimdall-collect deployed" announced
+
+step "Event reports are capped at 12 an hour; past it, one line and no report"
+before=$(systemctl show -P InvocationID heimdall-collect.service)
+now=$(date +%s)
+i=0
+while [ $i -lt 12 ]; do echo "$((now - i))"; i=$((i + 1)); done | sudo tee /var/lib/heimdall-collect/events >/dev/null
+sudo systemctl start heimdall-collect-soon.service || fail "the soon service failed past the cap (it should skip)"
+sleep 2
+[ "$(systemctl show -P InvocationID heimdall-collect.service)" = "$before" ] || fail "a report started past the cap"
+sudo journalctl -u heimdall-collect-soon.service --no-pager | grep -q 'skipping this event report: 12 already' ||
+	fail "no skip line in the soon service's journal"
+sudo rm /var/lib/heimdall-collect/events
+sudo systemctl start heimdall-collect-soon.service || fail "the soon service failed under the cap"
+n=0
+while [ "$(systemctl show -P InvocationID heimdall-collect.service)" = "$before" ]; do
+	n=$((n + 1)); [ "$n" -lt 30 ] || fail "no report under the cap"; sleep 1
+done
+
+step "A plain upgrade, already current, picks up a new site for deploys"
+sudo mkdir -p /srv/new-site
+printf '{"packages": []}\n' | sudo tee /srv/new-site/composer.lock >/dev/null
+sudo sed -i "s#^HEIMDALL_SITES=.*#HEIMDALL_SITES='/srv/zdt-site/current /srv/inplace-site /srv/new-site'#" /etc/heimdall-collect/collect.env
+expect 'watching 3 sites for deploys (was 2)' sudo heimdall-collect upgrade
+grep -qx 'PathChanged=/srv/new-site/composer.lock' "$unit" || fail "upgrade didn't add the new site"
+systemctl is-active --quiet heimdall-collect-changes.path || fail "the path unit isn't running after the refresh"
+out=$(sudo heimdall-collect upgrade 2>&1) || fail "upgrade failed: $out"
+case $out in *watching*) fail "upgrade with nothing new still said: $out" ;; esac
+sudo systemctl start heimdall-collect.timer
+sudo rm -rf /srv/zdt-site /srv/inplace-site /srv/new-site
+
 step "Upgrade in place (hub first, then the collector)"
 sudo sh "$dist/install-hub.sh" --from-dir "$dist" --skip-signature-check
 systemctl is-active --quiet heimdall || fail "hub not running after upgrade"
