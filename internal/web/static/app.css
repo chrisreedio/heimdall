@@ -194,6 +194,7 @@ a.tile:hover, a.tile:focus-visible { border-color: var(--accent, var(--border));
 /* Tables: scroll inside the wrapper, never the page. */
 .scroll {
   overflow-x: auto; max-width: 100%;
+  position: relative; /* holds absolutely placed .sr-only headers, so they never widen the page */
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
 }
 table { border-collapse: collapse; width: 100%; }
@@ -1085,3 +1086,14 @@ article.card h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
   [data-side="rail"] .side-actions { flex-direction: row; }
   .side-item { padding: 9px 8px; font-size: 15px; }
 }
+
+/* Collector options on Add host and Add servers (collectoropts.go) */
+fieldset.collector-opts { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 8px; justify-items: start; }
+fieldset.collector-opts legend { font-weight: 600; padding: 0; margin-bottom: 6px; }
+fieldset.collector-opts label.check { font-weight: 400; align-items: flex-start; }
+fieldset.collector-opts label.check input { width: auto; padding: 0; margin: 3px 0 0; flex: none; }
+fieldset.collector-opts .hint { margin: 0; }
+fieldset.collector-opts .hint code { white-space: nowrap; }
+fieldset.collector-opts .remember { margin-top: 4px; font-weight: 600; }
+.wizard .card fieldset.collector-opts[data-collector-opts] { margin: 4px 0 16px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 8px; }
+.shown-once { margin: 0 0 16px; padding: 10px 14px; border-radius: 8px; background: var(--med-bg); color: var(--med-fg); }

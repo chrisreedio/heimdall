@@ -180,10 +180,15 @@ func (c *Client) Finish(ctx context.Context, code, verifier, nonce string) (Iden
 		"scope":         {"openid profile email"},
 	}
 	if err := c.cfg.HTTP.PostForm(ctx, meta.TokenEndpoint, form, maxJSON, &tok); err != nil {
+		// Microsoft says why in the error body (AADSTS codes): keep that,
+		// never the request (it holds the secret and the code).
+		if te := tokenError(err); te != nil {
+			return Identity{}, te
+		}
 		return Identity{}, fmt.Errorf("entra: token request: %w", err)
 	}
 	if tok.Error != "" {
-		return Identity{}, fmt.Errorf("entra: token endpoint returned %q", truncate(tok.Error, 64))
+		return Identity{}, &TokenError{Code: clean(tok.Error, 64)}
 	}
 	if tok.IDToken == "" {
 		return Identity{}, errors.New("entra: token response has no id_token")

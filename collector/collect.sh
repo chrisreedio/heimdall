@@ -27,7 +27,7 @@ export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
-VERSION=0.4.39
+VERSION=0.4.40
 FORMAT=heimdall.snapshot/v4
 
 die() { printf 'heimdall-collect: %s\n' "$*" >&2; exit 1; }
@@ -1085,10 +1085,44 @@ triggers_state() {
 	printf 'cron=%s; hook=%s' "$cron" "$hook"
 }
 
+# load_env: run by hand (`sudo -u heimdall heimdall-collect --push`), load
+# the installed collect.env the way the systemd unit's EnvironmentFile
+# does, so it needs no settings of its own. Only a file owned by root (or
+# this user) that nobody else can write is read. HEIMDALL_ENV_FILE names
+# another one (tests).
+load_env() {
+	for f in ${HEIMDALL_ENV_FILE:-/etc/heimdall/collect.env /etc/heimdall-collect/collect.env}; do
+		if [ ! -f "$f" ] || [ ! -r "$f" ]; then continue; fi
+		if [ -z "$(find "$f" -prune \( -user 0 -o -user "$(id -u)" \) ! -perm -020 ! -perm -002 2>/dev/null)" ]; then
+			echo "heimdall-collect: not loading $f: it must be owned by root and writable only by its owner" >&2
+			continue
+		fi
+		set -a
+		# shellcheck disable=SC1090 # the installed settings, as the unit loads them
+		. "$f"
+		set +a
+		return 0
+	done
+	return 1
+}
+
 push() {
+	[ -n "${HEIMDALL_URL:-}" ] || load_env || true
 	url=${HEIMDALL_URL:-}
 	token_file=${HEIMDALL_TOKEN_FILE:-/etc/heimdall/token}
-	[ -n "$url" ] || die "HEIMDALL_URL is not set"
+	if [ -z "$url" ]; then
+		if [ -t 0 ]; then
+			cat >&2 <<'EOF'
+heimdall-collect: no hub to send to: HEIMDALL_URL is not set, and no
+readable collect.env was found (install.sh writes /etc/heimdall/collect.env).
+To send a report now, run:
+  sudo systemctl start heimdall-collect.service
+or
+  sudo -u heimdall sh -c 'set -a; . /etc/heimdall/collect.env; exec heimdall-collect --push'
+EOF
+		fi
+		die "HEIMDALL_URL is not set"
+	fi
 	case $url in
 	https://*) ;;
 	http://127.0.0.1[:/]* | http://localhost[:/]* | http://\[::1\][:/]*) ;; # local proxy or tests

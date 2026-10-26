@@ -70,6 +70,22 @@ EOF
 	diff "$t/u1" "$t/u2" >&2 || fail "--deploy-unit isn't idempotent"
 	dunit "$s/static" "$t/u1" >"$t/u3"
 	diff "$unit" "$t/u3" >&2 || fail "--deploy-unit left a stale block"
+
+	# --push by hand loads collect.env like the unit does: here it gets as
+	# far as the token file it names. Without one it still refuses.
+	envf=$t/collect.env
+	printf "HEIMDALL_URL='http://127.0.0.1:9'\nHEIMDALL_TOKEN_FILE='%s'\n" "$t/no-token" >"$envf"
+	chmod 0644 "$envf"
+	# shellcheck disable=SC2086 # $sh may be "busybox sh"
+	hpush() { env -u HEIMDALL_URL -u HEIMDALL_TOKEN_FILE HEIMDALL_ALLOW_ROOT=1 HEIMDALL_ENV_FILE="$1" $sh "$collect" --push </dev/null 2>"$t/err"; }
+	if hpush "$envf"; then fail "--push with no token succeeded"; fi
+	grep -q "cannot read token file $t/no-token" "$t/err" || fail "collect.env wasn't loaded: $(cat "$t/err")"
+	if hpush "$t/missing.env"; then fail "--push with no settings succeeded"; fi
+	grep -q 'HEIMDALL_URL is not set' "$t/err" || fail "no settings: $(cat "$t/err")"
+	chmod 0664 "$envf"
+	if hpush "$envf"; then fail "--push with a group-writable collect.env succeeded"; fi
+	grep -q "not loading $envf" "$t/err" || fail "a group-writable collect.env was loaded: $(cat "$t/err")"
+	grep -q 'HEIMDALL_URL is not set' "$t/err" || fail "group-writable: $(cat "$t/err")"
 	printf 'ok   %s\n' "$sh"
 }
 

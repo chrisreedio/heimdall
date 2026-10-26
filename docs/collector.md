@@ -366,6 +366,8 @@ On the hub's own box the collector's settings are in `/etc/heimdall-collect/coll
 | `heimdall-collect deployed` | Ask for a report in about a minute, from a deploy script, as any user; always exits `0` (see [`heimdall-collect deployed`](#heimdall-collect-deployed)) |
 | `heimdall-collect --version` | Print the collector version |
 
+**Send a report now:** `sudo systemctl start heimdall-collect.service` (with systemd), or `sudo -u heimdall heimdall-collect --push`. Run by hand without `HEIMDALL_URL` set, `--push` loads the installed `/etc/heimdall/collect.env` (or `/etc/heimdall-collect/collect.env`) the way the systemd unit does, if it's readable, owned by root and writable by nobody else. It still refuses to run as root. On a terminal, when it finds no settings, it says how to send one.
+
 **Push mode settings** (environment variables, usually from a systemd `EnvironmentFile`):
 
 | Variable | Default | Meaning |

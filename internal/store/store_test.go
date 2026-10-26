@@ -301,6 +301,31 @@ func TestSchemaConstraints(t *testing.T) {
 		 INSERT INTO memberships (user_id, org_id, role) SELECT last_insert_rowid(), id, 'root' FROM organizations LIMIT 1`)
 }
 
+func TestCollectorDefaults(t *testing.T) {
+	s, ctx := newStore(t), t.Context()
+	if _, err := s.CreateOrg(ctx, "test", "acme", ""); err != nil {
+		t.Fatal(err)
+	}
+	orgs, err := s.ListOrgs(ctx)
+	if err != nil || len(orgs) != 1 || orgs[0].Collector != (CollectorDefaults{WatchPrivilegeUsers: true, WatchLogins: true}) {
+		t.Fatalf("a new org's defaults = %+v, %v", orgs, err)
+	}
+	if err := s.SetCollectorDefaults(ctx, "user:1", "acme", CollectorDefaults{WatchLogins: true}); err != nil {
+		t.Fatal(err)
+	}
+	if orgs, _ = s.ListOrgs(ctx); orgs[0].Collector != (CollectorDefaults{WatchLogins: true}) {
+		t.Errorf("after setting = %+v", orgs[0].Collector)
+	}
+	var detail string
+	if err := s.db.QueryRowContext(ctx, "SELECT detail FROM audit_log WHERE action = 'org.collector_defaults' AND actor = 'user:1'").Scan(&detail); err != nil ||
+		detail != `{"watch_logins":true,"watch_privilege_users":false}` {
+		t.Errorf("audit = %q, %v", detail, err)
+	}
+	if err := s.SetCollectorDefaults(ctx, "user:1", "nope", CollectorDefaults{}); !errors.Is(err, ErrNotFound) {
+		t.Errorf("unknown org: %v", err)
+	}
+}
+
 func TestOrgDeleteCascades(t *testing.T) {
 	s := newStore(t)
 	ctx := t.Context()

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/auth/entra"
 	"github.com/realmwatch/heimdall/internal/store"
 )
 
@@ -88,7 +89,16 @@ func (s *server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.cfg.SSO.Finish(ctx, code, req.Verifier, req.Nonce)
 	if err != nil {
-		s.log.Warn("sso: sign-in rejected", "err", err) // entra errors never include tokens or codes
+		// entra errors never include the secret, tokens or codes. A failed
+		// code exchange says why, for whoever set up the app registration;
+		// the person signing in still sees the generic message.
+		var te *entra.TokenError
+		if errors.As(err, &te) {
+			s.log.Warn("sso: sign-in rejected: token exchange failed", "status", te.Status, "error", te.Code,
+				"error_codes", te.AADSTS(), "description", te.Description, "hint", te.Hint)
+		} else {
+			s.log.Warn("sso: sign-in rejected", "err", err)
+		}
 		s.loginError(w, r, http.StatusUnauthorized, next, msgSSOFailed)
 		return
 	}

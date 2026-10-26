@@ -16,6 +16,16 @@ type Org struct {
 	Name      string
 	Hosts     int // populated by ListOrgs
 	CreatedAt time.Time
+	// The collector options the install commands default to (ListOrgs).
+	Collector CollectorDefaults
+}
+
+// CollectorDefaults are an org's default collector options for new
+// servers: the install commands on the Add host and Add servers pages
+// start with these flags. A new org has both on.
+type CollectorDefaults struct {
+	WatchPrivilegeUsers bool // --watch-privilege-users: who and from where for sudo, su, root SSH
+	WatchLogins         bool // --watch-logins: failed SSH login counts
 }
 
 type Env struct {
@@ -60,7 +70,7 @@ func (s *Store) CreateOrg(ctx context.Context, actor, slug, name string) (Org, e
 
 func (s *Store) ListOrgs(ctx context.Context) ([]Org, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT o.id, o.slug, o.name, o.created_at, count(h.id)
+		SELECT o.id, o.slug, o.name, o.created_at, o.watch_privilege_users, o.watch_logins, count(h.id)
 		FROM organizations o LEFT JOIN hosts h ON h.org_id = o.id
 		GROUP BY o.id ORDER BY o.slug`)
 	if err != nil {
@@ -71,13 +81,30 @@ func (s *Store) ListOrgs(ctx context.Context) ([]Org, error) {
 	for rows.Next() {
 		var o Org
 		var created string
-		if err := rows.Scan(&o.ID, &o.Slug, &o.Name, &created, &o.Hosts); err != nil {
+		if err := rows.Scan(&o.ID, &o.Slug, &o.Name, &created,
+			&o.Collector.WatchPrivilegeUsers, &o.Collector.WatchLogins, &o.Hosts); err != nil {
 			return nil, err
 		}
 		o.CreatedAt = parseTime(created)
 		out = append(out, o)
 	}
 	return out, rows.Err()
+}
+
+// SetCollectorDefaults stores an org's default collector options, audited.
+func (s *Store) SetCollectorDefaults(ctx context.Context, actor, orgSlug string, d CollectorDefaults) error {
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		id, err := orgIDBySlug(ctx, tx, orgSlug)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE organizations SET watch_privilege_users = ?, watch_logins = ? WHERE id = ?`,
+			d.WatchPrivilegeUsers, d.WatchLogins, id); err != nil {
+			return err
+		}
+		return audit(ctx, tx, AuditEntry{Actor: actor, Action: "org.collector_defaults", OrgID: id, Target: orgSlug,
+			Detail: map[string]any{"watch_privilege_users": d.WatchPrivilegeUsers, "watch_logins": d.WatchLogins}})
+	})
 }
 
 func orgIDBySlug(ctx context.Context, q querier, slug string) (int64, error) {

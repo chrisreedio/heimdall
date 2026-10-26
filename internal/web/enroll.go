@@ -38,21 +38,26 @@ type enrollBody struct {
 	IngestURL string
 	Form      struct {
 		Env, Tags, Label, Expires, Uses string
-		Approval                        bool
+		Approval, Remember              bool
+		Opts                            store.CollectorDefaults
+		OptsSet                         bool // Opts came from the form, not the org's default
 	}
 	Keys     []enrollRow
 	Awaiting []store.AwaitingHost // enrolled hosts waiting for approval
 	Notice   string
 	// After creating a key:
-	Created  bool
-	Key      enrollRow
-	Secret   string
-	Version  string
-	Unpinned bool
-	Linux    string // paste on each server, then paste the key
-	Many     string // an ssh loop from your machine: the key typed once
-	Cloud    string // cloud-init user data (contains the key)
-	Windows  string
+	Created   bool
+	Key       enrollRow
+	Secret    string
+	Version   string
+	Unpinned  bool
+	Opts      store.CollectorDefaults
+	OptsSaved bool
+	OptsError string
+	Linux     installCmd // paste on each server, then paste the key
+	Many      installCmd // an ssh loop from your machine: the key typed once
+	Cloud     installCmd // cloud-init user data (contains the key)
+	Windows   string
 }
 
 // newEnrollBody is the page with the form's defaults: 24 hours, approval on.
@@ -98,6 +103,9 @@ func (s *server) renderEnroll(w http.ResponseWriter, r *http.Request, v *auth.Vi
 		}
 	}
 	body.Orgs, body.Envs, body.TTLs, body.IngestURL = orgs, envs, enrollTTLs, s.cfg.IngestURL
+	if !body.Form.OptsSet {
+		body.Form.Opts = formOrgDefaults(orgs, body.Form.Env)
+	}
 	s.render(w, r, status, "enroll", v, "Add servers", "hosts", body)
 }
 
@@ -107,10 +115,13 @@ func (s *server) enrollSubmit(w http.ResponseWriter, r *http.Request, v *auth.Vi
 	body.Form.Env, body.Form.Tags, body.Form.Label, body.Form.Expires, body.Form.Uses = f("env"), f("tags"), f("label"), f("expires"), f("uses")
 	body.Form.Approval = r.PostForm.Get("approval") != ""
 	org, env, _ := strings.Cut(body.Form.Env, "/")
-	if o, err := s.orgBySlug(r, org); err != nil || !v.Scope.CanAdmin(o.ID) {
+	o, err := s.orgBySlug(r, org)
+	if err != nil || !v.Scope.CanAdmin(o.ID) {
 		s.notFound(w, r, v)
 		return
 	}
+	opts, remember := collectorForm(r, o.Collector)
+	body.Form.Opts, body.Form.OptsSet, body.Form.Remember = opts, true, remember
 	bad := func(msg string) {
 		body.Error = msg
 		s.renderEnroll(w, r, v, http.StatusBadRequest, body)
@@ -148,15 +159,17 @@ func (s *server) enrollSubmit(w http.ResponseWriter, r *http.Request, v *auth.Vi
 		return
 	}
 	body.Created, body.Key, body.Secret = true, enrollRow{k, k.Status(now), expiresIn(k.ExpiresAt, now)}, key
+	body.Opts = opts
+	body.OptsSaved, body.OptsError = s.rememberCollector(r, v, o, opts, remember)
 	base, hub := s.installURLs(&body.Version, &body.Unpinned)
-	body.Linux = fmt.Sprintf("curl -fsSLO %s/install.sh && sudo sh install.sh --hub %s --enroll", base, hub)
-	body.Many = fmt.Sprintf(`read -rs KEY   # paste the key (it isn't shown), then Enter
+	flags := collectorFlags(opts)
+	body.Linux = installCmd{fmt.Sprintf("curl -fsSLO %s/install.sh && sudo sh install.sh --hub %s --enroll", base, hub), flags, ""}
+	body.Many = installCmd{fmt.Sprintf(`read -rs KEY   # paste the key (it isn't shown), then Enter
 for h in web-01 web-02 web-03; do
-  printf '%%s\n' "$KEY" | ssh "$h" 'cd "$(mktemp -d)" && curl -fsSLO %s/install.sh && sudo sh install.sh --hub %s --enroll-stdin'
-done
-unset KEY`, base, hub)
-	body.Cloud = fmt.Sprintf("#cloud-config\nruncmd:\n  - [sh, -c, \"cd /root && curl -fsSLO %s/install.sh && printf '%%s\\\\n' '%s' | sh install.sh --hub %s --enroll-stdin\"]",
-		base, key, hub)
+  printf '%%s\n' "$KEY" | ssh "$h" 'cd "$(mktemp -d)" && curl -fsSLO %s/install.sh && sudo sh install.sh --hub %s --enroll-stdin`, base, hub),
+		flags, "'\ndone\nunset KEY"}
+	body.Cloud = installCmd{fmt.Sprintf("#cloud-config\nruncmd:\n  - [sh, -c, \"cd /root && curl -fsSLO %s/install.sh && printf '%%s\\\\n' '%s' | sh install.sh --hub %s --enroll-stdin", base, key, hub),
+		flags, `"]`}
 	body.Windows = fmt.Sprintf("foreach ($f in 'install-windows.ps1','collect.ps1','SHA256SUMS') { Invoke-WebRequest -UseBasicParsing %s/$f -OutFile $f }\n.\\install-windows.ps1 -HubUrl %s -Enroll",
 		base, hub)
 	s.renderEnroll(w, r, v, http.StatusOK, body)
