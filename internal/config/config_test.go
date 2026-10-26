@@ -38,6 +38,18 @@ func TestTemplateWith(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("rendered setup doesn't validate: %v", err)
 	}
+	if cfg.UI.BehindProxy {
+		t.Error("the UI's behind_proxy is on without UIBehindProxy")
+	}
+	// A hub behind Cloudflare Tunnel and Access (install-hub.sh --ui-url).
+	cfg, err = parse(TemplateWith(Setup{UIBaseURL: "https://heimdall.example.com", IngestPublicURL: "https://bifrost.example.com",
+		BehindProxy: true, UIBehindProxy: true}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.UI.BehindProxy || !cfg.Ingest.BehindProxy || cfg.UI.BehindTailscaleServe || cfg.Ingest.PublicURL != "https://bifrost.example.com" {
+		t.Errorf("proxy setup not applied: %+v", cfg.UI)
+	}
 }
 
 func TestTemplateQuotesDatabase(t *testing.T) {

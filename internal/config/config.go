@@ -284,6 +284,9 @@ type UI struct {
 	SessionMax  Duration `toml:"session_max"`
 	// BehindTailscaleServe: see internal/web/tsproxy.go and docs/ip-awareness.md.
 	BehindTailscaleServe bool `toml:"behind_tailscale_serve"`
+	// BehindProxy: another proxy on the hub (cloudflared, Caddy, nginx)
+	// forwards to the UI; see internal/web/tsproxy.go and docs/deployment.md.
+	BehindProxy bool `toml:"behind_proxy"`
 }
 
 type Auth struct {
@@ -597,6 +600,7 @@ type Setup struct {
 	UIBaseURL       string // e.g. https://hub.tailnet.ts.net
 	IngestPublicURL string // what servers use, e.g. https://ingest.example.com
 	BehindProxy     bool   // ingest sits behind a local proxy (Caddy or tailscale serve)
+	UIBehindProxy   bool   // the UI sits behind a local proxy other than tailscale serve
 	MCPBaseURL      string // non-empty enables MCP with this origin
 }
 
@@ -620,6 +624,9 @@ func TemplateWith(s Setup) []byte {
 	}
 	if s.BehindProxy {
 		set(`behind_proxy  = false`, `behind_proxy  = true`)
+	}
+	if s.UIBehindProxy {
+		set(`behind_proxy = false # the UI's`, `behind_proxy = true # the UI's`)
 	}
 	if s.MCPBaseURL != "" {
 		set("enabled  = false\nlisten   = \"127.0.0.1:8090\"\nbase_url = \"http://127.0.0.1:8090\"",
