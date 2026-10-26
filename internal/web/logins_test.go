@@ -38,7 +38,7 @@ func TestOffendersPage(t *testing.T) {
 	failLogins(t, e, web, "198.51.100.4", 1, true) // the office: known
 
 	body := e.get("/offenders", signedIn(e)).Body.String()
-	for _, want := range []string{"<h1>Repeat offenders</h1>", `href="/offenders"`, ">Offenders</a>",
+	for _, want := range []string{"<h1>Repeat offenders</h1>", `href="/offenders"`, ">Offenders</span>",
 		`<a href="/ips/203.0.113.9">203.0.113.9</a>`, `<a href="/ips/203.0.113.20">203.0.113.20</a>`,
 		`<span class="pill bad"`, ">then succeeded</span>", "1 on more than one host",
 		"Known addresses", `<a href="/ips/198.51.100.4">198.51.100.4</a>`, ">Office</a>"} {

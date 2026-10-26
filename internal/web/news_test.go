@@ -55,7 +55,7 @@ func TestNewsPage(t *testing.T) {
 		t.Fatalf("status %d", w.Code)
 	}
 	for _, want := range []string{
-		`aria-current="page">News</a>`,
+		`title="News" aria-current="page"`,
 		`ExampleSSL &lt;script&gt;alert(&#34;t&#34;)&lt;/script&gt; overflow`,
 		`href="https://news.example.test/i/ssl" rel="noopener noreferrer"`,
 		`Affects 2 of your hosts`, `href="/hosts/acme/web-01"`, `href="/hosts/globex/globex-web"`,

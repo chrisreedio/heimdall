@@ -160,3 +160,30 @@ document.addEventListener("DOMContentLoaded", function () {
     sel.form.querySelectorAll("[data-autosubmit-hide]").forEach(function (b) { b.hidden = true; });
   });
 });
+
+// Sidebar: fold to an icon rail and back, remembered in this browser.
+// theme.js applies the saved choice before the page is drawn.
+document.addEventListener("DOMContentLoaded", function () {
+  var btn = document.querySelector(".side-collapse");
+  if (!btn) return;
+  var root = document.documentElement;
+  function show() {
+    var rail = root.getAttribute("data-side") === "rail";
+    var label = rail ? "Expand the sidebar" : "Collapse the sidebar";
+    btn.setAttribute("aria-label", label);
+    btn.title = label;
+    btn.setAttribute("aria-expanded", rail ? "false" : "true");
+  }
+  show();
+  btn.hidden = false;
+  btn.addEventListener("click", function () {
+    var rail = root.getAttribute("data-side") !== "rail";
+    if (rail) root.setAttribute("data-side", "rail");
+    else root.removeAttribute("data-side");
+    try {
+      if (rail) localStorage.setItem("heimdall-side", "rail");
+      else localStorage.removeItem("heimdall-side");
+    } catch (e) {}
+    show();
+  });
+});
