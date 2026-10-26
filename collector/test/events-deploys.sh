@@ -1,8 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # collector/test/events-deploys.sh [SHELL]: unit tests for collect.sh's
-# event report cap (event-allowed) and deploy watch list (--deploy-unit),
-# with no systemd and no root. Run by `make test-collector`, under dash,
+# event report cap (event-allowed), deploy watch list (--deploy-unit) and
+# --push's error reporting (with a fake curl), with no systemd and no root. Run by `make test-collector`, under dash,
 # bash and busybox ash where they're installed.
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -86,6 +86,46 @@ EOF
 	if hpush "$envf"; then fail "--push with a group-writable collect.env succeeded"; fi
 	grep -q "not loading $envf" "$t/err" || fail "a group-writable collect.env was loaded: $(cat "$t/err")"
 	grep -q 'HEIMDALL_URL is not set' "$t/err" || fail "group-writable: $(cat "$t/err")"
+
+	# --push says what the hub answered, even after a retry. The fake curl
+	# behaves like curl 8 when a first try got a 503: it truncates its
+	# output for the retry, which fails on /dev/null (exit 23).
+	mkdir -p "$t/bin"
+	cat >"$t/bin/curl" <<'EOF'
+#!/bin/sh
+cat >/dev/null
+while [ $# -gt 0 ]; do
+	case $1 in
+	--output) out=$2 ;;
+	--dump-header) hdr=$2 ;;
+	esac
+	shift
+done
+case $FAKE_CURL in
+down) echo 'curl: (7) Failed to connect' >&2; printf 000; exit 7 ;;
+esac
+printf 'HTTP/1.1 503 Service Unavailable\r\n\r\nHTTP/1.1 400 Bad Request\r\n\r\n' >"$hdr"
+if [ ! -f "$out" ] && [ -e "$out" ]; then
+	echo 'curl: (23) Failure writing output to destination' >&2
+	exit 23
+fi
+printf '{"error":"could not read body"}\r\n' >"$out"
+printf 400
+EOF
+	chmod +x "$t/bin/curl"
+	rm -f "$t/token"
+	printf 'tok_123\n' >"$t/token"
+	chmod 0400 "$t/token"
+	# shellcheck disable=SC2086 # $sh may be "busybox sh"
+	fpush() {
+		env HEIMDALL_CURL="$t/bin/curl" FAKE_CURL=$1 HEIMDALL_URL=http://127.0.0.1:9 HEIMDALL_TOKEN_FILE="$t/token" \
+			HEIMDALL_ENV_FILE="$t/missing.env" HEIMDALL_ALLOW_ROOT=1 HEIMDALL_DISCOVER_SITES=0 \
+			$sh "$collect" --push </dev/null >/dev/null 2>"$t/err"
+	}
+	if fpush retry; then fail "--push succeeded on a 400"; fi
+	grep -q 'hub returned HTTP 400: {"error":"could not read body"}$' "$t/err" || fail "retried 400: $(cat "$t/err")"
+	if fpush down; then fail "--push succeeded with no hub"; fi
+	grep -q 'could not reach http://127.0.0.1:9 (curl exit 7)' "$t/err" || fail "no hub: $(cat "$t/err")"
 	printf 'ok   %s\n' "$sh"
 }
 

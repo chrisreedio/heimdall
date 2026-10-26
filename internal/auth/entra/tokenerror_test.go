@@ -62,3 +62,58 @@ func TestTokenErrorSaysWhy(t *testing.T) {
 		}
 	}
 }
+
+// Known AADSTS codes get a fixed message for the person signing in; the
+// code shown is the known one, else the first.
+func TestSignInMessage(t *testing.T) {
+	for _, tc := range []struct {
+		codes []int
+		want  string // a word from the message, "" for none
+		code  int
+	}{
+		{[]int{65004}, "approve Heimdall", 65004},
+		{[]int{65001}, "approve Heimdall", 65001},
+		{[]int{90094}, "approve Heimdall", 90094},
+		{[]int{90008}, "approve Heimdall", 90008},
+		{[]int{50105}, "assign you to the app", 50105},
+		{[]int{53003}, "Conditional Access", 53003},
+		{[]int{50020}, "different organization", 50020},
+		{[]int{7000215}, "misconfigured", 7000215},
+		{[]int{7000222}, "misconfigured", 7000222},
+		{[]int{700025}, "misconfigured", 700025},
+		{[]int{9002327}, "misconfigured", 9002327},
+		{[]int{50011}, "misconfigured", 50011},
+		{[]int{700016}, "misconfigured", 700016},
+		{[]int{12345, 50105}, "assign you", 50105},
+		{[]int{12345}, "", 12345},
+		{nil, "", 0},
+	} {
+		msg, code := SignInMessage(tc.codes)
+		if code != tc.code || (tc.want == "") != (msg == "") || !strings.Contains(msg, tc.want) {
+			t.Errorf("%v: %q %d", tc.codes, msg, code)
+		}
+	}
+	for c := range tokenHints {
+		if signInMessages[c] == "" {
+			t.Errorf("AADSTS%d has a hint but no sign-in message", c)
+		}
+	}
+}
+
+func TestDescriptionCode(t *testing.T) {
+	for desc, want := range map[string]int{
+		"AADSTS65004: User declined to consent.": 65004,
+		" AADSTS50105: not assigned":             50105,
+		"AADSTS123456789: nine digits":           123456789,
+		"AADSTS1234567890: ten digits":           0,
+		"AADSTS123: three digits":                0,
+		"AADSTS65004x":                           0,
+		"User declined. AADSTS65004":             0,
+		"<script>AADSTS65004</script>":           0,
+		"":                                       0,
+	} {
+		if got := DescriptionCode(desc); got != want {
+			t.Errorf("%q: %d, want %d", desc, got, want)
+		}
+	}
+}

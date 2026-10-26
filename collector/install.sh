@@ -41,7 +41,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # release workflow for a v* tag. cosign checks it: a pinned build, fetched
 # once into /usr/local/lib/heimdall and checked against its hash each use.
 COSIGN_VERSION=v3.1.4
-RELEASE_SIGNER='^https://github.com/(chrisreedio|realmwatch)/heimdall/\.github/workflows/release\.yml@refs/tags/v'
+RELEASE_SIGNER='^https://github.com/realmwatch/heimdall/\.github/workflows/release\.yml@refs/tags/v'
 
 # cosign_bin: print the path of the cosign to check signatures with,
 # fetching the pinned build first if it's missing or doesn't match.
