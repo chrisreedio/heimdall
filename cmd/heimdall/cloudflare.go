@@ -77,7 +77,7 @@ func newCloudflare(cfg config.Config, s *store.Store, log *slog.Logger, r *ipinf
 	}
 	client := &cloudflare.Client{Base: c.APIBase, Token: token, HTTP: hc, UserAgent: "heimdall/" + version}
 	syncers = append(syncers, &cloudflare.Syncer{Client: client, Store: s, Zones: c.Zones, Security: c.SecurityEvents,
-		Interval: c.SyncEvery.Duration, Now: time.Now, Log: log, Surface: true})
+		Interval: c.SyncEvery.Duration, Now: time.Now, Log: log, Surface: true, Edge: edge})
 	if c.Radar {
 		radar := &cloudflare.Radar{Client: client, Store: s, Edge: edge, Now: time.Now, Log: log}
 		r.Sources = append(r.Sources, radar)
@@ -352,7 +352,7 @@ func cmdCloudflareSync(a *app, args []string) error {
 		return err
 	}
 	cl := &cloudflare.Client{Base: c.APIBase, Token: token, HTTP: hc, UserAgent: "heimdall/" + version}
-	sy := &cloudflare.Syncer{Client: cl, Store: s, Zones: c.Zones, Security: c.SecurityEvents, Interval: c.SyncEvery.Duration, Now: time.Now, Surface: true}
+	sy := &cloudflare.Syncer{Client: cl, Store: s, Zones: c.Zones, Security: c.SecurityEvents, Interval: c.SyncEvery.Duration, Now: time.Now, Surface: true, Edge: es.Edge}
 	serr := sy.Sync(a.ctx)
 	zs, err := s.CloudflareZones(a.ctx)
 	if err != nil {

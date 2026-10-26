@@ -7,6 +7,20 @@ It does that in two ways:
 - **By address (known).** The hub fetches each enabled service's published source addresses once a day and stores them as IP labels (source `service:<id>`, kind `automation`).
 - **By account (a guess).** Each service's default account (`forge` for Forge, `ploi` for Ploi) is recognized too. People log in as `forge` as well, so a matching account alone is only a guess. A matching address always ranks above it.
 
+## Privileged access
+
+Every deploy is a privileged SSH session, often as root. By default a session **from a service's synced range** doesn't count toward the privilege watch's `privileged_access` anomaly, so deploys don't raise an alert each time. A session recognized only by its account (`forge` from an address outside Forge's ranges) still counts, and if nothing else is known about the address it also raises `privilege_unknown_source`: a name is easy to use, an address range is the service's own. A manual `automation` label isn't exempt either.
+
+For example, with Forge's ranges synced: root SSH from a Forge address doesn't count; `forge` logging in from 203.0.113.9 counts and raises `privilege_unknown_source`.
+
+To count deploy-service sessions too, per org:
+
+```sh
+heimdall ip policy --org acme --count-services on    # off (exempt) by default
+```
+
+or turn on **count deploy-service sessions as privileged access** for the org on the IP addresses page (`/ips`). Changes are audited (`ip_policy.set`). See [ip-awareness.md](ip-awareness.md#deploy-service-sessions-and-privileged-access) for the full rules and a worked example.
+
 ## Catalog
 
 Only vendors that publish their addresses themselves are listed. The hub fetches exactly the URLs below and nothing else (each service's client is allowlisted to its own hosts).

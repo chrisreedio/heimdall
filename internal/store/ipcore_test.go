@@ -80,13 +80,13 @@ func TestIPPolicyAndWhereAddressesAppear(t *testing.T) {
 	acme, _ := s.CreateOrg(ctx, "test", "acme", "")
 	beta, _ := s.CreateOrg(ctx, "test", "beta", "")
 	p, err := s.IPPolicy(ctx, acme.ID)
-	if err != nil || p.TailnetOnly || !p.AllowServices {
+	if err != nil || p.TailnetOnly || !p.AllowServices || p.CountServices {
 		t.Fatalf("default policy = %+v, %v", p, err)
 	}
-	if err := s.SetIPPolicy(ctx, "cli:test", IPPolicy{OrgID: acme.ID, TailnetOnly: true}, now); err != nil {
+	if err := s.SetIPPolicy(ctx, "cli:test", IPPolicy{OrgID: acme.ID, TailnetOnly: true, CountServices: true}, now); err != nil {
 		t.Fatal(err)
 	}
-	if p, _ = s.IPPolicy(ctx, acme.ID); !p.TailnetOnly || p.AllowServices || p.UpdatedBy != "cli:test" || !p.UpdatedAt.Equal(now) {
+	if p, _ = s.IPPolicy(ctx, acme.ID); !p.TailnetOnly || p.AllowServices || !p.CountServices || p.UpdatedBy != "cli:test" || !p.UpdatedAt.Equal(now) {
 		t.Errorf("policy = %+v", p)
 	}
 	if p, _ = s.IPPolicy(ctx, beta.ID); p.TailnetOnly {

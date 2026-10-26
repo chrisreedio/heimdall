@@ -142,13 +142,14 @@ func TestIPLabelAddRemove(t *testing.T) {
 	}
 
 	// The policy toggle.
-	if w := e.post("/ips/policy", csrfForm("org", "acme", "tailnet_only", "on"), origin(e.baseURL), signedIn(e)); w.Code != http.StatusSeeOther {
+	if w := e.post("/ips/policy", csrfForm("org", "acme", "tailnet_only", "on", "count_services", "on"), origin(e.baseURL), signedIn(e)); w.Code != http.StatusSeeOther {
 		t.Fatalf("policy: %d", w.Code)
 	}
-	if p, _ := e.st.IPPolicy(ctx, acme); !p.TailnetOnly || p.AllowServices || p.UpdatedBy != "user:1" {
+	if p, _ := e.st.IPPolicy(ctx, acme); !p.TailnetOnly || p.AllowServices || !p.CountServices || p.UpdatedBy != "user:1" {
 		t.Errorf("policy = %+v", p)
 	}
-	if !strings.Contains(e.get("/ips", signedIn(e)).Body.String(), `name="tailnet_only" checked`) {
+	if body := e.get("/ips", signedIn(e)).Body.String(); !strings.Contains(body, `name="tailnet_only" checked`) ||
+		!strings.Contains(body, `name="count_services" checked`) {
 		t.Error("policy not shown on")
 	}
 }

@@ -66,7 +66,9 @@ type Rules struct {
 // before and now ("" when not reported).
 //
 //   - privileged_access: events outside a maintenance window, one anomaly
-//     per host per (UTC) day, its count growing as more arrive.
+//     per host per (UTC) day, its count growing as more arrive. Sessions
+//     from a deploy service's synced range don't count unless the org's IP
+//     policy counts services (an account name alone isn't enough).
 //   - privilege_watch_disabled: the host reported "on" before and now
 //     reports "off" or "partial". Hosts that never enabled it never alert.
 //   - privilege_unknown_source, privilege_off_tailnet: where sessions came
@@ -99,6 +101,11 @@ func (e *Rules) OnReport(ctx context.Context, host store.IngestHost, snapshotID 
 	if err != nil {
 		return raised, err
 	}
+	policy, err := e.Store.IPPolicy(ctx, host.OrgID)
+	if err != nil {
+		return raised, err
+	}
+	resolve := e.resolver(ctx, host.OrgID)
 	type day struct {
 		counts map[string]int
 		users  []string
@@ -106,6 +113,9 @@ func (e *Rules) OnReport(ctx context.Context, host store.IngestHost, snapshotID 
 	days := map[string]*day{}
 	for _, ev := range fresh {
 		if slices.ContainsFunc(windows, func(w store.Window) bool { return w.Overlaps(ev.At, ev.At) }) {
+			continue
+		}
+		if !policy.CountServices && ev.Source != "" && ev.Source != "?" && resolve(ev).SyncedAutomation() {
 			continue
 		}
 		k := ev.At.UTC().Format(time.DateOnly)
@@ -146,6 +156,33 @@ func (e *Rules) OnReport(ctx context.Context, host store.IngestHost, snapshotID 
 			raised = append(raised, a)
 		}
 	}
-	more, err := e.sourceRules(ctx, host, snapshotID, fresh, windows, now) // source.go
+	more, err := e.sourceRules(ctx, host, snapshotID, fresh, windows, policy, resolve, now) // source.go
 	return append(raised, more...), err
+}
+
+// resolver returns a lookup of events' source verdicts for an org, loading
+// its labels on first use and remembering each event's answer.
+func (e *Rules) resolver(ctx context.Context, orgID int64) func(store.PrivilegeEvent) ipinfo.Verdict {
+	ips := e.IPs
+	if ips == nil {
+		ips = &ipinfo.Resolver{Store: e.Store}
+	}
+	type key struct {
+		source, user string
+		at           time.Time
+	}
+	var batch func(ip, user string, at time.Time) ipinfo.Verdict
+	seen := map[key]ipinfo.Verdict{}
+	return func(ev store.PrivilegeEvent) ipinfo.Verdict {
+		k := key{ev.Source, ev.User, ev.At}
+		if v, ok := seen[k]; ok {
+			return v
+		}
+		if batch == nil {
+			batch = ips.Batch(ctx, orgID)
+		}
+		v := batch(ev.Source, ev.User, ev.At)
+		seen[k] = v
+		return v
+	}
 }

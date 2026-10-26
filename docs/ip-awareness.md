@@ -78,20 +78,56 @@ Two privilege watch rules use the verdicts. Both are **high** (so they notify im
 - **Privileged access from an unknown address** (`privilege_unknown_source`): a session whose source is `unknown`: no label, not the tailnet or a private network, not one of your hosts, no matching sign-in. A source that's a host name (sshd with `UseDNS yes`) can't be checked, so it counts as unknown. Sessions inside a maintenance window don't count, like `privileged_access`. Anything known never alerts here, deploy services included.
 - **SSH from outside the tailnet** (`privilege_off_tailnet`): only for orgs with the tailnet-only policy on.
 
-Sessions with no source (local, or "?") never alert under either rule. The existing `privileged_access` rule still counts every session outside a window.
+Sessions with no source (local, or "?") never alert under either rule.
+
+The privilege watch's own rule, `privileged_access` (medium), counts every session outside a maintenance window, except deploy-service sessions (below).
+
+### Deploy-service sessions and privileged access
+
+A deploy service such as Laravel Forge SSHes in as root, or as its own account, on every deploy. Counted as privileged access, each deploy would raise an alert that says nothing new. So by default a session **from a deploy service's synced range** doesn't count toward `privileged_access`.
+
+Only a verified address is exempt:
+
+- **Exempt:** the source is inside an `automation` range kept in sync by a source, such as the published addresses the hub fetches from Forge or Ploi each day, or a `[[deploy_services.custom]]` tool's ranges ([deploy-services.md](deploy-services.md)). The account doesn't matter: Forge logging in as `root` from its range is exempt.
+- **Not exempt:** a session recognized only by its account name, such as `forge` from a home connection. Anyone with the password or key can log in as `forge`, so the name proves nothing about who it is. It counts toward `privileged_access`, and if nothing else is known about the address it raises `privilege_unknown_source` too.
+- **Not exempt:** a manual `automation` label. Anyone with admin access can add one, so it says whose an address is, not that it's the service's own.
+
+The exemption only changes `privileged_access`. A deploy service's address is known, so it never raises `privilege_unknown_source` either way. `privilege_off_tailnet` has its own switch for deploy services, **Except deploy services** (below).
+
+To count deploy-service sessions again, for example to keep a record of every deploy as an anomaly, turn on **count deploy-service sessions as privileged access** under the org on the IP addresses page (`/ips`) and press **Save policy**, or:
+
+```sh
+heimdall ip policy --org acme --count-services on    # count them
+heimdall ip policy --org acme --count-services off   # exempt them (the default)
+heimdall ip policy --org acme                        # show the policy
+```
+
+It's per org, off by default (deploy-service sessions are exempt), and each change is written to the audit log (`ip_policy.set`), with who made it.
+
+A worked example. Forge's synced ranges include 198.51.100.7. On one day, outside any maintenance window, `web-01` reports:
+
+| Session | Source | Counts toward `privileged_access`? | Also raises |
+|---|---|---|---|
+| root SSH as `root` | 198.51.100.7 (Forge's range) | no | nothing |
+| sudo as `forge` | 198.51.100.7 (Forge's range) | no | nothing |
+| root SSH as `forge` | 203.0.113.9 (unknown) | yes: the account name alone | `privilege_unknown_source` |
+| sudo as `chris` | 192.0.2.7 (labeled staff) | yes | nothing |
+| sudo as `chris` | none (local console) | yes | nothing |
+
+That day's anomaly reads "3 privileged accesses outside a maintenance window ...: 2 sudo, 1 root SSH". With `--count-services on`, the Forge sessions count too: 5.
 
 ### The tailnet-only policy
 
 For orgs that reach their servers only over Tailscale, turn on **SSH only from the tailnet** on the IP addresses page, or:
 
 ```sh
-heimdall ip policy --org acme --tailnet-only on [--allow-services on|off]
+heimdall ip policy --org acme --tailnet-only on [--allow-services on|off] [--count-services on|off]
 heimdall ip policy --org acme          # show it
 ```
 
 With it on, any privileged session from an address that isn't on the tailnet, a private network or loopback raises `privilege_off_tailnet`, **even if the address is labeled** (a label says whose it is, not that it's allowed). This goes by the address alone, so a label can't make a public address count as internal, and maintenance windows don't exempt it. It replaces the unknown-address alert for those sessions, so one session never raises both.
 
-Deploy services such as Forge and Ploi deploy over the public internet. **Except deploy services** (`--allow-services`, on by default) exempts addresses in an `automation` range kept in sync by a source, such as a deploy service's published ranges. A manual `automation` label, or a session recognized only by its account name, isn't exempt: anyone can claim a name, but a synced range is the service's own. Turn it off to alert on those too.
+Deploy services such as Forge and Ploi deploy over the public internet. **Except deploy services** (`--allow-services`, on by default) exempts addresses in an `automation` range kept in sync by a source, such as a deploy service's published ranges. A manual `automation` label, or a session recognized only by its account name, isn't exempt: anyone can claim a name, but a synced range is the service's own. Turn it off to alert on those too. It's separate from `--count-services`, which decides whether those sessions count toward `privileged_access` ([above](#deploy-service-sessions-and-privileged-access)).
 
 "Automation" is generic: a deploy tool of your own can publish its ranges the same way.
 
