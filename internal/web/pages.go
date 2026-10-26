@@ -563,7 +563,9 @@ func sortSites(rows []siteRow) {
 	})
 }
 
-// siteSection is a site on the host page with its own findings.
+// siteSection is a site on the host page with its own findings. For a
+// site, Composer and npm split them by ecosystem; Findings, Fixable and
+// Watch cover both (a lockfile has only Findings and Groups).
 type siteSection struct {
 	report.Site
 	ID         string // the card's anchor
@@ -571,20 +573,42 @@ type siteSection struct {
 	Groups     []pkgGroup // Findings by package, most urgent first
 	Fixable    int        // live findings with a fix
 	Watch      int        // no fix yet, but worth watching
-	Command    *command
+	Composer   ecoSection
+	Npm        ecoSection
 	Label      string
 	LabelSet   bool
 	Repo       string // the site's repository ("" if unknown)
 	HandoffURL string // "Hand off to agent", when allowed and there's something to fix
 }
 
+// ecoSection is one ecosystem's findings in a site card: Composer or npm.
+type ecoSection struct {
+	Findings       []report.Finding
+	Groups         []pkgGroup
+	Fixable, Watch int // as siteSection's
+	Dev            int // findings on npm dev dependencies (never in Fixable or Watch)
+	Commands       []command
+}
+
+func newEcoSection(fs []report.Finding, cmds []command) ecoSection {
+	e := ecoSection{Findings: fs, Groups: groupByPackage(fs), Commands: cmds}
+	e.Fixable, e.Watch = attentionOf(fs)
+	for _, f := range fs {
+		if f.Dev {
+			e.Dev++
+		}
+	}
+	return e
+}
+
 var composerName = regexp.MustCompile(`^[a-z0-9]([_.-]?[a-z0-9]+)*/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$`)
 
-// composerCommand builds `composer update` for a site's fixable findings.
+// composerCommand builds `composer update` for a site's fixable Composer
+// findings.
 func composerCommand(id string, fs []report.Finding) *command {
 	var names []string
 	for _, f := range fs {
-		if f.Fixed == "" || !composerName.MatchString(f.Package) || slices.Contains(names, f.Package) {
+		if f.Fixed == "" || f.Ecosystem == npmEcosystem || !composerName.MatchString(f.Package) || slices.Contains(names, f.Package) {
 			continue
 		}
 		names = append(names, f.Package)
@@ -596,8 +620,9 @@ func composerCommand(id string, fs []report.Finding) *command {
 		Text: "composer update " + strings.Join(names, " ") + " --with-dependencies"}
 }
 
-// splitFindings separates OS findings from each site's Composer findings
-// and each lockfile's (findings carry the site root or lockfile path).
+// splitFindings separates OS findings from each site's Composer and npm
+// findings and each lockfile's (findings carry the site root or lockfile
+// path).
 func splitFindings(h report.Host) (osFindings []report.Finding, sites, lockfiles []siteSection) {
 	bySite := map[string][]report.Finding{}
 	for _, f := range h.Findings {
@@ -609,8 +634,21 @@ func splitFindings(h report.Host) (osFindings []report.Finding, sites, lockfiles
 	}
 	for i, site := range h.Sites {
 		fs := bySite[site.Root]
-		sec := siteSection{Site: site, ID: "site-" + strconv.Itoa(i), Findings: fs, Groups: groupByPackage(fs),
-			Command: composerCommand("cmd-site-"+strconv.Itoa(i), fs)}
+		var composer, npm []report.Finding
+		for _, f := range fs {
+			if f.Ecosystem == npmEcosystem {
+				npm = append(npm, f)
+			} else {
+				composer = append(composer, f)
+			}
+		}
+		id := "site-" + strconv.Itoa(i)
+		var cmds []command
+		if c := composerCommand("cmd-"+id, composer); c != nil {
+			cmds = append(cmds, *c)
+		}
+		sec := siteSection{Site: site, ID: id, Findings: fs, Groups: groupByPackage(fs),
+			Composer: newEcoSection(composer, cmds), Npm: newEcoSection(npm, npmCommands("cmd-"+id+"-npm", npm))}
 		sec.Fixable, sec.Watch = attentionOf(fs)
 		sites = append(sites, sec)
 	}
@@ -644,7 +682,8 @@ func attentionOf(fs []report.Finding) (fixable, watch int) {
 type attnWhere struct {
 	OSFixable, OSWatch     int
 	SiteFixable, SiteWatch int
-	Sites                  int // sites with any
+	Sites                  int    // sites with any
+	SitePackages           string // where in those sites: "Composer packages", "npm packages" or both
 	LockFixable, LockWatch int
 	Lockfiles              int // lockfiles with any
 }
@@ -668,12 +707,23 @@ func attnText(fixable, watch int) string {
 func attnWhereOf(os []report.Finding, sites, lockfiles []siteSection) attnWhere {
 	var a attnWhere
 	a.OSFixable, a.OSWatch = attentionOf(os)
+	var composer, npm bool
 	for _, s := range sites {
 		a.SiteFixable += s.Fixable
 		a.SiteWatch += s.Watch
 		if s.Fixable+s.Watch > 0 {
 			a.Sites++
 		}
+		composer = composer || s.Composer.Fixable+s.Composer.Watch > 0
+		npm = npm || s.Npm.Fixable+s.Npm.Watch > 0
+	}
+	switch {
+	case composer && npm:
+		a.SitePackages = "Composer and npm packages"
+	case npm:
+		a.SitePackages = "npm packages"
+	default:
+		a.SitePackages = "Composer packages"
 	}
 	for _, l := range lockfiles {
 		a.LockFixable += l.Fixable
@@ -869,7 +919,7 @@ type siteBody struct {
 }
 
 // sitePage shows one site (a web root on a host): its stack, lifecycle and
-// Composer findings.
+// Composer and npm findings.
 func (s *server) sitePage(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
 	ctx := r.Context()
 	host, err := s.st.HostByName(ctx, r.PathValue("org"), r.PathValue("host"))

@@ -26,6 +26,7 @@
   <div class="fact">{{template "icon" "check"}}<div><div class="k">Requires PHP</div><div class="v">{{with .Site.PHPRequirement}}{{.}}{{else}}Not stated{{end}}</div>{{with .Site.PHPSatisfied}}<div class="pills">{{if .}}<span class="pill ok" title="composer.json requires PHP {{$.Body.Site.PHPRequirement}}; the PHP-FPM serving this site runs {{$.Body.Site.PHPFPM}}, which is allowed">runs on {{$.Body.Site.PHPFPM}} ✓</span>{{else}}<span class="pill bad" title="composer.json requires PHP {{$.Body.Site.PHPRequirement}}, but the PHP-FPM serving this site runs {{$.Body.Site.PHPFPM}}">PHP {{$.Body.Site.PHPFPM}} not allowed</span>{{end}}</div>{{end}}</div></div>
   <div class="fact">{{template "icon" "calendar"}}<div><div class="k">Last deploy</div><div class="v">{{with .Site.DeployedAt}}<span title="{{fullDate .}}">{{dayAgo .}}</span>{{else}}Unknown{{end}}</div></div></div>
   <div class="fact">{{template "icon" "package"}}<div><div class="k">Composer packages</div><div class="v">{{if .Site.Readable}}{{.Site.Packages}}{{else}}Unreadable{{end}}</div>{{if not .Site.Readable}}<div class="pills"><span class="pill warn" title="the collector couldn't read composer.json or composer.lock">can't check packages</span></div>{{end}}</div></div>
+  {{if .Site.NpmPackages}}<div class="fact">{{template "icon" "package"}}<div><div class="k">npm packages</div><div class="v">{{.Site.NpmPackages}}</div>{{with .Site.NpmDev}}<div class="pills"><span class="pill muted" title="dev dependencies in package-lock.json: needed to build the site, not to run it">{{.}} dev</span></div>{{end}}</div></div>{{end}}
   <div class="runtimes-row">{{template "icon" "globe"}}<span class="k">Root</span><code class="path">{{pathBreak .Site.Root}}</code>{{if and .Site.DocumentRoot (ne .Site.DocumentRoot .Site.Root)}}<span class="muted small">serving</span> <code class="path">{{pathBreak (relPath .Site.Root .Site.DocumentRoot)}}</code>{{end}}{{if gt (len .Site.ServerNames) 1}}<span class="k">Names</span>{{range .Site.ServerNames}}<span class="tag">{{.}}</span>{{end}}{{end}}</div>
   <div class="runtimes-row repo-row" id="repo">{{template "icon" "code"}}<span class="k">Repository</span>
     {{with .Repo.Repo}}{{with repoWeb .}}<a href="{{.}}" rel="noopener noreferrer" class="repo-link"><code class="path">{{$.Body.Repo.Repo}}</code></a>{{else}}<code class="path">{{.}}</code>{{end}}
@@ -45,11 +46,11 @@
 </section>
 
 <section id="findings">
-  <div class="section-head"><h2>Composer findings</h2>{{with .HandoffURL}}<a class="button secondary handoff-btn" href="{{.}}">Hand off to agent</a>{{end}}</div>
+  <div class="section-head"><h2>{{if .Site.NpmPackages}}Composer and npm findings{{else}}Composer findings{{end}}</h2>{{with .HandoffURL}}<a class="button secondary handoff-btn" href="{{.}}">Hand off to agent</a>{{end}}</div>
   {{if not .Site.Readable}}<p class="empty">The collector couldn't read this site's composer.json or composer.lock, so its packages can't be checked. Make them readable by the collector's user.</p>
   {{else if or .View.Total .View.Hidden}}{{template "chips" (chipsFor .Site.Counts .View)}}{{template "osfindings" .View}}
   {{else if or .View.Sev .View.Fixable}}{{template "chips" (chipsFor .Site.Counts .View)}}<p class="empty">No findings match the filter.</p>
-  {{else}}<p class="empty">No open findings in this site's {{.Site.Packages}} Composer packages.</p>{{end}}
+  {{else}}<p class="empty">No open findings in this site's {{.Site.Packages}} Composer packages{{with .Site.NpmPackages}} or {{.}} npm packages{{end}}.</p>{{end}}
 </section>
 
 {{if .Others}}

@@ -41,7 +41,7 @@
     <td class="num">{{if .Counts.KEV}}<span class="badge kev">{{.Counts.KEV}}</span>{{else}}0{{end}}</td>
     <td class="num">{{.Counts.Critical}}</td>
     <td class="num">{{.Counts.High}}</td>
-    <td class="num">{{.Counts.Fixable}}</td>
+    <td class="num">{{.Counts.Fixable}}{{with .Counts.Dev}}<div class="muted small" title="findings on npm dev dependencies: needed to build the site, not to run it, so they aren't in these counts">+{{.}} dev</div>{{end}}</td>
   </tr>
   {{end}}
   </tbody>

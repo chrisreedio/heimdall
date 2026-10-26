@@ -634,6 +634,11 @@ var funcs = template.FuncMap{
 	"chipsFor": func(c report.Counts, v findingsView) map[string]any {
 		return map[string]any{"C": chipCounts{c}, "V": v}
 	},
+	// siteEco is the "siteeco" partial's input: an ecosystem's name, its
+	// lockfile (shown beside it, or ""), its section, and whether it's open.
+	"siteEco": func(name, file string, e ecoSection, open bool) map[string]any {
+		return map[string]any{"Name": name, "File": file, "E": e, "Open": open}
+	},
 	"sevChips": func() []string { return []string{"critical", "high", "medium", "low", "unknown"} },
 	// hotEPSS: an EPSS score worth watching even with no fix (store.WatchEPSS).
 	"hotEPSS":   func(e float64) bool { return e >= store.WatchEPSS },

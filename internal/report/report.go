@@ -74,7 +74,9 @@ type Site struct {
 	FrameworkLife    *Lifecycle `json:"framework_lifecycle,omitempty"`
 	DeployedAt       *time.Time `json:"deployed_at,omitempty"`
 	Packages         int        `json:"composer_packages"`
-	Counts           Counts     `json:"counts"`
+	NpmPackages      int        `json:"npm_packages"` // from package-lock.json (collector snapshot v4)
+	NpmDev           int        `json:"npm_dev_packages"`
+	Counts           Counts     `json:"counts"` // Composer and npm findings
 }
 
 type Lifecycle struct {
@@ -121,6 +123,10 @@ type Counts struct {
 	// in the news, or with an EPSS score of at least store.WatchEPSS.
 	// Fixable + Watch is what needs attention (Attention).
 	Watch int `json:"watch"`
+	// Dev are on npm dev dependencies: needed to build or test a site, not
+	// to run it. They're in Total and nothing else, not even the severity
+	// counts (Total = Fixable + NoFix + NotRunning + KernelUserland + Dev).
+	Dev int `json:"dev"`
 }
 
 // Attention is how many findings need attention: everything fixable, and
@@ -141,7 +147,9 @@ type Finding struct {
 	FixPending    bool      `json:"fix_pending"`
 	Summary       string    `json:"summary"`
 	FirstSeen     time.Time `json:"first_seen"`
-	Site          string    `json:"site,omitempty"`    // app root for Composer findings
+	Site          string    `json:"site,omitempty"`    // app root for Composer and npm findings
+	Ecosystem     string    `json:"ecosystem"`         // OSV's: the distro's, "Packagist", "npm" or "PyPI"
+	Dev           bool      `json:"dev,omitempty"`     // on an npm dev dependency (see Counts.Dev)
 	EPSS          float64   `json:"epss,omitempty"`    // exploit probability (0-1), when known
 	InNews        bool      `json:"in_news,omitempty"` // named by a live threat-news incident
 	// NotRunning: every package is part of an older kernel that's
@@ -272,7 +280,8 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 					Advisory: f.AdvisoryID, CVEs: nonNil(f.CVEs), Severity: f.Severity, CVSS: f.CVSS,
 					KEV: f.KEV, KEVRansomware: f.KEVRansomware, Package: f.Package, Version: f.Version,
 					Binaries: nonNil(f.Binaries), Fixed: f.FixedVersion, FixPending: f.FixPending,
-					Summary: f.Summary, FirstSeen: f.FirstSeen, Site: f.SiteRoot, EPSS: f.EPSS, InNews: f.InNews,
+					Summary: f.Summary, FirstSeen: f.FirstSeen, Site: f.SiteRoot, Ecosystem: f.Ecosystem, Dev: f.Dev,
+					EPSS: f.EPSS, InNews: f.InNews,
 					NotRunning: status == kernel.StatusNotRunning, KernelStatus: status,
 				})
 				host.Counts.add(f, status)
@@ -326,6 +335,12 @@ func buildSite(s store.InventorySite, counts Counts, lifecycle func(product, cyc
 		Root: s.Root, DocumentRoot: s.DocumentRoot, ServerNames: nonNil(s.ServerNames), WebServer: s.WebServer,
 		Readable: s.Readable, PHPFPM: s.PHPFPMVersion, PHPRequirement: s.PHPRequirement,
 		Framework: s.Framework, FrameworkVersion: s.FrameworkVersion, Packages: len(s.Packages), Counts: counts,
+		NpmPackages: len(s.NpmPackages),
+	}
+	for _, p := range s.NpmPackages {
+		if p.Dev {
+			site.NpmDev++
+		}
 	}
 	if !s.DeployedAt.IsZero() {
 		d := s.DeployedAt
@@ -357,6 +372,10 @@ func buildSite(s store.InventorySite, counts Counts, lifecycle func(product, cyc
 // (countsSQL in internal/store) counts the same way.
 func (c *Counts) add(f store.ReportFinding, kernelStatus string) {
 	c.Total++
+	if f.Dev {
+		c.Dev++
+		return
+	}
 	switch {
 	case kernelStatus == kernel.StatusNotRunning:
 		c.NotRunning++
@@ -406,7 +425,7 @@ func countsFrom(c store.FindingCounts) Counts {
 	return Counts{Total: c.Total, KEV: c.KEV, Critical: c.Critical, High: c.High, Medium: c.Medium, Low: c.Low,
 		Unknown: c.Unknown, Fixable: c.Fixable, FixPending: c.FixPending, NoFix: c.NoFix, FixUrgent: c.FixUrgent,
 		InNews: c.InNews, NotRunning: c.NotRunning, RebootPending: c.RebootPending,
-		KernelUserland: c.KernelUserland, Watch: c.Watch}
+		KernelUserland: c.KernelUserland, Watch: c.Watch, Dev: c.Dev}
 }
 
 func (c *Counts) merge(o Counts) {
@@ -426,6 +445,7 @@ func (c *Counts) merge(o Counts) {
 	c.RebootPending += o.RebootPending
 	c.KernelUserland += o.KernelUserland
 	c.Watch += o.Watch
+	c.Dev += o.Dev
 }
 
 func nonNil(s []string) []string {
@@ -498,7 +518,7 @@ func WriteText(w io.Writer, r *Report, limit int) {
 			if !s.Readable {
 				fmt.Fprintln(w, "    composer files not readable by the collector")
 			} else if s.Packages > 0 {
-				fmt.Fprintf(w, "    %d Composer packages, %d findings (%d fixable)\n", s.Packages, s.Counts.Total, s.Counts.Fixable)
+				fmt.Fprintf(w, "    %d Composer and %d npm packages, %d findings (%d fixable)\n", s.Packages, s.NpmPackages, s.Counts.Total, s.Counts.Fixable)
 			}
 		}
 		for j, f := range h.Findings {

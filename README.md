@@ -85,7 +85,7 @@ These risks are knowingly accepted to keep things simple:
 - Language runtimes: PHP, Node.js, Python, Ruby, Go, Java
 - Common services: nginx, Apache, MySQL/MariaDB, PostgreSQL, Redis, OpenSSH, Docker
 - Docker containers and images (name, image, tag, digest), if the collector user is allowed to query Docker
-- **Laravel / PHP sites:** each site the web server serves (domains, document root, PHP-FPM version), its Laravel version and every Composer package from `composer.lock`. See [Sites & Laravel](#sites--laravel).
+- **Laravel / PHP sites:** each site the web server serves (domains, document root, PHP-FPM version), its Laravel version, every Composer package from `composer.lock` and every npm package from `package-lock.json`. See [Sites & Laravel](#sites--laravel).
 - Optional application lockfiles (`package-lock.json`, `requirements.txt`) from an allowlist of paths you configure *on the host*
 - Snapshot history, so you can see what changed on a host between two check-ins
 
@@ -102,11 +102,12 @@ Most PHP apps are a site on a shared box, so Heimdall inventories **sites**, not
 - **Per site:** server names, document root, app root, web server, and the **PHP-FPM version serving it** (read from the `fastcgi_pass` / `SetHandler` socket, e.g. `php8.3-fpm.sock`)
 - **Laravel:** framework version and the PHP requirement from `composer.json`/`composer.lock`, plus the last deploy time (the `composer.lock` modification time)
 - **Composer packages:** every package in `composer.lock`, matched against OSV's Packagist advisories, so findings are reported **per site**
+- **npm packages:** every package in the app's `package-lock.json` (lockfile v1 to v3), matched against OSV's npm advisories in the same site card. Dev dependencies (frontend build tools) are marked and kept out of what needs attention
 - **PHP on the host:** every installed PHP version (CLI and FPM), taken from the package list
 - **End of life:** EOL warnings for both PHP and Laravel versions
 - **Fleet questions:** e.g. "which sites still run Laravel 9?", "which sites are served by PHP 8.1?", or "where is `laravel/framework` < 11.31 deployed?"
 
-**Never done:** reading `.env`, running `artisan`, `php` or `composer`, or executing any app code. Heimdall only reads `composer.json` and `composer.lock`. The collector user needs read access to just those two files, granted with an ACL or group membership. It never needs access to the whole app.
+**Never done:** reading `.env`, running `artisan`, `php`, `composer` or `npm`, or executing any app code. Heimdall only reads `composer.json`, `composer.lock` and `package-lock.json`. The collector user needs read access to just those files, granted with an ACL or group membership. It never needs access to the whole app.
 
 ### Vulnerability & lifecycle checks
 - Matches package versions against **[OSV.dev](https://osv.dev)**, which aggregates the Debian, Ubuntu, Alpine, Red Hat, Rocky, Alma, npm, Packagist, PyPI and other advisory feeds

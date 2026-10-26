@@ -30,6 +30,9 @@ type Site struct {
 	PHPRequirement   string            `json:"php_requirement"` // composer.json require.php, e.g. "^8.2"
 	DeployedAt       *time.Time        `json:"deployed_at"`     // composer.lock mtime
 	ComposerPackages []ComposerPackage `json:"composer_packages"`
+	// NpmPackages is v4 only: the app root's package-lock.json. Must be
+	// absent before v4; omitempty keeps older documents' inventory hashes.
+	NpmPackages []NpmPackage `json:"npm_packages,omitempty"`
 }
 
 // ComposerPackage is one entry from composer.lock (packages and packages-dev).
@@ -139,6 +142,7 @@ func validateSites(s *Snapshot, unavailable map[string]bool, bad func(field, for
 			site.PHPRequirement != "" || site.DeployedAt != nil || len(site.ComposerPackages) > 0) {
 			bad(f, "composer data present but readable is false")
 		}
+		validateNpm(s, f, site, bad)
 		if len(site.ComposerPackages) > MaxComposerPackages {
 			bad(f+".composer_packages", "too many (%d > %d)", len(site.ComposerPackages), MaxComposerPackages)
 			continue

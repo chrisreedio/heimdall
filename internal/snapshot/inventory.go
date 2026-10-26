@@ -51,6 +51,9 @@ func (s *Snapshot) InventoryHash() [32]byte {
 	for i := range c.Sites {
 		c.Sites[i].ServerNames = sortedBy(c.Sites[i].ServerNames, strings.Compare)
 		c.Sites[i].ComposerPackages = sortedBy(c.Sites[i].ComposerPackages, comparePackage)
+		c.Sites[i].NpmPackages = sortedBy(c.Sites[i].NpmPackages, func(a, b NpmPackage) int {
+			return cmp.Or(strings.Compare(a.Name, b.Name), strings.Compare(a.Version, b.Version))
+		})
 		if t := c.Sites[i].DeployedAt; t != nil {
 			u := t.UTC()
 			c.Sites[i].DeployedAt = &u
