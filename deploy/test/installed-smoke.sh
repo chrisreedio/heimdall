@@ -47,6 +47,36 @@ step "An unsigned build is refused"
 refuse 'SHA256SUMS.sigstore.json' sudo sh "$dist/install-hub.sh" --from-dir "$dist" --org acme --no-tailscale
 [ ! -e /usr/local/bin/heimdall ] || fail "refused, but installed anyway"
 
+# A real, signed release: the new code checks its signature with the
+# pinned cosign, and refuses it once tampered with. Done first, on the
+# empty machine: an older release can't run on this build's database once
+# it has newer migrations, so it's never installed over it.
+signed=v0.4.32
+step "The hub installer checks a real release's signature, and refuses a tampered SHA256SUMS"
+rel=$(mktemp -d)
+for f in SHA256SUMS SHA256SUMS.sigstore.json heimdall-linux-amd64 heimdall.service collect.sh splash.html \
+	heimdall-collect.service heimdall-collect.timer heimdall-collect-boot.timer heimdall-collect-soon.timer \
+	heimdall-collect-changes.service heimdall-collect-changes.path privilege-watch.sh privilege-hook login-watch.sh; do
+	curl -fsSL --proto '=https' -o "$rel/$f" "https://github.com/realmwatch/heimdall/releases/download/$signed/$f" || fail "download $f"
+done
+bad=$(mktemp -d)
+cp "$rel"/* "$bad/"
+echo "0000000000000000000000000000000000000000000000000000000000000000  evil" >>"$bad/SHA256SUMS"
+refuse 'signature verification FAILED' sudo sh "$dist/install-hub.sh" --from-dir "$bad" --org acme --no-tailscale
+[ ! -e /usr/local/bin/heimdall ] || fail "refused, but installed anyway"
+expect 'Sigstore signature verified' sudo sh "$dist/install-hub.sh" --from-dir "$rel" --org acme --no-tailscale
+
+step "heimdall upgrade checks it too"
+# This build's binary, upgrading to (re-installing) the signed release.
+sudo install -m 0755 "$dist/heimdall-linux-amd64" /usr/local/bin/heimdall
+expect 'Sigstore signature verified' sudo heimdall upgrade --version "$signed"
+systemctl is-active --quiet heimdall || fail "hub not running after upgrading to $signed"
+
+step "Start over from an empty machine"
+sudo systemctl disable --now heimdall >/dev/null 2>&1
+sudo rm -rf /etc/heimdall /var/lib/heimdall /usr/local/bin/heimdall /usr/local/bin/heimdall.previous /etc/systemd/system/heimdall.service
+sudo systemctl daemon-reload
+
 step "Install the hub"
 sudo sh "$dist/install-hub.sh" --from-dir "$dist" --org acme --no-tailscale --skip-signature-check
 systemctl is-active --quiet heimdall || fail "hub not running"
@@ -103,29 +133,13 @@ sudo sh "$dist/install-hub.sh" --from-dir "$dist" --skip-signature-check
 systemctl is-active --quiet heimdall || fail "hub not running after upgrade"
 refuse 'SHA256SUMS.sigstore.json' sudo sh "$dist/install.sh" --hub http://127.0.0.1:8443 --token-file /etc/heimdall-collect/token --from-dir "$dist"
 
-# A real, signed release: the new code checks its signature with the
-# pinned cosign, and refuses it once tampered with.
-signed=v0.4.32
-step "heimdall upgrade checks a real release's signature"
-expect 'Sigstore signature verified' sudo heimdall upgrade --version "$signed"
-systemctl is-active --quiet heimdall || fail "hub not running after upgrading to $signed"
-
-step "heimdall-collect upgrade checks it too"
+# The collector has no database, so the signed (older) release can go
+# over this build's collector.
+step "heimdall-collect upgrade checks the signed release's signature"
 expect 'Sigstore signature verified' sudo heimdall-collect upgrade "$signed"
 
-step "The installers check it, and refuse a tampered SHA256SUMS"
-rel=$(mktemp -d)
-for f in SHA256SUMS SHA256SUMS.sigstore.json heimdall-linux-amd64 heimdall.service collect.sh splash.html \
-	heimdall-collect.service heimdall-collect.timer heimdall-collect-boot.timer heimdall-collect-soon.timer \
-	heimdall-collect-changes.service heimdall-collect-changes.path privilege-watch.sh privilege-hook login-watch.sh; do
-	curl -fsSL --proto '=https' -o "$rel/$f" "https://github.com/realmwatch/heimdall/releases/download/$signed/$f" || fail "download $f"
-done
-bad=$(mktemp -d)
-cp "$rel"/* "$bad/"
-echo "0000000000000000000000000000000000000000000000000000000000000000  evil" >>"$bad/SHA256SUMS"
-refuse 'signature verification FAILED' sudo sh "$dist/install-hub.sh" --from-dir "$bad"
+step "install.sh checks it, and refuses a tampered SHA256SUMS"
 refuse 'signature verification FAILED' sudo sh "$dist/install.sh" --hub http://127.0.0.1:8443 --token-file /etc/heimdall-collect/token --from-dir "$bad"
-expect 'Sigstore signature verified' sudo sh "$dist/install-hub.sh" --from-dir "$rel"
 expect 'Sigstore signature verified' sudo sh "$dist/install.sh" --hub http://127.0.0.1:8443 --token-file /etc/heimdall-collect/token --from-dir "$rel"
 systemctl is-active --quiet heimdall || fail "hub not running"
 printf '\nSMOKE OK\n'
