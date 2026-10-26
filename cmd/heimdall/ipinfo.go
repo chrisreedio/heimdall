@@ -3,10 +3,14 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/realmwatch/heimdall/internal/config"
 	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/privilege"
 	"github.com/realmwatch/heimdall/internal/store"
 )
 
@@ -37,4 +41,45 @@ func newIPResolver(cfg config.Config, s *store.Store, log *slog.Logger) (*ipinfo
 	}
 
 	return r, syncers
+}
+
+// resolveKnownFunc closes privilege_unknown_source anomalies whose address
+// is known now (privilege.ResolveKnown), logging what it did.
+func resolveKnownFunc(s *store.Store, ips *ipinfo.Resolver, log *slog.Logger) func(context.Context) {
+	return func(ctx context.Context) {
+		if n, err := privilege.ResolveKnown(ctx, s, ips, time.Now()); err != nil {
+			log.Warn("closing unknown-address anomalies failed", "err", err)
+		} else if n > 0 {
+			log.Info("unknown-address anomalies resolved: the address is known now", "count", n)
+		}
+	}
+}
+
+// everyHour runs f shortly after start and then hourly, until ctx ends.
+func everyHour(ctx context.Context, f func(context.Context)) {
+	t := time.NewTimer(time.Minute)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			f(ctx)
+			t.Reset(time.Hour)
+		}
+	}
+}
+
+// resolveKnownCLI is resolveKnownFunc for commands that add labels: it
+// says on stderr what it closed.
+func resolveKnownCLI(a *app, s *store.Store) {
+	n, err := privilege.ResolveKnown(a.ctx, s, nil, time.Now())
+	switch {
+	case err != nil:
+		fmt.Fprintf(a.stderr, "closing unknown-address anomalies failed: %v\n", err)
+	case n == 1:
+		fmt.Fprintln(a.stderr, "1 unknown-address anomaly resolved: its address is known now")
+	case n > 1:
+		fmt.Fprintf(a.stderr, "%d unknown-address anomalies resolved: their addresses are known now\n", n)
+	}
 }

@@ -157,4 +157,20 @@
 </span>{{end}}
 
 {{/* ipbadge: what's known about an address (ipBadge, ips.go) */}}
-{{define "ipbadge"}}{{if .Href}}<a class="pill {{.Class}}" href="{{.Href}}"{{with .Title}} title="{{.}}"{{end}}>{{.Text}}</a>{{else}}<span class="pill {{.Class}}"{{with .Title}} title="{{.}}"{{end}}>{{.Text}}</span>{{end}}{{end}}
+{{define "ipbadge"}}{{if or .PersonHref .Href}}<a class="pill {{.Class}}" href="{{or .PersonHref .Href}}"{{with .Title}} title="{{.}}"{{end}}>{{.Text}}</a>{{else}}<span class="pill {{.Class}}"{{with .Title}} title="{{.}}"{{end}}>{{.Text}}</span>{{end}}{{end}}
+
+{{/* personlink: a label's person, linking their page (people.go) */}}
+{{define "personlink"}}{{with .}}<a href="{{personURL .}}">{{.}}</a>{{end}}{{end}}
+
+{{/* labelform: "Label an address" (labelForm, people.go), on /ips and person pages */}}
+{{define "labelform"}}<form method="post" action="/ips/labels" class="row">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">{{with .Back}}<input type="hidden" name="back" value="{{.}}">{{end}}
+    <label>Address or range <input name="prefix" required maxlength="64" value="{{.Prefill.Addr}}" placeholder="203.0.113.7 or 203.0.113.0/24" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+    <label>Kind <select name="kind">{{range .Kinds}}<option value="{{.}}"{{if eq . $.Prefill.Kind}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+    <label>Name <input name="name" required maxlength="100" value="{{.Prefill.Name}}" placeholder="{{if .Prefill.Person}}Home{{else}}Office{{end}}"></label>
+    <label>Person <input name="person" maxlength="200" value="{{.Prefill.Person}}" placeholder="alice@example.com" list="label-people" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+    {{with .People}}<datalist id="label-people">{{range .}}<option value="{{.}}"></option>{{end}}</datalist>{{end}}
+    <label>Note <input name="note" maxlength="500"></label>
+    <label>Org <select name="org">{{range .Admin}}<option value="{{.Slug}}">{{.Name}}</option>{{end}}{{if .AllOrgs}}<option value="">All orgs</option>{{end}}</select></label>
+    <button type="submit">Add label</button>
+  </form>{{end}}

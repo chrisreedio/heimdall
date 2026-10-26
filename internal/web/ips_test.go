@@ -185,10 +185,11 @@ func TestHostPageVerdicts(t *testing.T) {
 	}
 	body := e.get("/hosts/acme/web-01", signedIn(e)).Body.String()
 	for _, want := range []string{
-		`<a class="pill ok" href="/ips/192.0.2.7" title="staff: Office (alice), from a manual label`, `>alice</a>`,
+		`<a class="pill ok" href="/ips/person/alice" title="staff: Office (alice), from a manual label`, `>alice</a>`,
+		`by chris from <a href="/ips/192.0.2.7">192.0.2.7</a>`, // the address keeps its IP page
 		`<a class="pill info" href="/ips/198.51.100.4"`, `>Laravel Forge</a>`,
 		`<a class="pill ok" href="/ips/100.101.102.103"`, `>Tailnet</a>`,
-		`<a class="pill ok guess" href="/ips/203.0.113.77"`, `>probably Bob</a>`,
+		`<a class="pill ok guess" href="/ips/person/Bob"`, `>probably Bob</a>`,
 		`<a class="pill warn" href="/ips/203.0.113.9"`, `>unknown address</a>`,
 		`by root from <a href="/ips/203.0.113.9">203.0.113.9</a>`,
 		`1 session in the last 24 hours came from addresses Heimdall doesn't know: <a href="/ips/203.0.113.9">203.0.113.9</a>`,

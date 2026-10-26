@@ -36,7 +36,7 @@ A **guess** is inferred, not known. Badges for guesses say "probably alice" and 
 
 Org admins label addresses on **IP addresses** (`/ips`, in the navigation for admins): an address or CIDR range, a kind, a name ("Office", "Alice's home") and optionally the person and a note. The page lists every label that applies to each org you administer, manual ones (removable) and synced ones grouped by source with when they last synced. Global admins also see and manage labels for every org. Adding and removing labels is audited.
 
-Each privilege session's address links to its **IP page** (`/ips/<address>`), with the verdict and every label, and everywhere the address appears in the orgs you can see: privilege sessions (host, user, kind, when) and hosts whose reports come from it. Global admins also see Heimdall sign-ins from it; admins see audit log entries recorded from it (org admins only their orgs'). Admins get a **Label this address** button that opens the form prefilled.
+Each privilege session's address links to its **IP page** (`/ips/<address>`), with the verdict and every label, and everywhere the address appears in the orgs you can see: privilege sessions (host, user, kind, when) and hosts whose reports come from it. Global admins also see Heimdall sign-ins from it; admins see audit log entries recorded from it (org admins only their orgs'). Admins get a **Label this address** button that opens the form prefilled, and **It's me**, which also fills in `staff` and you as the person. The form's Person field suggests the Heimdall users in your orgs and the people labels already name.
 
 From the CLI:
 
@@ -49,6 +49,20 @@ heimdall ip show [--org acme] [--user forge] 203.0.113.9
 ```
 
 `ip show` prints the verdict: kind, best label, and every label with its source, range and whether it's a guess. `--org` is optional when there's one org.
+
+## People
+
+A label's Person (an email, usually) gets a **person page**, `/ips/person/<person>`, with all of their addresses in one place:
+
+- every label naming them: manual ones, synced ones (a Tailscale device carries its owner's login), each with its org;
+- addresses they signed in to Heimdall from in the last 30 days, what sign-in guesses go by (global admins only);
+- privileged sessions in the last 30 days, on hosts you can see, from an address labeled or guessed theirs;
+- their Heimdall sign-ins (global admins only);
+- **Add an address**, the label form with them filled in (admins).
+
+If the person is a Heimdall user you can see (a user in one of your orgs; any user, for a global admin), labels naming their email or their display name both count, so "alice@example.com" and the guess "probably Alice" meet on one page. The badges link there: a staff badge ("alice", "probably Alice") goes to the person, the address beside it to its IP page. So do the Person column on the IP addresses page, the labels on an IP page, and **addresses** beside each user on the Users page.
+
+It shows what the IP pages would: labels from the orgs you can view and every org's, never another org's.
 
 ## Signed in from here
 
@@ -79,6 +93,14 @@ Two privilege watch rules use the verdicts. Both are **high** (so they notify im
 - **SSH from outside the tailnet** (`privilege_off_tailnet`): only for orgs with the tailnet-only policy on.
 
 Sessions with no source (local, or "?") never alert under either rule.
+
+### When the address becomes known
+
+An open `privilege_unknown_source` anomaly closes itself once its address is known, by the rule's own test at the time it was raised: a label covers it, a synced source lists it, a host reports from it, or someone signed in to Heimdall from it within 12 hours. A deploy service's account name alone still doesn't count. Heimdall checks when a label is added (web or `heimdall ip label add`), after each synced source's sync (deploy services, Tailscale, Cloudflare, and their `sync` commands), and hourly, for sign-ins.
+
+It's acknowledged as `heimdall` with a note such as "resolved: 203.0.113.4 is now known (staff: alice@example.com, label 'Alice home')", audited as `anomaly.resolve`, and listed under **Closed in the last 30 days** on the Anomalies page as **auto-resolved**. Later sessions that day from the address don't raise it again: the address is known. If it stops being known (the label is removed), the next session raises a new one.
+
+`privilege_off_tailnet` never closes this way: a label says whose an address is, not that it's allowed. `privileged_access` doesn't either.
 
 The privilege watch's own rule, `privileged_access` (medium), counts every session outside a maintenance window, except deploy-service sessions (below).
 

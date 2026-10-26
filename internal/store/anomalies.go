@@ -124,6 +124,118 @@ func (s *Store) AckAnomaly(ctx context.Context, actor string, userID, id int64, 
 	})
 }
 
+// AutoResolver is the actor, and detail["resolved_by"], of anomalies
+// Heimdall closed itself because what they flagged stopped holding.
+const AutoResolver = "heimdall"
+
+// SourceAnomaly is an open anomaly about a session's source (its
+// detail["source"]), for closing it once the source is known.
+type SourceAnomaly struct {
+	ID         int64
+	Host       IngestHost
+	Source     string
+	DetectedAt time.Time
+}
+
+// OpenSourceAnomalies lists a rule's open anomalies that name a source.
+func (s *Store) OpenSourceAnomalies(ctx context.Context, rule string) ([]SourceAnomaly, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT a.id, h.id, h.org_id, o.slug, h.name, json_extract(a.detail, '$.source'), a.detected_at
+		FROM anomalies a JOIN hosts h ON h.id = a.host_id JOIN organizations o ON o.id = h.org_id
+		WHERE a.rule = ? AND a.acknowledged_at IS NULL AND json_extract(a.detail, '$.source') <> ''
+		ORDER BY a.id`, rule)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SourceAnomaly
+	for rows.Next() {
+		var a SourceAnomaly
+		var at string
+		if err := rows.Scan(&a.ID, &a.Host.ID, &a.Host.OrgID, &a.Host.OrgSlug, &a.Host.Name, &a.Source, &at); err != nil {
+			return nil, err
+		}
+		a.DetectedAt = parseTime(at)
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// ResolveAnomaly closes an open anomaly as Heimdall (AutoResolver), with
+// a note saying why, audited as anomaly.resolve. It reports whether the
+// anomaly was still open.
+func (s *Store) ResolveAnomaly(ctx context.Context, id int64, note string, at time.Time) (bool, error) {
+	if r := []rune(strings.TrimSpace(note)); len(r) > 200 {
+		note = string(r[:199]) + "…"
+	}
+	note, err := normalizeName("note", note)
+	if err != nil {
+		return false, err
+	}
+	host, err := s.AnomalyHost(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	closed := false
+	err = s.tx(ctx, func(tx *sql.Tx) error {
+		res, err := tx.ExecContext(ctx, `
+			UPDATE anomalies SET acknowledged_at = ?, acknowledged_by = NULL, ack_note = ?,
+			       detail = json_set(detail, '$.resolved_by', ?)
+			WHERE id = ? AND acknowledged_at IS NULL`, at.UTC().Format(timeLayout), note, AutoResolver, id)
+		if err != nil {
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			return nil
+		}
+		closed = true
+		return audit(ctx, tx, AuditEntry{Actor: AutoResolver, Action: "anomaly.resolve", OrgID: host.OrgID, Target: host.Name,
+			Detail: map[string]any{"anomaly": id, "note": note}})
+	})
+	return closed, err
+}
+
+// ClosedAnomaly is an acknowledged anomaly, for the Anomalies page's
+// history.
+type ClosedAnomaly struct {
+	AnomalyView
+	ClosedAt time.Time
+	Note     string
+	By       string // who acknowledged it ("" from the CLI, or a deleted user)
+	Auto     bool   // Heimdall resolved it itself (ResolveAnomaly)
+}
+
+// ClosedAnomalies lists anomalies acknowledged since a time in the scope,
+// newest first.
+func (s *Store) ClosedAnomalies(ctx context.Context, sc Scope, since time.Time, limit int) ([]ClosedAnomaly, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT a.id, a.rule, a.severity, a.summary, a.detected_at, coalesce(a.snapshot_id, 0),
+		       h.id, h.org_id, o.slug, h.name, a.acknowledged_at, a.ack_note,
+		       coalesce(nullif(u.display_name, ''), u.email, ''), coalesce(json_extract(a.detail, '$.resolved_by'), '') = ?
+		FROM anomalies a JOIN hosts h ON h.id = a.host_id JOIN organizations o ON o.id = h.org_id
+		LEFT JOIN users u ON u.id = a.acknowledged_by
+		WHERE a.acknowledged_at >= ? ORDER BY a.acknowledged_at DESC, a.id DESC LIMIT 1000`,
+		AutoResolver, since.UTC().Format(timeLayout))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ClosedAnomaly
+	for rows.Next() {
+		var c ClosedAnomaly
+		var at, closed string
+		if err := rows.Scan(&c.ID, &c.Rule, &c.Severity, &c.Summary, &at, &c.SnapshotID,
+			&c.Host.ID, &c.Host.OrgID, &c.Host.OrgSlug, &c.Host.Name, &closed, &c.Note, &c.By, &c.Auto); err != nil {
+			return nil, err
+		}
+		c.DetectedAt, c.ClosedAt = parseTime(at), parseTime(closed)
+		if sc.CanView(c.Host.OrgID) && len(out) < limit {
+			out = append(out, c)
+		}
+	}
+	return out, rows.Err()
+}
+
 // Suppress mutes one rule on one host until a time (always expires).
 func (s *Store) Suppress(ctx context.Context, actor string, userID int64, host IngestHost, rule string, until time.Time, note string, now time.Time) error {
 	if !containsString(AnomalyRules, rule) {

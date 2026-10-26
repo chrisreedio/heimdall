@@ -12,9 +12,10 @@ import (
 )
 
 type anomaliesBody struct {
-	Items []anomalyItem
-	Rules []string
-	Error string
+	Items  []anomalyItem
+	Closed []store.ClosedAnomaly // the last 30 days', auto-resolved ones marked
+	Rules  []string
+	Error  string
 }
 
 type anomalyItem struct {
@@ -35,6 +36,10 @@ func (s *server) renderAnomalies(w http.ResponseWriter, r *http.Request, v *auth
 	body := anomaliesBody{Rules: store.AnomalyRules, Error: errMsg}
 	for _, a := range list {
 		body.Items = append(body.Items, anomalyItem{AnomalyView: a, CanOperate: v.Scope.CanOperate(a.Host.OrgID)})
+	}
+	if body.Closed, err = s.st.ClosedAnomalies(r.Context(), v.Scope, s.now().Add(-30*24*time.Hour), 100); err != nil {
+		s.fail(w, r, v, err)
+		return
 	}
 	s.render(w, r, status, "anomalies", v, "Anomalies", "anomalies", body)
 }

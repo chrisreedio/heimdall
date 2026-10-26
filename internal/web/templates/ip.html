@@ -2,7 +2,7 @@
 <nav class="crumbs" aria-label="Breadcrumb">{{if .CanLabel}}<a href="/ips">IP addresses</a>{{else}}IP addresses{{end}} <span aria-hidden="true">/</span> {{.Addr}}</nav>
 <div class="head">
   <h1><code>{{.Addr}}</code></h1>
-  {{if .CanLabel}}<a class="button secondary head-action" href="/ips?addr={{.Addr}}">Label this address</a>{{end}}
+  {{if .CanLabel}}<div class="head-action head-actions"><a class="button secondary" href="/ips?addr={{.Addr}}">Label this address</a>{{if .CanSayMe}} <a class="button secondary" href="/ips?addr={{.Addr}}&amp;me=1" title="Label it staff, with you as the person">It's me</a>{{end}}</div>{{end}}
 </div>
 
 <section class="card ip-verdict" aria-labelledby="ip-known">
@@ -10,7 +10,7 @@
   {{$many := gt (len .Verdicts) 1}}
   {{range .Verdicts}}<div>
     {{if $many}}<span class="muted small">In {{join .Orgs ", "}}:</span> {{end}}{{template "ipbadge" .Badge}}
-    {{if .Labels}}<ul class="ip-labels small">{{range .Labels}}<li><strong>{{.Kind}}</strong>: {{.Name}}{{with .Person}} ({{.}}){{end}}{{if .Guess}} <span class="muted">(a guess)</span>{{end}} <span class="muted">· {{.Source}}{{if .Prefix.IsValid}} · {{.Prefix}}{{end}}</span></li>{{end}}</ul>
+    {{if .Labels}}<ul class="ip-labels small">{{range .Labels}}<li><strong>{{.Kind}}</strong>: {{.Name}}{{with .Person}} (<a href="{{personURL .}}">{{.}}</a>){{end}}{{if .Guess}} <span class="muted">(a guess)</span>{{end}} <span class="muted">· {{.Source}}{{if .Prefix.IsValid}} · {{.Prefix}}{{end}}</span></li>{{end}}</ul>
     {{else}}<p class="muted small">Nothing is known about this address: no label, not the tailnet or a private network, and nobody signed in to Heimdall from it around then.</p>{{end}}
   </div>{{else}}<p class="empty">You don't have access to any org yet.</p>{{end}}
 </section>

@@ -28,8 +28,13 @@ func TestAnomalyTriage(t *testing.T) {
 	if w := e.post("/anomalies/1/ack", f, signedIn(e), origin(e.baseURL)); w.Code != http.StatusSeeOther {
 		t.Fatalf("ack: %d %s", w.Code, w.Body.String())
 	}
-	if strings.Contains(e.get("/anomalies", signedIn(e)).Body.String(), "package_change") {
+	body = e.get("/anomalies", signedIn(e)).Body.String()
+	open, closed, _ := strings.Cut(body, "Closed in the last 30 days")
+	if strings.Contains(open, "package_change") {
 		t.Error("acknowledged anomaly still listed")
+	}
+	if !strings.Contains(closed, "package_change") || !strings.Contains(closed, "our deploy") || strings.Contains(closed, "Closed by Heimdall itself") {
+		t.Error("acknowledged anomaly missing from the closed list, or marked auto-resolved")
 	}
 	if w := e.post("/anomalies/999/ack", f, signedIn(e), origin(e.baseURL)); w.Code != http.StatusNotFound {
 		t.Errorf("unknown anomaly: %d", w.Code)
