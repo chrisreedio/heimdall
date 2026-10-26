@@ -225,10 +225,11 @@ func cmdIPShow(a *app, args []string) error {
 }
 
 func cmdIPPolicy(a *app, args []string) error {
-	fs := a.flags("ip policy", "[--org <org>] [--tailnet-only on|off] [--allow-services on|off]")
+	fs := a.flags("ip policy", "[--org <org>] [--tailnet-only on|off] [--allow-services on|off] [--count-services on|off]")
 	org := fs.String("org", "", "organization slug (optional if there is only one)")
 	tailnet := fs.String("tailnet-only", "", "on: alert on privileged SSH from anywhere but the tailnet or a private network")
 	services := fs.String("allow-services", "", "on (the default): exempt deploy services' synced ranges from --tailnet-only")
+	count := fs.String("count-services", "", "on: count sessions from deploy services' synced ranges as privileged access (off by default)")
 	if _, err := parse(fs, args, 0); err != nil {
 		return err
 	}
@@ -245,11 +246,12 @@ func cmdIPPolicy(a *app, args []string) error {
 	if err != nil {
 		return err
 	}
-	if *tailnet != "" || *services != "" {
+	if *tailnet != "" || *services != "" || *count != "" {
 		for flag, v := range map[string]struct {
 			s string
 			b *bool
-		}{"tailnet-only": {*tailnet, &p.TailnetOnly}, "allow-services": {*services, &p.AllowServices}} {
+		}{"tailnet-only": {*tailnet, &p.TailnetOnly}, "allow-services": {*services, &p.AllowServices},
+			"count-services": {*count, &p.CountServices}} {
 			switch strings.ToLower(v.s) {
 			case "":
 			case "on", "true", "yes":
@@ -265,6 +267,7 @@ func cmdIPPolicy(a *app, args []string) error {
 		}
 	}
 	onOff := map[bool]string{true: "on", false: "off"}
-	fmt.Fprintf(a.stdout, "org             %s\ntailnet-only    %s\nallow-services  %s\n", slug, onOff[p.TailnetOnly], onOff[p.AllowServices])
+	fmt.Fprintf(a.stdout, "org             %s\ntailnet-only    %s\nallow-services  %s\ncount-services  %s\n",
+		slug, onOff[p.TailnetOnly], onOff[p.AllowServices], onOff[p.CountServices])
 	return nil
 }

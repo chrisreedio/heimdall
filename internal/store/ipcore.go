@@ -144,17 +144,21 @@ type IPPolicy struct {
 	// AllowServices exempts addresses a synced source labels automation
 	// (a deploy service's published ranges). On unless turned off.
 	AllowServices bool
+	// CountServices counts sessions from those ranges toward
+	// privileged_access. Off unless turned on: deploys aren't news.
+	CountServices bool
 	UpdatedBy     string
 	UpdatedAt     time.Time
 }
 
-// IPPolicy returns an org's policy (off, services allowed, if never set).
+// IPPolicy returns an org's policy (off, services allowed and not
+// counted, if never set).
 func (s *Store) IPPolicy(ctx context.Context, orgID int64) (IPPolicy, error) {
 	p := IPPolicy{OrgID: orgID, AllowServices: true}
 	var at string
 	err := s.db.QueryRowContext(ctx, `
-		SELECT tailnet_only, allow_services, updated_by, updated_at FROM ip_policies WHERE org_id = ?`, orgID).
-		Scan(&p.TailnetOnly, &p.AllowServices, &p.UpdatedBy, &at)
+		SELECT tailnet_only, allow_services, count_services, updated_by, updated_at FROM ip_policies WHERE org_id = ?`, orgID).
+		Scan(&p.TailnetOnly, &p.AllowServices, &p.CountServices, &p.UpdatedBy, &at)
 	if errors.Is(err, sql.ErrNoRows) {
 		return p, nil
 	}
@@ -169,14 +173,16 @@ func (s *Store) SetIPPolicy(ctx context.Context, actor string, p IPPolicy, now t
 	}
 	return s.tx(ctx, func(tx *sql.Tx) error {
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO ip_policies (org_id, tailnet_only, allow_services, updated_by, updated_at) VALUES (?, ?, ?, ?, ?)
+			INSERT INTO ip_policies (org_id, tailnet_only, allow_services, count_services, updated_by, updated_at)
+			VALUES (?, ?, ?, ?, ?, ?)
 			ON CONFLICT (org_id) DO UPDATE SET tailnet_only = excluded.tailnet_only,
-			  allow_services = excluded.allow_services, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
-			p.OrgID, p.TailnetOnly, p.AllowServices, actor, now.UTC().Format(timeLayout)); err != nil {
+			  allow_services = excluded.allow_services, count_services = excluded.count_services, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
+			p.OrgID, p.TailnetOnly, p.AllowServices, p.CountServices, actor, now.UTC().Format(timeLayout)); err != nil {
 			return err
 		}
 		return audit(ctx, tx, AuditEntry{Actor: actor, Action: "ip_policy.set", OrgID: p.OrgID,
-			Detail: map[string]any{"tailnet_only": p.TailnetOnly, "allow_services": p.AllowServices}})
+			Detail: map[string]any{"tailnet_only": p.TailnetOnly, "allow_services": p.AllowServices,
+				"count_services": p.CountServices}})
 	})
 }
 
