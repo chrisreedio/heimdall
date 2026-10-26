@@ -117,8 +117,9 @@ func (s *Server) registerThreatTools() {
 		return q, nil
 	}
 	s.add("threats", tool{
-		description: "Attacker addresses seen across your hosts (failed SSH logins; Cloudflare web events once wired): " +
-			"hosts hit, failures, distinct-username counts, days, network, ban score (as on /bans) and ban status. " +
+		description: "Attacker addresses seen across your hosts and zones (failed SSH logins, and requests Cloudflare blocked " +
+			"or challenged): hosts hit, failures, distinct-username counts, days, web events per action and zone, network, " +
+			"ban score (SSH evidence, as on /bans) and ban status. " +
 			"Addresses IP awareness knows in any org are never listed. Listing never bans anything.",
 		schema: obj(filters),
 		run: func(ctx context.Context, c caller, a map[string]any) (any, error) {

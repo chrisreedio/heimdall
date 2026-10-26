@@ -5,8 +5,9 @@
 // (firewalls, fail2ban, a SIEM) over REST, or for an assistant to ask about
 // over MCP. Being on it never bans anything; bans are internal/bans.
 //
-// Sources are the login watch's failed SSH logins (internal/logins) and,
-// once wired in, Cloudflare's web offenders (Lister.Web). Anything IP
+// Sources are the login watch's failed SSH logins (internal/logins) and
+// the addresses Cloudflare blocked or challenged on your zones (Lister.Web,
+// recorded by the zone sync). Anything IP
 // awareness knows in any org is never on it, exactly as bans drop it:
 // labels, the tailnet, private ranges, Cloudflare's edge, your hosts'
 // report addresses, recent Heimdall sign-ins. Scores are the ban scorer's
@@ -130,24 +131,19 @@ const (
 	KindASN    = "asn"
 )
 
-// WebOffender is one address Cloudflare saw on an org's zones: the same
-// fields as store.WebOffender, so a store row converts with
-// threats.WebOffender(row).
-type WebOffender struct {
-	IP          string
-	Events      int
-	Actions     map[string]int
-	Zones       []string
-	Days        int
-	First, Last time.Time
-	ASN         int64
-	ASName      string
-	Country     string
-}
+// WebOffender is one address Cloudflare blocked or challenged on your
+// zones, summed over zones and days.
+type WebOffender = store.WebOffender
 
-// WebFunc returns web offenders since a time on one org's zones (org ""
-// every org's).
-type WebFunc func(ctx context.Context, org string, since time.Time) ([]WebOffender, error)
+// WebFunc returns web offenders since a time on the zones mapped to any
+// of these orgs (slugs; nil every zone), each zone counted once.
+type WebFunc func(ctx context.Context, orgs []string, since time.Time) ([]WebOffender, error)
+
+// StoreWeb is the web source: Cloudflare's web offenders as the zone sync
+// records them (internal/cloudflare). Without [cloudflare] there are none.
+func StoreWeb(st *store.Store) WebFunc {
+	return st.WebOffendersIn
+}
 
 // Lister builds threat lists.
 type Lister struct {
@@ -157,8 +153,7 @@ type Lister struct {
 	// the defaults), so scores match /bans.
 	Bans config.Bans
 	Now  func() time.Time
-	// Web is the web source: nil until Cloudflare's web offenders are wired
-	// in, and then no web rows (docs/threats.md#web).
+	// Web is the web source (StoreWeb); nil: no web rows.
 	Web WebFunc
 }
 
@@ -239,7 +234,7 @@ func (l *Lister) addresses(ctx context.Context, q *Query) ([]Address, time.Time,
 		q.Source = SourceAll
 	}
 	now := l.now()
-	since := now.Add(-q.Window)
+	since := now.Add(-q.Window).UTC()
 	if q.Scope.Empty() {
 		return nil, since, ErrForbidden
 	}
@@ -320,22 +315,24 @@ func (l *Lister) addresses(ctx context.Context, q *Query) ([]Address, time.Time,
 		}
 	}
 
-	// Web, on the caller's zones.
+	// Web, on the caller's zones: one org's, every org's they can view,
+	// or (an admin) every zone, mapped to an org or not.
 	var web []WebOffender
 	if q.Source != SourceSSH && l.Web != nil {
-		orgs := []string{q.Org}
-		if q.Org == "" && !q.Scope.Admin {
+		var orgs []string
+		switch {
+		case q.Org != "":
+			orgs = []string{q.Org}
+		case !q.Scope.Admin:
 			orgs = slices.Sorted(maps.Keys(visible))
 		}
-		for _, org := range orgs {
-			rows, err := l.Web(ctx, org, since)
-			if err != nil {
-				return nil, since, err
-			}
-			for _, r := range rows {
-				if !friendly(r.IP) {
-					web = append(web, r)
-				}
+		rows, err := l.Web(ctx, orgs, since)
+		if err != nil {
+			return nil, since, err
+		}
+		for _, r := range rows {
+			if !friendly(r.IP) { // the sync drops friends too; this is the same check, now
+				web = append(web, r)
 			}
 		}
 	}
@@ -389,7 +386,7 @@ func (l *Lister) addresses(ctx context.Context, q *Query) ([]Address, time.Time,
 				a.Web.Zones = append(a.Web.Zones, z)
 			}
 		}
-		a.Web.Days = max(a.Web.Days, w.Days) // one org's zones per row: the most on any
+		a.Web.Days = max(a.Web.Days, w.Days)
 		if a.FirstSeen.IsZero() || (!w.First.IsZero() && w.First.Before(a.FirstSeen)) {
 			a.FirstSeen = w.First
 		}

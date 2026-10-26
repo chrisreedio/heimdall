@@ -43,7 +43,7 @@ type Config struct {
 	Version string
 	// Threats builds the threat list for /api/v1/threats* and the threats
 	// tools. nil: one from the store alone (built-in IP knowledge, the
-	// default ban weights).
+	// default ban weights, the stored web offenders).
 	Threats *threats.Lister
 }
 
@@ -65,7 +65,7 @@ func New(cfg Config, st *store.Store, log *slog.Logger, now func() time.Time) (*
 	}
 	s := &Server{cfg: cfg, st: st, log: log, now: now, origin: u.Scheme + "://" + u.Host, threats: cfg.Threats}
 	if s.threats == nil {
-		s.threats = &threats.Lister{Store: st, Now: now}
+		s.threats = &threats.Lister{Store: st, Now: now, Web: threats.StoreWeb(st)}
 	}
 	s.registerTools()
 	return s, nil

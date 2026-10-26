@@ -189,6 +189,29 @@ func TestThreatsREST(t *testing.T) {
 	}
 }
 
+func TestThreatsWebREST(t *testing.T) {
+	e := newEnv(t)
+	ctx := t.Context()
+	now := time.Now().UTC()
+	const zone = "0123456789abcdef0123456789abcdef"
+	if err := e.st.ReplaceCloudflareZones(ctx, []store.CloudflareZone{{ID: zone, Name: "acme.example.com", Plan: "Pro", Status: "active"}}, nil, now); err != nil {
+		t.Fatal(err)
+	}
+	acme, _ := e.st.HostByName(ctx, "acme", "web-acme")
+	e.st.SetCloudflareZoneOrgs(ctx, map[string][]int64{zone: {acme.OrgID}})
+	at := now.Add(-time.Hour)
+	if err := e.st.RecordWebOffenders(ctx, zone, []store.WebDay{{Day: at.Format(time.DateOnly), Rows: []store.WebOffenderDay{
+		{IP: "203.0.113.70", Events: 4, Actions: map[string]int{"block": 4}, First: at, Last: at}}}}, now); err != nil {
+		t.Fatal(err)
+	}
+	w := e.get(ThreatsPath+"?source=web&format=csv", e.threatsToken())
+	rows, _ := csv.NewReader(w.Body).ReadAll()
+	if w.Code != 200 || len(rows) != 2 || rows[1][0] != "203.0.113.70" || rows[1][1] != "web" ||
+		rows[1][slices.Index(rows[0], "web_zones")] != "acme.example.com" || rows[1][slices.Index(rows[0], "web_actions")] != "block:4" {
+		t.Errorf("web rows: %d %v", w.Code, rows)
+	}
+}
+
 func TestThreatTools(t *testing.T) {
 	e := newEnv(t)
 	e.seedFailures()

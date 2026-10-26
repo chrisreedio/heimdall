@@ -94,7 +94,7 @@ Every window Heimdall asks for spans at most 24 hours, so it fits each plan's ma
 
 ## Web offenders
 
-Web offenders are the web half of Heimdall's threat list: the attacker addresses other services can pull. The SSH half comes from [failed logins](failed-logins.md). With `security_events = true`, each zone sync also records which client addresses Cloudflare blocked or challenged.
+Web offenders are the web half of Heimdall's [threat list](threats.md): the attacker addresses other services can pull. The SSH half comes from [failed logins](failed-logins.md). With `security_events = true`, each zone sync also records which client addresses Cloudflare blocked or challenged.
 
 **Privacy change:** before this, Heimdall stored no client address from Cloudflare. It now stores the client IP of every request Cloudflare blocked or challenged on your zones, for 30 days, unless the address is friendly (see below). Requests Cloudflare let through are never recorded, and nothing about a request beyond what's listed here is kept. To collect none, set `security_events = false`. That also turns off the zone security summaries.
 

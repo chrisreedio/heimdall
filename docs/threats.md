@@ -30,7 +30,7 @@ Each entry is an address that attacked your servers, from these sources:
 | Source | What it is | Where it comes from |
 |---|---|---|
 | `ssh` | Failed SSH logins: hosts hit, failures, distinct usernames tried (a count), days, and whether a login then got in | Each server's opt-in login watch (`--watch-logins`). See [Failed logins](failed-logins.md). |
-| `web` | Cloudflare security events: event count, actions, zones, days | Cloudflare's web offenders. Not wired in yet: these fields stay empty. See [Web offenders](#web-offenders). |
+| `web` | Requests Cloudflare blocked or challenged: event count per action, zones, days | Cloudflare's web offenders, recorded by the zone sync when `[cloudflare]` is on with `security_events = true`. See [Web offenders](#web-offenders). |
 
 Each address also carries:
 
@@ -126,7 +126,7 @@ The data is hub-wide. What you get depends on the token owner's access, just as 
 
 | Caller | Sees |
 |---|---|
-| **Global admin** | The whole hub: every host's failures (and, once wired, every zone's events). `org=acme` narrows this to failures on acme's hosts and events on acme's zones. |
+| **Global admin** | The whole hub: every host's failures and every zone's events, including zones that belong to no org. `org=acme` narrows this to failures on acme's hosts and events on acme's zones. |
 | **Org user** (viewer, operator or admin of some orgs) | Only their orgs' hosts and zones. `org=` may name one of them. Naming any other org, or one that doesn't exist, returns `403`: you can't tell which. |
 | **User with no roles** | `403` |
 
@@ -181,11 +181,11 @@ Every response carries `Cache-Control: no-store` and `X-Content-Type-Options: no
   "addresses": [
     {
       "ip": "203.0.113.50",
-      "sources": ["ssh"],
+      "sources": ["ssh", "web"],
       "first_seen": "2026-10-23T03:14:00Z",
       "last_seen": "2026-10-25T10:58:00Z",
       "ssh": {"hosts": 3, "failures": 412, "usernames": 25, "days": 3, "succeeded": false},
-      "web": {"events": 0, "actions": {}, "zones": [], "days": 0},
+      "web": {"events": 42, "actions": {"block": 40, "managed_challenge": 2}, "zones": ["example.com"], "days": 2},
       "asn": 64500,
       "as_name": "Example ISP",
       "country": "US",
@@ -244,7 +244,7 @@ Every response carries `Cache-Control: no-store` and `X-Content-Type-Options: no
 
 ```csv
 ip,sources,first_seen,last_seen,score,ssh_hosts,ssh_failures,ssh_usernames,ssh_days,ssh_succeeded,web_events,web_actions,web_zones,web_days,asn,as_name,country,ban_status,ban_action,ban_target
-203.0.113.50,ssh,2026-10-23T03:14:00Z,2026-10-25T10:58:00Z,33.2,3,412,25,3,false,0,,,0,64500,Example ISP,US,active,block,203.0.113.50
+203.0.113.50,ssh web,2026-10-23T03:14:00Z,2026-10-25T10:58:00Z,33.2,3,412,25,3,false,42,block:40 managed_challenge:2,example.com,2,64500,Example ISP,US,active,block,203.0.113.50
 2001:db8:5::7,ssh,2026-10-24T08:02:00Z,2026-10-24T08:40:00Z,13.9,2,60,8,1,false,0,,,0,,,,,,
 ```
 
@@ -303,9 +303,9 @@ Each address:
 | `ssh.usernames` | integer | The most distinct usernames it tried on one host in one day. A count only: usernames are never reported. |
 | `ssh.days` | integer | Distinct UTC days with a failure. 0 when it isn't an SSH source. |
 | `ssh.succeeded` | boolean | A login from it got in after failing, on one of those hosts, the same day |
-| `web.events` | integer | Cloudflare security events. 0 until web offenders are wired in. |
-| `web.actions` | object, string to integer | Events per Cloudflare action (`block`, `managed_challenge`, …). `{}` when none. |
-| `web.zones` | array of strings | Your zones it hit, sorted. `[]` when none. |
+| `web.events` | integer | Requests Cloudflare blocked or challenged, on zones in your scope. On sampled days it's a floor. 0 when it isn't a web source. |
+| `web.actions` | object, string to integer | Events per action: `block`, `challenge`, `js_challenge`, `managed_challenge`, `connection_close`. `{}` when none. |
+| `web.zones` | array of strings | The zones it hit (in your scope), sorted. `[]` when none. |
 | `web.days` | integer | Distinct UTC days with an event |
 | `asn` | integer | Its network's AS number, from the Radar cache or the web data. 0 when unknown. |
 | `as_name` | string | The network's name. `""` when unknown. |
@@ -436,13 +436,18 @@ The tools take the same filters as REST (without `format`) and return the same J
 
 ## Web offenders
 
-Cloudflare web offenders (security events per address, per zone) will join the list as a second source, `web`. Until they're wired in:
+The `web` source is the client addresses Cloudflare **blocked or challenged** on your zones. Requests it let through never count, and neither do solved challenges. The Cloudflare zone sync records them per address, zone and UTC day, and keeps them 30 days. This needs `[cloudflare]` on with `security_events = true`. Without it, `web` is empty on every address and `source=web` returns nothing. What's stored and how it's fetched are covered in the Cloudflare guide's Web offenders section (`docs/cloudflare.md`).
 
-- `web` is zero or empty on every address: `events: 0`, `actions: {}`, `zones: []`, `days: 0`;
-- `source=web` returns an empty list;
-- `sources` is always `["ssh"]`.
-
-When web offenders are wired in, the same rules apply to them. An address seen by both sources is one row, with `"sources": ["ssh", "web"]`. `org` filters to that org's zones. An org user sees only their orgs' zones. Anything friendly is dropped. Web events won't change `score` until the ban scorer counts them.
+- **One row per address.** An address seen by both sources has `"sources": ["ssh", "web"]`, with both halves filled in. `first_seen` and `last_seen` span both.
+- **Zones and orgs.** A zone belongs to the orgs whose hosts or sites its DNS records lead to. The mapping is rebuilt every sync.
+  - An org user sees events on their orgs' zones only. A zone shared by two of their orgs counts once.
+  - `org=acme` limits the list to acme's zones.
+  - A global admin also sees zones that belong to no org.
+- **Friendly addresses** are dropped twice. The sync never stores them, and the threat list checks them again when it's pulled, in case an address became known after it was recorded.
+- **Network.** ASN, network name and country come from the Radar cache when it has the address, else from what Cloudflare reported with the events.
+- **Floors.** On zones without the aggregated dataset (usually Free), each day holds only the latest 1,000 events, so `events` is a floor.
+- **Score.** Web events don't score yet, so a web-only address has `score: 0`. Use `source=web`, or `min_score=0` (the default), to see them. `min_hosts=1` or more leaves them out.
+- **Rollups.** `/networks` adds web events to `events`, and counts web-only addresses in `addresses`.
 
 ## Security notes
 

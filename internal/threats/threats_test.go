@@ -25,19 +25,20 @@ import (
 var testNow = time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC)
 
 type rig struct {
-	t      *testing.T
-	st     *store.Store
-	hosts  map[string]store.IngestHost
-	l      *Lister
-	acme   int64
-	globex int64
+	t        *testing.T
+	st       *store.Store
+	hosts    map[string]store.IngestHost
+	l        *Lister
+	acme     int64
+	globex   int64
+	zoneOrgs map[string][]int64
 }
 
 func newRig(t *testing.T) *rig {
 	t.Helper()
 	st := storetest.New(t)
 	ctx := t.Context()
-	r := &rig{t: t, st: st, hosts: map[string]store.IngestHost{}}
+	r := &rig{t: t, st: st, hosts: map[string]store.IngestHost{}, zoneOrgs: map[string][]int64{}}
 	for _, org := range []string{"acme", "globex"} {
 		st.CreateOrg(ctx, "test", org, "")
 		st.CreateEnv(ctx, "test", org, "prod", "")
@@ -136,7 +137,7 @@ func TestFriendlyExcluded(t *testing.T) {
 		}
 	}
 	// The web side is filtered the same way.
-	r.l.Web = func(context.Context, string, time.Time) ([]WebOffender, error) {
+	r.l.Web = func(context.Context, []string, time.Time) ([]WebOffender, error) {
 		return []WebOffender{{IP: "203.0.113.3", Events: 5}, {IP: "173.245.48.9", Events: 5}, {IP: "198.51.100.77", Events: 5}}, nil
 	}
 	if got := ips(r.list(Query{Scope: store.AllScope, Source: SourceWeb})); !slices.Equal(got, []string{"198.51.100.77"}) {
@@ -196,6 +197,12 @@ func TestOrgScoping(t *testing.T) {
 	}
 	if got := r.list(Query{Scope: store.AllScope, Window: 30 * time.Minute}); len(got.Addresses) != 0 {
 		t.Errorf("since 30m: %v", ips(got))
+	}
+	// Times are UTC whatever the hub's zone.
+	r.l.Now = func() time.Time { return testNow.In(time.FixedZone("UTC-5", -5*3600)) }
+	if got := r.list(Query{Scope: store.AllScope}); got.Since.Location() != time.UTC || got.GeneratedAt.Location() != time.UTC ||
+		got.Addresses[0].LastSeen.Location() != time.UTC {
+		t.Errorf("not UTC: %v %v", got.Since, got.GeneratedAt)
 	}
 }
 
@@ -335,44 +342,138 @@ func TestWebSeam(t *testing.T) {
 		t.Errorf("ssh-only row: %+v", a)
 	}
 
-	// Wired: rows merge by address, and an org-scoped caller asks per org.
-	var asked []string
-	r.l.Web = func(_ context.Context, org string, since time.Time) ([]WebOffender, error) {
-		asked = append(asked, org)
+	// The seam asks for the caller's orgs, nil meaning every zone.
+	var asked [][]string
+	r.l.Web = func(_ context.Context, orgs []string, since time.Time) ([]WebOffender, error) {
+		asked = append(asked, orgs)
 		if !since.Equal(testNow.Add(-DefaultWindow)) {
 			t.Errorf("since %v", since)
 		}
-		return []WebOffender{
-			{IP: "198.51.100.9", Events: 7, Actions: map[string]int{"block": 7}, Zones: []string{org + ".example.com"}, Days: 1,
-				First: testNow.Add(-3 * time.Hour), Last: testNow.Add(-time.Minute)},
-			{IP: "203.0.113.60", Events: 3, Actions: map[string]int{"managed_challenge": 3}, Zones: []string{org + ".example.com"}, Days: 2,
-				First: testNow.Add(-5 * time.Hour), Last: testNow.Add(-4 * time.Hour), ASN: 64501, ASName: "Other ISP", Country: "NL"},
-		}, nil
+		return nil, nil
 	}
-	res = r.list(Query{Scope: store.AllScope})
-	if !slices.Equal(asked, []string{""}) {
-		t.Errorf("admin asked for %v", asked)
+	r.list(Query{Scope: store.AllScope})
+	r.list(Query{Scope: store.AllScope, Org: "globex"})
+	r.list(Query{Scope: store.Scope{Orgs: map[int64]store.Role{r.acme: store.RoleViewer, r.globex: store.RoleViewer}}})
+	r.list(Query{Scope: store.AllScope, Source: SourceSSH}) // not asked
+	if len(asked) != 3 || asked[0] != nil || !slices.Equal(asked[1], []string{"globex"}) || !slices.Equal(asked[2], []string{"acme", "globex"}) {
+		t.Errorf("asked for %q", asked)
 	}
+}
+
+// web records a zone's offenders for today, mapped to orgs.
+func (r *rig) web(zoneID, name string, orgs []int64, rows ...store.WebOffenderDay) {
+	r.t.Helper()
+	ctx := r.t.Context()
+	zs, err := r.st.CloudflareZones(ctx)
+	if err != nil {
+		r.t.Fatal(err)
+	}
+	zs = append(zs, store.CloudflareZone{ID: zoneID, Name: name, Plan: "Pro", Status: "active"})
+	if err := r.st.ReplaceCloudflareZones(ctx, zs, nil, testNow); err != nil {
+		r.t.Fatal(err)
+	}
+	r.zoneOrgs[zoneID] = orgs
+	if err := r.st.SetCloudflareZoneOrgs(ctx, r.zoneOrgs); err != nil {
+		r.t.Fatal(err)
+	}
+	day := store.WebDay{Day: testNow.Format(time.DateOnly), Final: false, Rows: rows}
+	if err := r.st.RecordWebOffenders(ctx, zoneID, []store.WebDay{day}, testNow); err != nil {
+		r.t.Fatal(err)
+	}
+}
+
+func webRow(ip string, events int, action string, ago time.Duration) store.WebOffenderDay {
+	at := testNow.Add(-ago)
+	return store.WebOffenderDay{IP: ip, Events: events, Actions: map[string]int{action: events}, First: at.Add(-time.Hour), Last: at}
+}
+
+func TestWebSource(t *testing.T) {
+	r := newRig(t)
+	r.l.Web = StoreWeb(r.st)
+	r.fail("acme/web-01", "198.51.100.9", 20, 3, false, time.Hour)
+	const (
+		zoneA = "0123456789abcdef0123456789abcd0a"
+		zoneG = "0123456789abcdef0123456789abcd0b"
+		zoneS = "0123456789abcdef0123456789abcd0c"
+		zoneU = "0123456789abcdef0123456789abcd0d"
+	)
+	r.web(zoneA, "acme.example.com", []int64{r.acme}, webRow("198.51.100.9", 7, "block", time.Minute))
+	g := webRow("203.0.113.60", 3, "managed_challenge", 4*time.Hour)
+	g.ASN, g.ASName, g.Country = 64501, "Other ISP", "NL"
+	r.web(zoneG, "globex.example.com", []int64{r.globex}, g)
+	r.web(zoneS, "shared.example.com", []int64{r.acme, r.globex}, webRow("203.0.113.60", 5, "block", 2*time.Hour))
+	r.web(zoneU, "unmapped.example.net", nil, webRow("203.0.113.61", 2, "block", time.Hour), webRow("173.245.48.9", 9, "block", time.Hour))
+
+	// An admin: every zone, mapped or not.
+	res := r.list(Query{Scope: store.AllScope})
 	a := find(res, "198.51.100.9")
 	if a == nil || !slices.Equal(a.Sources, []string{"ssh", "web"}) || a.Web.Events != 7 || a.Web.Actions["block"] != 7 ||
-		!a.LastSeen.Equal(testNow.Add(-time.Minute)) || !a.FirstSeen.Equal(testNow.Add(-3*time.Hour)) {
+		!slices.Equal(a.Web.Zones, []string{"acme.example.com"}) || a.Web.Days != 1 || a.SSH.Hosts != 1 ||
+		!a.LastSeen.Equal(testNow.Add(-time.Minute)) || !a.FirstSeen.Equal(testNow.Add(-time.Hour-time.Minute)) {
 		t.Errorf("merged: %+v", a)
 	}
 	w := find(res, "203.0.113.60")
-	if w == nil || !slices.Equal(w.Sources, []string{"web"}) || w.ASN != 64501 || w.Score != 0 || w.SSH.Hosts != 0 {
+	if w == nil || !slices.Equal(w.Sources, []string{"web"}) || w.Web.Events != 8 || w.Web.Actions["block"] != 5 ||
+		w.Web.Actions["managed_challenge"] != 3 || !slices.Equal(w.Web.Zones, []string{"globex.example.com", "shared.example.com"}) ||
+		w.ASN != 64501 || w.ASName != "Other ISP" || w.Country != "NL" || w.Score != 0 || w.SSH.Hosts != 0 {
 		t.Errorf("web only: %+v", w)
 	}
-	if res := r.list(Query{Scope: store.AllScope, Source: SourceSSH}); find(res, "203.0.113.60") != nil {
-		t.Error("source=ssh lists a web-only row")
+	if find(res, "203.0.113.61") == nil {
+		t.Error("admin misses an unmapped zone's offender")
 	}
-	asked = nil
-	both := store.Scope{Orgs: map[int64]store.Role{r.acme: store.RoleViewer, r.globex: store.RoleViewer}}
-	res = r.list(Query{Scope: both, Source: SourceWeb})
-	if !slices.Equal(asked, []string{"acme", "globex"}) {
-		t.Errorf("org viewer asked for %v", asked)
+	if find(res, "173.245.48.9") != nil {
+		t.Error("Cloudflare's edge listed")
 	}
-	if w := find(res, "203.0.113.60"); w == nil || w.Web.Events != 6 || !slices.Equal(w.Web.Zones, []string{"acme.example.com", "globex.example.com"}) {
-		t.Errorf("two orgs merged: %+v", w)
+
+	// An acme viewer: acme's zones only, and the shared one.
+	res = r.list(Query{Scope: r.viewer(r.acme)})
+	if w := find(res, "203.0.113.60"); w == nil || w.Web.Events != 5 || !slices.Equal(w.Web.Zones, []string{"shared.example.com"}) || w.ASN != 0 {
+		t.Errorf("acme's view: %+v", w)
+	}
+	if find(res, "203.0.113.61") != nil {
+		t.Error("acme sees an unmapped zone")
+	}
+	// In both orgs: the shared zone counts once.
+	res = r.list(Query{Scope: r.viewer(r.acme, r.globex)})
+	if w := find(res, "203.0.113.60"); w == nil || w.Web.Events != 8 || len(w.Web.Zones) != 2 {
+		t.Errorf("two orgs: %+v", w)
+	}
+	// Org filter, for an admin.
+	res = r.list(Query{Scope: store.AllScope, Org: "globex"})
+	if got := ips(res); !slices.Equal(got, []string{"203.0.113.60"}) {
+		t.Errorf("org globex: %v", got)
+	}
+
+	// Source and min_hosts.
+	res = r.list(Query{Scope: store.AllScope, Source: SourceWeb})
+	if got := ips(res); !slices.Equal(got, []string{"198.51.100.9", "203.0.113.60", "203.0.113.61"}) {
+		t.Errorf("source=web: %v", got)
+	}
+	res = r.list(Query{Scope: store.AllScope, Source: SourceSSH})
+	if got := ips(res); !slices.Equal(got, []string{"198.51.100.9"}) || res.Addresses[0].Web.Events != 0 {
+		t.Errorf("source=ssh: %v", res.Addresses)
+	}
+	if got := ips(r.list(Query{Scope: store.AllScope, MinHosts: 1})); !slices.Equal(got, []string{"198.51.100.9"}) {
+		t.Errorf("min_hosts: %v", got)
+	}
+
+	// Rollups count web events.
+	nets, err := r.l.Networks(t.Context(), Query{Scope: store.AllScope, Kind: KindPrefix})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var n *Network
+	for i := range nets.Networks {
+		if nets.Networks[i].Network == "203.0.113.0/24" {
+			n = &nets.Networks[i]
+		}
+	}
+	if n == nil || n.Addresses != 2 || n.Events != 10 || n.Failures != 0 || n.Hosts != 0 || n.ASN != 64501 {
+		t.Errorf("web /24: %+v", n)
+	}
+	nets, _ = r.l.Networks(t.Context(), Query{Scope: store.AllScope, Kind: KindASN})
+	if len(nets.Networks) != 1 || nets.Networks[0].Network != "AS64501" || nets.Networks[0].Events != 8 {
+		t.Errorf("web ASN: %+v", nets.Networks)
 	}
 }
 

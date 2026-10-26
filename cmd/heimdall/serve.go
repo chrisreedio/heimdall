@@ -109,10 +109,10 @@ func cmdServe(a *app, args []string) error {
 	var mcpLn net.Listener
 	if cfg.MCP.Enabled {
 		// The threat list (docs/threats.md) knows friends as bans do, and
-		// scores with the same weights. Web: nil until Cloudflare's web
-		// offenders are wired in.
+		// scores with the same weights. Web rows are what the Cloudflare
+		// zone sync recorded (none without [cloudflare]).
 		tl := &threats.Lister{Store: s, Ranker: &logins.Ranker{Store: s, IPs: ips, Edge: cloudflareEdgeSet()},
-			Bans: cfg.Bans, Now: time.Now}
+			Bans: cfg.Bans, Now: time.Now, Web: threats.StoreWeb(s)}
 		h, err := mcp.New(mcp.Config{BaseURL: cfg.MCP.BaseURL, Version: version, Threats: tl}, s, log.With("component", "mcp"), time.Now)
 		if err != nil {
 			return err
