@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/snapshot"
+	"github.com/realmwatch/heimdall/internal/snapshot"
 )
 
 // IngestHost is the host an ingest token or import resolves to.

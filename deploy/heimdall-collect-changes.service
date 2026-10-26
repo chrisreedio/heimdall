@@ -6,7 +6,7 @@
 
 [Unit]
 Description=Schedule a Heimdall report after a package change
-Documentation=https://github.com/chrisreedio/heimdall/blob/main/docs/collector.md
+Documentation=https://github.com/realmwatch/heimdall/blob/main/docs/collector.md
 # A big upgrade changes the database many times a minute. Never rate-limit
 # this, or the path unit would stop watching.
 StartLimitIntervalSec=0

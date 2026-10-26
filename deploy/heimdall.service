@@ -11,7 +11,7 @@
 
 [Unit]
 Description=Heimdall hub (inventory ingest)
-Documentation=https://github.com/chrisreedio/heimdall
+Documentation=https://github.com/realmwatch/heimdall
 After=network-online.target
 Wants=network-online.target
 

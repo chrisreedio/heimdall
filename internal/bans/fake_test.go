@@ -12,7 +12,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/cloudflare"
+	"github.com/realmwatch/heimdall/internal/cloudflare"
 )
 
 // fakeCF is a Cloudflare account's lists and zone rulesets, in memory.

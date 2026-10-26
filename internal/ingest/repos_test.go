@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/snapshot"
+	"github.com/realmwatch/heimdall/internal/snapshot"
 )
 
 func TestParseSiteRepos(t *testing.T) {

@@ -9,14 +9,14 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/feeds/eol"
-	"github.com/chrisreedio/heimdall/internal/feeds/epss"
-	"github.com/chrisreedio/heimdall/internal/feeds/osv"
-	"github.com/chrisreedio/heimdall/internal/findings"
-	"github.com/chrisreedio/heimdall/internal/netx"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/feeds/eol"
+	"github.com/realmwatch/heimdall/internal/feeds/epss"
+	"github.com/realmwatch/heimdall/internal/feeds/osv"
+	"github.com/realmwatch/heimdall/internal/findings"
+	"github.com/realmwatch/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // newSyncer wires feed sync to the allowlisted outbound client.
@@ -52,7 +52,7 @@ func newNewsSyncer(cfg config.Config, s *store.Store, log *slog.Logger) *finding
 	}
 	return &findings.NewsSyncer{
 		Store:   s,
-		HTTP:    netx.New(cfg.News.Hosts(), "heimdall/"+version+" (+https://github.com/chrisreedio/heimdall)"),
+		HTTP:    netx.New(cfg.News.Hosts(), "heimdall/"+version+" (+https://github.com/realmwatch/heimdall)"),
 		Sources: cfg.News.Sources,
 		Now:     time.Now,
 		Log:     log,

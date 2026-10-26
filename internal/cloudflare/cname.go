@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // thirdParty are hosting services whose names a CNAME commonly points at.

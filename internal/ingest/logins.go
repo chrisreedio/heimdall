@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // LoginsHeader carries what the opt-in login watch (install.sh

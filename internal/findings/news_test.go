@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/netx"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // TestNewsKeepsLastGoodCopy: a fetch that fails or returns garbage never

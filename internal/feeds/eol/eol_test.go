@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/netx"
 )
 
 // newServer serves testdata/<product>.json at the v1 path, plus any

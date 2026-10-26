@@ -1,7 +1,7 @@
 {{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
 <h1>Anomalies</h1>
 {{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
-<p class="muted">Tripwires, not intrusion detection: an alert is worth checking, but no alerts doesn't mean a host is clean. <a href="https://github.com/chrisreedio/heimdall/blob/main/docs/anomaly-signals.md">What each signal means</a>.</p>
+<p class="muted">Tripwires, not intrusion detection: an alert is worth checking, but no alerts doesn't mean a host is clean. <a href="https://github.com/realmwatch/heimdall/blob/main/docs/anomaly-signals.md">What each signal means</a>.</p>
 {{$rules := .Rules}}
 <div class="scroll"><table>
   <thead><tr><th>Detected</th><th>Host</th><th>Severity</th><th>Signal</th><th>Summary</th><th>Triage</th></tr></thead>

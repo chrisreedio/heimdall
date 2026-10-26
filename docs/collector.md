@@ -135,13 +135,13 @@ To add a batch of servers, create one **enrollment key** instead of a host per s
 sudo heimdall enroll create --org acme --env prod --tag web --expires 24h --uses 20 --label "web rollout"
 
 # On each server: paste the key when asked (it isn't echoed or put on a command line)
-curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/vX.Y.Z/install.sh &&
+curl -fsSLO https://github.com/realmwatch/heimdall/releases/download/vX.Y.Z/install.sh &&
   sudo sh install.sh --hub https://ingest.example.com --enroll
 
 # Or many at once, from your own machine (needs passwordless sudo, or root login):
 read -rs KEY   # paste the key (it isn't shown), then Enter
 for h in web-01 web-02 web-03; do
-  printf '%s\n' "$KEY" | ssh "$h" 'cd "$(mktemp -d)" && curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/vX.Y.Z/install.sh && sudo sh install.sh --hub https://ingest.example.com --enroll-stdin'
+  printf '%s\n' "$KEY" | ssh "$h" 'cd "$(mktemp -d)" && curl -fsSLO https://github.com/realmwatch/heimdall/releases/download/vX.Y.Z/install.sh && sudo sh install.sh --hub https://ingest.example.com --enroll-stdin'
 done
 unset KEY
 ```

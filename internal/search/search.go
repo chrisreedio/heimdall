@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/composer"
-	"github.com/chrisreedio/heimdall/internal/findings"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/version"
+	"github.com/realmwatch/heimdall/internal/composer"
+	"github.com/realmwatch/heimdall/internal/findings"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/version"
 )
 
 // MaxMatches caps a result; the Note says when it was hit.

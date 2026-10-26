@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/ingest"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/store/storetest"
+	"github.com/realmwatch/heimdall/internal/ingest"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store/storetest"
 )
 
 var now = time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)

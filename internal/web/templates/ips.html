@@ -1,7 +1,7 @@
 {{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
 <h1>IP addresses</h1>
 {{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
-<p class="muted">What Heimdall knows about an address: whose it is. Privileged sessions from addresses nobody knows raise an alert, so label the ones that are yours: an office, a VPN, a person's home connection. Ranges a source keeps in sync (a deploy service, the tailnet) are listed with their source and can't be changed here. <a href="https://github.com/chrisreedio/heimdall/blob/main/docs/ip-awareness.md">How it works</a>.</p>
+<p class="muted">What Heimdall knows about an address: whose it is. Privileged sessions from addresses nobody knows raise an alert, so label the ones that are yours: an office, a VPN, a person's home connection. Ranges a source keeps in sync (a deploy service, the tailnet) are listed with their source and can't be changed here. <a href="https://github.com/realmwatch/heimdall/blob/main/docs/ip-awareness.md">How it works</a>.</p>
 
 {{if or .Admin .AllOrgs}}
 <section class="card">

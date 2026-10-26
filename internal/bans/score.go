@@ -26,9 +26,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/logins"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/logins"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Ban actions, and the Cloudflare rule action each one means.

@@ -7,8 +7,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/cloudflare"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/cloudflare"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Load reads the map's inputs from the store and builds it. With

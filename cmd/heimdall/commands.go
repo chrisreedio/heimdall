@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 func cmdInit(a *app, args []string) error {

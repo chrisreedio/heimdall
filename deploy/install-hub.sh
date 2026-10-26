@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Install a Heimdall hub on a fresh Debian/Ubuntu VM, in one step.
 #
-#   curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/vX.Y.Z/install-hub.sh &&
+#   curl -fsSLO https://github.com/realmwatch/heimdall/releases/download/vX.Y.Z/install-hub.sh &&
 #     sudo sh install-hub.sh --org acme --ingest-host ingest.acme.example.com --admin you@example.com
 #
 # Modes:
@@ -26,7 +26,7 @@ export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 HEIMDALL_VERSION=dev # set by `make dist`
-RELEASES=${HEIMDALL_RELEASES:-https://github.com/chrisreedio/heimdall/releases/download}
+RELEASES=${HEIMDALL_RELEASES:-https://github.com/realmwatch/heimdall/releases/download}
 
 die() { printf 'heimdall install-hub: %s\n' "$*" >&2; exit 1; }
 say() { printf '==> %s\n' "$*" >&2; }

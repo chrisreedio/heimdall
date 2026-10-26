@@ -15,7 +15,7 @@
   </form>
   {{end}}
 </div>
-<p class="lede">Addresses that failed to log in over SSH to your servers, from servers with the login watch on (<code>sudo heimdall-collect upgrade --watch-logins</code>). Ranked by how many hosts each one tried, then by failures. Addresses Heimdall knows (your people, deploy services, your hosts, the tailnet, private networks, Cloudflare) are listed apart and never counted. Counts only: no usernames. <a href="https://github.com/chrisreedio/heimdall/blob/main/docs/failed-logins.md">How it works</a>.</p>
+<p class="lede">Addresses that failed to log in over SSH to your servers, from servers with the login watch on (<code>sudo heimdall-collect upgrade --watch-logins</code>). Ranked by how many hosts each one tried, then by failures. Addresses Heimdall knows (your people, deploy services, your hosts, the tailnet, private networks, Cloudflare) are listed apart and never counted. Counts only: no usernames. <a href="https://github.com/realmwatch/heimdall/blob/main/docs/failed-logins.md">How it works</a>.</p>
 
 <div class="list-bar">
   <span class="muted small">{{num .Failures}} failed login{{if ne .Failures 1}}s{{end}} in the last {{.WindowLabel}}{{if .Offenders}} · {{len .Offenders}}{{if .MoreOffenders}}+{{end}} unknown address{{if ne (len .Offenders) 1}}es{{end}}{{if .Repeat}}, {{.Repeat}} on more than one host{{end}}{{end}}</span>

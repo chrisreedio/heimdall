@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/netx"
 )
 
 func serve(t *testing.T, body []byte) (*netx.Client, string) {

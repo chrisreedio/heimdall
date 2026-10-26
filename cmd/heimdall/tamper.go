@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/anomaly"
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/ingest"
-	"github.com/chrisreedio/heimdall/internal/notify"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/anomaly"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/ingest"
+	"github.com/realmwatch/heimdall/internal/notify"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // startTamperChecks makes a switched-off collector loud. It runs:

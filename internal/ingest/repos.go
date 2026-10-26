@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // SiteReposHeader carries each site's git remote, read by the collector

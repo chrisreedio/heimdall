@@ -15,12 +15,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/cvss"
-	"github.com/chrisreedio/heimdall/internal/ecosystem"
-	"github.com/chrisreedio/heimdall/internal/feeds/osv"
-	"github.com/chrisreedio/heimdall/internal/snapshot"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/version"
+	"github.com/realmwatch/heimdall/internal/cvss"
+	"github.com/realmwatch/heimdall/internal/ecosystem"
+	"github.com/realmwatch/heimdall/internal/feeds/osv"
+	"github.com/realmwatch/heimdall/internal/snapshot"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/version"
 )
 
 // Bounds on what one advisory may contribute, since records are remote input.

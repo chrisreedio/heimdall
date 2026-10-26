@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/kernel"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/kernel"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // A host's OS findings can number in the thousands, so the host page shows

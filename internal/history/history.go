@@ -11,9 +11,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/findings"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/version"
+	"github.com/realmwatch/heimdall/internal/findings"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/version"
 )
 
 // Change is one package difference between two snapshots.

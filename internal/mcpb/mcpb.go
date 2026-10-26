@@ -87,11 +87,11 @@ func Manifest(baseURL, release string) map[string]any {
 			"The hub is reachable only on your tailnet, so this computer must be connected to it. " +
 			"Your token stays in the system keychain and is sent only to your hub. " +
 			"Every tool is read-only and scoped to your Heimdall roles.",
-		"author":        map[string]any{"name": "Heimdall", "url": "https://github.com/chrisreedio/heimdall"},
-		"repository":    map[string]any{"type": "git", "url": "https://github.com/chrisreedio/heimdall"},
-		"homepage":      "https://github.com/chrisreedio/heimdall",
-		"documentation": "https://github.com/chrisreedio/heimdall/blob/main/docs/mcp.md",
-		"support":       "https://github.com/chrisreedio/heimdall/issues",
+		"author":        map[string]any{"name": "Heimdall", "url": "https://github.com/realmwatch/heimdall"},
+		"repository":    map[string]any{"type": "git", "url": "https://github.com/realmwatch/heimdall"},
+		"homepage":      "https://github.com/realmwatch/heimdall",
+		"documentation": "https://github.com/realmwatch/heimdall/blob/main/docs/mcp.md",
+		"support":       "https://github.com/realmwatch/heimdall/issues",
 		"license":       "AGPL-3.0-or-later",
 		"icon":          "icon.png",
 		"keywords":      []string{"security", "vulnerabilities", "patching", "inventory", "servers"},

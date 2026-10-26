@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/chrisreedio/heimdall/internal/kernel"
+	"github.com/realmwatch/heimdall/internal/kernel"
 )
 
 // Result is the validated, advisory-only output of a run.

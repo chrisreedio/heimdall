@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/secret"
+	"github.com/realmwatch/heimdall/internal/secret"
 )
 
 type cli struct {

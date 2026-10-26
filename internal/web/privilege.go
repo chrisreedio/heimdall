@@ -6,9 +6,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/privilege"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/privilege"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // privilegeView is the host page's "Privileged access" line. It's nil on

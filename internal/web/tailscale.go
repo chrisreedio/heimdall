@@ -7,7 +7,7 @@ import (
 	"html/template"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/tailscale"
+	"github.com/realmwatch/heimdall/internal/tailscale"
 )
 
 // The host page's Tailnet card and the "Not on tailnet" filter, from the

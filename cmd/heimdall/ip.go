@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // IP awareness: labels, what's known about an address, and each org's SSH

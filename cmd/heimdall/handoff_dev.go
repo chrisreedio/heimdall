@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/chrisreedio/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/netx"
 )
 
 // Dev builds only: HEIMDALL_DEV_FAKE_DISCORD=http://127.0.0.1:<port> sends

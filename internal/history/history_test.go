@@ -5,8 +5,8 @@ package history
 import (
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/version"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/version"
 )
 
 func pk(name, ver string) store.InventoryPackage {

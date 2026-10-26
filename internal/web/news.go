@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/feeds/news"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/feeds/news"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // ── Threat news ────────────────────────────────────────────────────────────

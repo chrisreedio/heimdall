@@ -9,9 +9,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/feeds/news"
-	"github.com/chrisreedio/heimdall/internal/netx"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/feeds/news"
+	"github.com/realmwatch/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // NewsSyncer fetches the configured threat-news feeds and keeps the

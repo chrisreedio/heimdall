@@ -9,7 +9,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // DevLogin starts a session for a local user without a password or TOTP

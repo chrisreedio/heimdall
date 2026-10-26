@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/netx"
 )
 
 func stub[T any](t *testing.T, p *T, v T) {
@@ -29,7 +29,7 @@ func TestUpgrade(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.URL.Path == "/latest":
-			w.Write([]byte(`{"tag_name":"v9.0.0","html_url":"https://github.com/chrisreedio/heimdall/releases/tag/v9.0.0"}`))
+			w.Write([]byte(`{"tag_name":"v9.0.0","html_url":"https://github.com/realmwatch/heimdall/releases/tag/v9.0.0"}`))
 		case strings.HasSuffix(r.URL.Path, "/SHA256SUMS"):
 			w.Write([]byte(sums))
 		case strings.HasSuffix(r.URL.Path, "/install-hub.sh"):

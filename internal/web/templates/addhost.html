@@ -55,7 +55,7 @@
     <div class="codebox"><pre id="cmd-sudoers">echo 'forge ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block heimdall-collect.service' |
   sudo tee /etc/sudoers.d/heimdall-collect
 sudo chmod 0440 /etc/sudoers.d/heimdall-collect && sudo visudo -cf /etc/sudoers.d/heimdall-collect</pre><button type="button" class="copy" data-copy="cmd-sudoers" hidden>Copy</button></div>
-    <p class="muted">Servers without systemd: see <a href="https://github.com/chrisreedio/heimdall/blob/main/docs/collector.md#report-after-deploys">Report after deploys</a>.</p>
+    <p class="muted">Servers without systemd: see <a href="https://github.com/realmwatch/heimdall/blob/main/docs/collector.md#report-after-deploys">Report after deploys</a>.</p>
   </details>
   <div class="actions start">
     {{if .Host.AutoName}}<a class="button" href="/hosts">Go to Hosts</a>{{else}}<a class="button" href="{{hostURL .Host.OrgSlug .Host.Name}}">Open {{.Host.Name}}</a>{{end}}

@@ -8,13 +8,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Releases is where install commands download from. Never the hub: a
 // compromised hub must not be able to hand servers code to run.
-const Releases = "https://github.com/chrisreedio/heimdall/releases/download"
+const Releases = "https://github.com/realmwatch/heimdall/releases/download"
 
 var releaseTag = regexp.MustCompile(`^v\d+\.\d+\.\d+$`)
 

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/config"
 )
 
 func TestAISetKey(t *testing.T) {

@@ -5,7 +5,7 @@
 
 [Unit]
 Description=Heimdall inventory push after boot
-Documentation=https://github.com/chrisreedio/heimdall/blob/main/docs/collector.md
+Documentation=https://github.com/realmwatch/heimdall/blob/main/docs/collector.md
 
 [Timer]
 OnBootSec=3min

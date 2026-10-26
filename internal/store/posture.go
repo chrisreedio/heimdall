@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/kernel"
+	"github.com/realmwatch/heimdall/internal/kernel"
 )
 
 // ── Fleet posture: per-host aggregates for the dashboard and host list ────

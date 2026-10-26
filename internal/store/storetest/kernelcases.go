@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/snapshot"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/snapshot"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // The two real Ubuntu 24.04 AWS kernel cases, as regression fixtures. Both

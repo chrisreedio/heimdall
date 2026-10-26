@@ -9,7 +9,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Service runs analyses: on demand from the UI (in the background, so a

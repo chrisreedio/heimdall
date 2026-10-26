@@ -14,10 +14,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/privilege"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/privilege"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // IP awareness (docs/ip-awareness.md): what Heimdall knows about an

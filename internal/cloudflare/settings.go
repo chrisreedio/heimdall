@@ -11,7 +11,7 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Zone settings and edge certificates for the surface map, both optional:

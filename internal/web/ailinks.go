@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/report"
 )
 
 // An AI answer is plain text (the prompt asks for no markup, and it's never

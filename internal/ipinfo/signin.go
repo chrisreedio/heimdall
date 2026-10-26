@@ -7,7 +7,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // SignInWindow is how close to a session a Heimdall sign-in from the same

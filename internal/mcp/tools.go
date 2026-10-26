@@ -9,10 +9,10 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/history"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/search"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/history"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/search"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // maxItems bounds every list so a large fleet can't flood the model's context.

@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/config"
 )
 
 const (

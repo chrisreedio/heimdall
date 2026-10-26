@@ -350,7 +350,7 @@ install_watch() {
 # usernames) before each push. Written by install.sh --watch-logins.
 [Unit]
 Description=Heimdall login watch (count failed SSH logins)
-Documentation=https://github.com/chrisreedio/heimdall/blob/main/docs/failed-logins.md
+Documentation=https://github.com/realmwatch/heimdall/blob/main/docs/failed-logins.md
 
 [Service]
 Type=oneshot

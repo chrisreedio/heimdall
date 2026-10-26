@@ -11,14 +11,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/findings"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/search"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/triggers"
-	"github.com/chrisreedio/heimdall/internal/updates"
-	"github.com/chrisreedio/heimdall/internal/version"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/findings"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/search"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/triggers"
+	"github.com/realmwatch/heimdall/internal/updates"
+	"github.com/realmwatch/heimdall/internal/version"
 )
 
 // ── Sign-in ────────────────────────────────────────────────────────────────

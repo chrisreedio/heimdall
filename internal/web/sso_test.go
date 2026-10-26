@@ -11,8 +11,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/auth/entra"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth/entra"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 type fakeSSO struct {

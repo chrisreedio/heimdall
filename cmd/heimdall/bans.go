@@ -15,14 +15,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/anomaly"
-	"github.com/chrisreedio/heimdall/internal/bans"
-	"github.com/chrisreedio/heimdall/internal/cloudflare"
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/logins"
-	"github.com/chrisreedio/heimdall/internal/notify"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/anomaly"
+	"github.com/realmwatch/heimdall/internal/bans"
+	"github.com/realmwatch/heimdall/internal/cloudflare"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/logins"
+	"github.com/realmwatch/heimdall/internal/notify"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Bans (docs/bans.md): scored offenders, proposed or recorded (shadow),

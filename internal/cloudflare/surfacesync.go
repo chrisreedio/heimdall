@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // The surface map's part of a zone sync (Syncer.Surface, docs/surface.md):

@@ -7,4 +7,4 @@
 # can only send reports for this one host.
 packages: [curl]
 runcmd:
-  - [sh, -c, "cd /root && curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/VERSION/install.sh && printf '%s\\n' 'TOKEN' | sh install.sh --hub HUB --token-stdin"]
+  - [sh, -c, "cd /root && curl -fsSLO https://github.com/realmwatch/heimdall/releases/download/VERSION/install.sh && printf '%s\\n' 'TOKEN' | sh install.sh --hub HUB --token-stdin"]

@@ -11,7 +11,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/secret"
+	"github.com/realmwatch/heimdall/internal/secret"
 )
 
 // newStore returns a fresh, migrated store. The schema is built once per

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/ai"
-	"github.com/chrisreedio/heimdall/internal/kernel"
-	"github.com/chrisreedio/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/ai"
+	"github.com/realmwatch/heimdall/internal/kernel"
+	"github.com/realmwatch/heimdall/internal/report"
 )
 
 // A step about one site offers a hand-off for that site only, even when

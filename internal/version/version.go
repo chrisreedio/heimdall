@@ -9,7 +9,7 @@ package version
 import (
 	"fmt"
 
-	"github.com/chrisreedio/heimdall/internal/composer"
+	"github.com/realmwatch/heimdall/internal/composer"
 )
 
 // Scheme identifies a version comparison algorithm.

@@ -13,10 +13,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/ipinfo/services"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/ipinfo/services"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Deploy services whose list needs the customer's API token (Ploi) keep it

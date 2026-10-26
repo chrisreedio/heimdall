@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/report"
 )
 
 func TestAILinker(t *testing.T) {

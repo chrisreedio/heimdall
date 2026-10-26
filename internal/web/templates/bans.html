@@ -4,7 +4,7 @@
   <span class="pill {{if eq .Mode "off"}}muted{{else if eq .Mode "shadow"}}info{{else}}warn{{end}}">{{.Mode}}</span>
   {{if .Paused.Paused}}<span class="pill bad">paused</span>{{end}}
 </div>
-<p class="lede">Repeat offenders from <a href="/offenders">failed logins</a>, scored and turned into bans at Cloudflare's edge: an account-level IP list that one custom rule per opted-in zone challenges or blocks. Addresses Heimdall knows (your people, deploy services, your hosts, the tailnet, private networks, Cloudflare) are never banned. Heimdall removes each ban when it expires. <a href="https://github.com/chrisreedio/heimdall/blob/main/docs/bans.md">How it works</a>.</p>
+<p class="lede">Repeat offenders from <a href="/offenders">failed logins</a>, scored and turned into bans at Cloudflare's edge: an account-level IP list that one custom rule per opted-in zone challenges or blocks. Addresses Heimdall knows (your people, deploy services, your hosts, the tailnet, private networks, Cloudflare) are never banned. Heimdall removes each ban when it expires. <a href="https://github.com/realmwatch/heimdall/blob/main/docs/bans.md">How it works</a>.</p>
 {{with .Flash}}<p class="notice" role="status">{{.}}</p>{{end}}
 
 <section id="status">

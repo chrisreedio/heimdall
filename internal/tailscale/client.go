@@ -21,8 +21,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/netx"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Hosts are the only hosts the client may reach.
