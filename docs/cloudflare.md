@@ -8,6 +8,7 @@ If your sites sit behind Cloudflare, Heimdall can read your zones with a **read-
 - **Dangling records:** A and AAAA records whose address is none of your hosts, not Cloudflare's, not private and not labelled. They're often left over from a server that's gone. If that address now belongs to someone else, they can serve your name.
 - **Sites not behind Cloudflare:** a site's server name that's in a zone but not proxied, has no record, or isn't in any zone the token can see.
 - **Security events:** for each zone, the last 24 hours of events by action (block, challenge, …), the top countries, networks (ASNs) and paths, and request totals, plus up to 30 days of daily counts.
+- **Web offenders:** the client addresses Cloudflare blocked or challenged, per zone and day, for the threat list. This stores client addresses; see [Web offenders](#web-offenders).
 - **Who an unknown address belongs to:** Radar's network name for addresses nobody has labelled, e.g. "AS64500 Example ISP (US)", shown as context (still *unknown*) wherever addresses appear, such as privilege watch sessions.
 
 It also fixes the client address of ingest behind Cloudflare (see [CF-Connecting-IP](#the-real-client-address-behind-cloudflare)).
@@ -22,7 +23,7 @@ Heimdall never writes anything to Cloudflare.
    |---|---|
    | Zone > Zone > Read | listing zones and their plans |
    | Zone > DNS > Read | DNS records |
-   | Zone > Analytics > Read | security events and request totals (GraphQL Analytics API) |
+   | Zone > Analytics > Read | security events, web offenders and request totals (GraphQL Analytics API) |
    | Account > Radar > Read | network names for unknown addresses (only with `radar = true`) |
    | Zone > Zone Settings > Read | optional: SSL/TLS mode, Always Use HTTPS and minimum TLS on the [attack surface](surface.md) |
    | Zone > SSL and Certificates > Read | optional: edge certificate expiry on the [attack surface](surface.md) |
@@ -65,10 +66,11 @@ The overview is at **/cloudflare** (operators and admins), and each site page ge
 | Zones | `GET /zones` (50 a page) | ID, name, plan name, status |
 | DNS records | `GET /zones/{id}/dns_records` (500 a page) | A, AAAA and CNAME only: name, type, content, proxied, TTL |
 | Security events | GraphQL `firewallEventsAdaptiveGroups` (or `firewallEventsAdaptive`, see plans) | counts only: per action, top 10 countries, ASNs and paths; daily rows kept 30 days |
+| Web offenders | GraphQL `firewallEventsAdaptiveGroups` (or `firewallEventsAdaptive`) | per client address, zone and day: blocked and challenged events by action, first and last seen, ASN, network name, country; 30 days |
 | Request totals | GraphQL `httpRequests1hGroups` | daily totals and a last-24-hours count |
 | Network names | `GET /radar/entities/asns/ip` | ASN, organization name and country per address, 7 days (misses 1 day) |
 
-**Never stored:** individual events, client addresses (the raw-events fallback doesn't even ask for them), query strings, user agents. Paths are clipped to 120 characters.
+**Never stored:** individual events, query strings, user agents, paths of web offenders' requests, and the address of any request Cloudflare let through. The security summaries hold no client address (their raw-events fallback doesn't even ask for one). Client addresses are stored only as [web offenders](#web-offenders): requests Cloudflare blocked or challenged, from addresses nobody knows. Paths in the summaries are clipped to 120 characters.
 
 Every request goes over HTTPS to `api.cloudflare.com` or `www.cloudflare.com` only (an in-process allowlist), with timeouts and response size caps. If Cloudflare is down or a request fails, the last good data stays: a failed zone list changes nothing, a zone whose records fail keeps its old ones, and the last sync's error is shown in `status` (and to admins on the overview).
 
@@ -89,6 +91,86 @@ Cloudflare limits analytics by plan. Heimdall asks for each zone what it can do 
 \* On a zone without the aggregated dataset, Heimdall falls back to the latest 1,000 raw events of the last 24 hours and counts them itself; the overview marks these **sampled** (totals are a floor) and stores no daily rows for them. If neither dataset is available the zone shows **not on this plan**. Per-zone limits vary; `heimdall cloudflare status` prints each dataset's availability and how many days back it reaches, read from the GraphQL [settings node](https://developers.cloudflare.com/analytics/graphql-api/features/discovery/settings/).
 
 Every window Heimdall asks for spans at most 24 hours, so it fits each plan's maximum query span.
+
+## Web offenders
+
+Web offenders are the web half of Heimdall's threat list: the attacker addresses other services can pull. The SSH half comes from [failed logins](failed-logins.md). With `security_events = true`, each zone sync also records which client addresses Cloudflare blocked or challenged.
+
+**Privacy change:** before this, Heimdall stored no client address from Cloudflare. It now stores the client IP of every request Cloudflare blocked or challenged on your zones, for 30 days, unless the address is friendly (see below). Requests Cloudflare let through are never recorded, and nothing about a request beyond what's listed here is kept. To collect none, set `security_events = false`. That also turns off the zone security summaries.
+
+### What's stored
+
+One row per client address, zone and UTC day:
+
+| Field | What |
+|---|---|
+| address | the client IP, IPv4 or IPv6, as Cloudflare saw it |
+| events | how many acted-on events came from it that day |
+| per action | the same count split by action, e.g. `block 40, managed_challenge 2` |
+| first and last seen | to the hour from the aggregated dataset, to the second from raw events |
+| network | ASN, network name and country, as Cloudflare reports them for the event |
+| sampled | whether the counts come from capped raw events (a floor, see below) |
+
+**Not stored:** paths, query strings, hosts, user agents, rule IDs, ray IDs, headers, or any request Cloudflare allowed.
+
+### Which actions count
+
+Only requests Cloudflare stopped or made prove themselves. Cloudflare writes some names in two styles, and both are accepted:
+
+| Counted (stored as) | Cloudflare's names |
+|---|---|
+| `block` | `block` |
+| `challenge` | `challenge` (interactive) |
+| `js_challenge` | `jschallenge`, `js_challenge` (non-interactive) |
+| `managed_challenge` | `managedChallenge`, `managed_challenge` |
+| `connection_close` | `connectionClose`, `connection_close` |
+
+Not counted: `allow`, `bypass`, `skip`, `log` and `unknown`, plus the outcomes of a challenge (`challengeSolved`, `jschallengeSolved`, `managedChallenge…Solved`, `…Bypassed`, `managed_challenge_skipped`). A solved or bypassed challenge means a client passed, which is usually a real visitor. The action list is from Cloudflare's [security fields reference](https://developers.cloudflare.com/logs/reference/security-fields/). The query asks for these actions only (`action_in`), and Heimdall checks each answer against the list again.
+
+### Token permission
+
+**Zone > Analytics > Read**, the same permission as the security summaries. Nothing new to grant.
+
+### Datasets and plans
+
+| | Dataset | Fields | Counts |
+|---|---|---|---|
+| Aggregated (Pro and up, usually) | `firewallEventsAdaptiveGroups`, grouped by `clientIP`, `clientAsn`, `clientASNDescription`, `clientCountryName`, `action`, `datetimeHour` | up to 10,000 groups a day | exact, unless a day hits 10,000 groups |
+| Sampled (Free, usually) | `firewallEventsAdaptive`, the same fields plus `datetime` | the latest 1,000 events a day | a **floor** |
+
+A zone whose summary already fell back to raw events goes straight to raw events. A zone that refuses the aggregated dataset ("does not have access to the path") falls back too. If neither dataset is available, or the token can't read the zone's analytics, the zone is skipped. The summary's state on `/cloudflare` already says why.
+
+A **floor** means the true numbers are at least this high. On a sampled day only the latest 1,000 acted-on events are seen, so a busy attacker may have sent more, and an address whose events were all earlier in the day may be missing entirely. Such rows are marked `sampled`. An aggregated day that returns the full 10,000 groups is marked the same way.
+
+### When it syncs, and the budget
+
+It runs in the zone sync, at `sync_every` (default 1h), right after each zone's summary: **one extra GraphQL query per zone per sync**. Each query asks for whole UTC days, at most 24 hours each, so it fits every plan's maximum query span:
+
+- **today**, so far, on every sync;
+- **yesterday**, until it has been fetched at least an hour after midnight UTC (late events have arrived by then). That fetch is final, and the day is never asked for again.
+
+Older days are never fetched, so there is no backfill: if the hub is down for more than a day, the days it missed stay empty. With hourly syncs and 10 zones that's 240 GraphQL queries a day for this, well inside Cloudflare's GraphQL rate limit (300 queries per 5 minutes per user).
+
+### Retention
+
+30 days, the same as [failed logins](failed-logins.md). Rows for days more than 30 days ago are deleted on every sync. Deleting a zone from Cloudflare, or dropping it from `zones`, deletes its rows at the next sync.
+
+### Friendly addresses are never stored
+
+Before anything is written, each address is checked against what Heimdall knows, the same checks as the [ban guard](bans.md):
+
+- a range labelled in **any** org, whatever its kind (staff, automation, infra, tailnet, private; manual or synced), except labels of kind *unknown*;
+- the tailnet (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`), private networks, loopback, link-local, unspecified and multicast space;
+- Cloudflare's published edge ranges;
+- any host's report address;
+- an address someone signed in to Heimdall from in the last 30 days;
+- anything that isn't a public unicast address.
+
+Each sync also deletes stored rows of any address that has become friendly since, for example after you label it.
+
+### Which org a zone belongs to
+
+Zones have no owner in Heimdall. A zone belongs to the orgs whose hosts or sites its records lead to: an A or AAAA record at a host's report address (following CNAMEs within the synced zones), or a record whose name is one of a site's server names. That's the same join the `/cloudflare` page uses to decide who sees a zone. It's rebuilt every sync. A zone that leads to no org's hosts or sites belongs to none: it shows in the hub-wide threat list, never in an org's. A zone that serves two orgs is in both lists.
 
 ## The real client address behind Cloudflare
 
@@ -132,5 +214,6 @@ Built from Cloudflare's documentation (October 2026), without a live account:
 
 - GraphQL error wording for "not on this plan" and "no permission" is matched by text ("does not have access to the path", "not authorized"); an unrecognized error is shown as an error and retried next sync.
 - The raw-events fallback on Free plans and its fields (`action`, `clientAsn`, `clientCountryName`, `clientRequestPath`) follow the [firewall events tutorial](https://developers.cloudflare.com/analytics/graphql-api/tutorials/querying-firewall-events/).
+- The web offender fields `clientIP`, `clientAsn`, `clientCountryName`, `action` and `datetime` follow the tutorial above. `clientASNDescription` and the `datetimeHour` dimension come from the GraphQL schema, untested against a live zone. The action names are from the Logs [security fields reference](https://developers.cloudflare.com/logs/reference/security-fields/), and both spellings are accepted because GraphQL's style may differ.
 - Radar's ASN lookup is documented for IPv4; IPv6 addresses aren't looked up.
 - The `httpRequests1hGroups` request totals are assumed available on every plan; if not, the overview shows "—".

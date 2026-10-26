@@ -16,7 +16,8 @@ import (
 )
 
 // Syncer reads the token's zones, their A/AAAA/CNAME records and (if
-// Security) their security event counts into the store. On an API failure
+// Security) their security event counts and web offenders (web.go) into
+// the store. On an API failure
 // the last good data stays: a failed zone list changes nothing, a zone
 // whose records fail keeps its old ones.
 type Syncer struct {
@@ -31,6 +32,7 @@ type Syncer struct {
 	// targets outside the zones and log changes (surfacesync.go).
 	Surface  bool
 	Resolver Resolver // for the CNAME checks; nil = net.DefaultResolver
+	Edge     *Edge    // Cloudflare's edge, never a web offender; nil = the built-in list
 }
 
 func (s *Syncer) Name() string         { return "cloudflare:zones" }
@@ -96,6 +98,7 @@ func (s *Syncer) sync(ctx context.Context) error {
 		errs = append(errs, s.surface(ctx, stored, records, before)...)
 	}
 	if s.Security {
+		var web []webZone
 		for _, z := range stored {
 			state, note, sum, days, err := s.Client.Security(ctx, z.ID, s.Now())
 			if err != nil && state != store.CloudflareSecurityPermission {
@@ -105,7 +108,9 @@ func (s *Syncer) sync(ctx context.Context) error {
 			if err := s.Store.SetCloudflareSecurity(ctx, z.ID, state, note, last24, days, s.Now()); err != nil {
 				return err
 			}
+			web = append(web, webZone{z, state})
 		}
+		errs = append(errs, s.syncWeb(ctx, web)...)
 	}
 	if s.Log != nil {
 		s.Log.Debug("Cloudflare synced", "zones", len(stored), "visible", len(all))

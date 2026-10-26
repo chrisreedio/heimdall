@@ -39,6 +39,7 @@ type fakeAPI struct {
 	radarDeny bool
 	radarHits int
 	queries   []string
+	webDays   [][]string // the days each web offender query asked for
 }
 
 func (f *fakeAPI) handler(t *testing.T) http.Handler {
@@ -117,6 +118,8 @@ func (f *fakeAPI) handler(t *testing.T) http.Handler {
 			switch {
 			case zone == zoneC:
 				gqlErr("not authorized for that account")
+			case strings.Contains(q, "clientIP"):
+				f.web(t, w, q, zone, gqlErr)
 			case strings.Contains(q, "settings"):
 				enabled := zone == zoneA || !strings.Contains(q, "firewallEventsAdaptiveGroups")
 				fmt.Fprintf(w, `{"data":{"viewer":{"zones":[{"settings":{"%s":{"enabled":%v,"maxDuration":86400,"notOlderThan":2678400}}}]}},"errors":null}`,
