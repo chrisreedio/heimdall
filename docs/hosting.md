@@ -144,10 +144,12 @@ Azure has no flat-priced plan like Lightsail; the closest is a small burstable B
 |---|---|---|---|
 | **Standard_B2als_v2** (AMD) | 2 / 4 GiB | 30% | The default: room for feed syncs, upgrades and the pre-upgrade database copy. |
 | Standard_B2ats_v2 (AMD) | 2 / 1 GiB | 20% | The cheapest. Enough for a small fleet (a 1 GB AWS t3.micro runs a hub), but upgrades and big feed syncs are tight on memory. |
-| Standard_B2pls_v2 (Arm) | 2 / 4 GiB | 30% | The same on Ampere Altra, usually a little cheaper. Gen2 images only; install the `heimdall-linux-arm64` release binary. Collectors on Arm servers are supported too. |
+| Standard_D2pls_v6 (Arm) | 2 / 4 GiB | not burstable | Only if you want Arm: Cobalt 100, with Trusted Launch. Costs more than the B-series. Install the `heimdall-linux-arm64` release binary. |
 
 Notes:
 
+- **Keep Trusted Launch on** (Secure Boot and vTPM; the portal and CLI turn it on by default, and it costs nothing). Ubuntu 24.04 supports it, and Heimdall loads no kernel modules, so Secure Boot never gets in the way. Both B-series v2 AMD sizes above support it.
+- **Skip the Arm B-series** (Bpsv2, e.g. B2pls_v2): its Ampere Altra sizes don't support Trusted Launch, so the portal lists them as incompatible. The only Arm sizes with Trusted Launch are the Cobalt 100 ones (Dpsv6, Dplsv6).
 - **Avoid the original B-series** (B1s, B1ms, B2s, B2ms). Microsoft retires it on **November 15, 2028**; three-year reservations for it ended November 15, 2025, and one-year reservations end July 1, 2026. Moving a VM to a v2 size later is a resize and a reboot, but starting on v2 avoids it.
 - **CPU credits:** B-series VMs bank credits while below their baseline and spend them to burst. A hub idles almost all the time, so it keeps a full bank; feed syncs and upgrades burst briefly. If the VM's *CPU Credits Remaining* metric ever hits zero, move up one size.
 - **No temp disk:** v2 sizes have no local temporary disk. Heimdall doesn't use one; everything lives on the OS disk.
