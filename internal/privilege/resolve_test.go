@@ -118,3 +118,36 @@ func TestResolveKnownAfterSync(t *testing.T) {
 		t.Fatalf("closed = %+v", cs)
 	}
 }
+
+// An office address from a Cloudflare IP list counts as known, like staff:
+// the alert closes, later sessions raise nothing, and the summary names
+// the list and the item's comment.
+func TestResolveKnownOfficeList(t *testing.T) {
+	e := newRuleEnv(t)
+	ctx := t.Context()
+	if got := e.report(ev(-time.Hour, "sudo", "chris", "203.0.113.4")); len(got) != 1 {
+		t.Fatalf("raised %v", got)
+	}
+	if err := e.st.ReplaceIPLabels(ctx, 0, store.IPListSource("offices01"), []store.IPLabel{{Prefix: netip.MustParsePrefix("203.0.113.0/24"),
+		Kind: store.IPKindOffice, Name: "offices", Person: "Alice Example - Developer"}}, now); err != nil {
+		t.Fatal(err)
+	}
+	if n := e.resolveKnown(); n != 1 {
+		t.Fatalf("closed %d, want 1", n)
+	}
+	if cs := e.closed(); len(cs) != 1 || cs[0].Note != "resolved: 203.0.113.4 is now known (office: Alice Example - Developer, Cloudflare IP list 'offices')" {
+		t.Fatalf("closed = %+v", cs)
+	}
+	if got := e.report(ev(-10*time.Minute, "root-ssh", "root", "203.0.113.9")); len(got) != 0 {
+		t.Fatalf("raised %v from an office address", got)
+	}
+	v := e.rules.IPs.Resolve(ctx, e.host.OrgID, "203.0.113.9", "", now)
+	if got := LabelText(v); got != "offices · Alice Example - Developer" {
+		t.Errorf("label text %q", got)
+	}
+	// A manual office label without a list is known too.
+	e.label("198.51.100.0/24", store.IPKindOffice)
+	if got := e.report(ev(-5*time.Minute, "sudo", "chris", "198.51.100.7")); len(got) != 0 {
+		t.Fatalf("raised %v from a manual office range", got)
+	}
+}

@@ -79,4 +79,32 @@
 </section>
 {{end}}
 {{end}}
+
+{{with .Lists}}
+<section id="ip-lists" aria-labelledby="ip-lists-h">
+  <h2 id="ip-lists-h">IP lists</h2>
+  <p class="muted small">Your account-level IP lists can become IP labels, so privilege watch, anomalies and the <a href="/ips">IP addresses</a> page know the addresses you already keep there. Pick what each list holds; new lists are ignored until you do. A list's labels are for every org and read again every hour. Only admins see this. Needs <strong>Account &gt; Account Filter Lists &gt; Read</strong> on the read-only token.</p>
+  {{with .Error}}<p class="alert" role="alert">The last sync failed: {{.}}</p>{{end}}
+  {{if .Lists}}
+  <form method="post" action="/cloudflare/lists">
+    <input type="hidden" name="csrf" value="{{$.CSRF}}">
+    <div class="scroll"><table>
+      <thead><tr><th>List</th><th class="num">Items</th><th>Its items are</th><th>Labels</th></tr></thead>
+      <tbody>{{range .Lists}}{{$k := .Kind}}<tr>
+        <td class="id">{{if .Href}}<a href="{{.Href}}" target="_blank" rel="noopener noreferrer">{{.Name}}</a>{{else}}{{.Name}}{{end}}{{with .Description}}<div class="muted small">{{.}}</div>{{end}}</td>
+        <td class="num">{{num .Items}}</td>
+        <td><select name="kind-{{.ID}}" aria-label="What the list {{.Name}} holds">{{range $.Body.Lists.Kinds}}<option value="{{.}}"{{if eq . $k}} selected{{end}}>{{.}}</option>{{end}}</select></td>
+        <td>{{if eq .Kind "ignore"}}<span class="muted">—</span>
+          {{else if .State.LastError}}<span class="pill warn" title="{{.State.LastError}}">sync failed</span>{{if not .State.LastSuccess.IsZero}} <span class="muted small">{{num .State.Labels}} from {{dayAgo (timep .State.LastSuccess)}}</span>{{end}}
+          {{else if .State.LastSuccess.IsZero}}<span class="muted small">on the next sync</span>
+          {{else}}{{num .State.Labels}} <span class="muted small">· synced {{ago .State.LastSuccess}}</span>{{end}}</td>
+      </tr>{{end}}</tbody>
+    </table></div>
+    <p class="muted small"><strong>staff</strong>: each address is one person's, named by the item's comment. <strong>office</strong>: a trusted network (an office, a VPN exit, a home network), the comment saying whose or what. <strong>automation</strong> and <strong>infra</strong>: deploy services and CI, or your own servers; the comment becomes the label's note. Where a list and a manual label cover the same range, the list wins; a more specific manual label still beats a wider list range.</p>
+    <button type="submit">{{if .Token}}Save and sync{{else}}Save{{end}}</button>
+  </form>
+  {{else}}<p class="empty">{{if .Synced.IsZero}}Not read yet{{if not .Token}}: there's no Cloudflare token{{end}}.{{else}}The token sees no IP lists.{{end}}</p>{{end}}
+  {{if not .Synced.IsZero}}<p class="muted small">Lists last read {{ago .Synced}}.</p>{{end}}
+</section>
+{{end}}
 {{end}}{{end}}

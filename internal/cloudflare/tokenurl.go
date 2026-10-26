@@ -24,7 +24,8 @@ var ReadPerms = []Perm{
 }
 
 // ReadManual is what the template can't fill in.
-const ReadManual = "Account > Radar > Read (for network names of unknown addresses; skip it with radar = false)"
+const ReadManual = "Account > Radar > Read (for network names of unknown addresses; skip it with radar = false) and " +
+	"Account > Account Filter Lists > Read (to label addresses from your IP lists; optional)"
 
 // TokenURL opens the dashboard's "create token" form, pre-filled with perms
 // on all accounts and zones. It's a user-owned token: VerifyToken only

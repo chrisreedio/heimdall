@@ -29,7 +29,8 @@ type Label struct {
 	Kind   string // store.IPKind*
 	Name   string // "Office VPN", "Laravel Forge", "laptop-01"
 	Person string // who, when known
-	Source string // "manual", "service:forge", "tailscale", "builtin", ...
+	Note   string // anything else (a Cloudflare list item's comment, for kinds without a person)
+	Source string // "manual", "service:forge", "tailscale", "cloudflare:list:<id>", "builtin", ...
 	Prefix netip.Prefix
 	// Guess marks a label inferred rather than known (e.g. matched by a
 	// sign-in from the same address). Ranked below known labels.
@@ -110,7 +111,7 @@ func (r *Resolver) resolve(ctx context.Context, stored []store.IPLabel, orgID in
 	v.Addr = addr.Unmap()
 	for _, l := range stored {
 		if l.Prefix.Contains(v.Addr) {
-			v.Labels = append(v.Labels, Label{Kind: l.Kind, Name: l.Name, Person: l.Person, Source: l.Source, Prefix: l.Prefix})
+			v.Labels = append(v.Labels, Label{Kind: l.Kind, Name: l.Name, Person: l.Person, Note: l.Note, Source: l.Source, Prefix: l.Prefix})
 		}
 	}
 	v.Labels = append(v.Labels, builtin(v.Addr)...)
@@ -139,12 +140,24 @@ func (r *Resolver) resolve(ctx context.Context, stored []store.IPLabel, orgID in
 
 // kindRank orders kinds from most to least telling.
 var kindRank = map[string]int{
-	store.IPKindStaff: 0, store.IPKindAutomation: 1, store.IPKindInfra: 2,
-	store.IPKindTailnet: 3, store.IPKindPrivate: 4, store.IPKindUnknown: 5,
+	store.IPKindStaff: 0, store.IPKindOffice: 1, store.IPKindAutomation: 2, store.IPKindInfra: 3,
+	store.IPKindTailnet: 4, store.IPKindPrivate: 5, store.IPKindUnknown: 6,
+}
+
+// sourceRank puts a Cloudflare IP list's labels ahead of the rest (manual
+// labels above all) for the same range size: the team keeps the list
+// current, while a manual label may be stale.
+func sourceRank(src string) int {
+	if store.IsIPListSource(src) {
+		return 0
+	}
+	return 1
 }
 
 // rank sorts labels: known before guessed, then the most specific range,
-// then the most telling kind.
+// then a Cloudflare IP list's before any other source's, then the most
+// telling kind. So a manual /32 still beats a list's /24, but a list's
+// /32 beats a manual /32.
 func rank(ls []Label) {
 	slices.SortStableFunc(ls, func(a, b Label) int {
 		if a.Guess != b.Guess {
@@ -154,6 +167,9 @@ func rank(ls []Label) {
 			return -1
 		}
 		if c := cmp.Compare(b.Prefix.Bits(), a.Prefix.Bits()); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(sourceRank(a.Source), sourceRank(b.Source)); c != 0 {
 			return c
 		}
 		return cmp.Compare(kindRank[a.Kind], kindRank[b.Kind])

@@ -68,7 +68,7 @@ type Query struct {
 
 // Vouched reports whether IP awareness knows the address well enough that
 // its failures aren't an attack: any label about the address itself
-// (staff, automation, infra, tailnet, private, your hosts, a sign-in) or
+// (staff, office, automation, infra, tailnet, private, your hosts, a sign-in) or
 // Cloudflare's edge. Account-name hints don't count (Verdict.UnknownAddress),
 // and none are asked for: usernames are never reported.
 func Vouched(v ipinfo.Verdict, edge *cloudflare.Edge) bool {

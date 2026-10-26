@@ -103,8 +103,22 @@ func (e *Rules) sourceRules(ctx context.Context, host store.IngestHost, snapshot
 	return raised, nil
 }
 
+// ListDetail is what a Cloudflare IP list's item said about its address
+// (its comment: the label's person, or its note), or "" for other labels.
+func ListDetail(l ipinfo.Label) string {
+	if !store.IsIPListSource(l.Source) {
+		return ""
+	}
+	if l.Person != "" {
+		return l.Person
+	}
+	return l.Note
+}
+
 // LabelText says briefly who an address is, from its verdict: "alice",
-// "probably alice", "Laravel Forge", "web-01", or "" when nothing's known.
+// "probably alice", "Laravel Forge", "web-01", "offices · Alice Example"
+// (a Cloudflare IP list and the item's comment), or "" when nothing's
+// known.
 func LabelText(v ipinfo.Verdict) string {
 	if v.Unknown() {
 		return ""
@@ -112,6 +126,10 @@ func LabelText(v ipinfo.Verdict) string {
 	b := v.Best()
 	who := b.Name
 	switch {
+	case store.IsIPListSource(b.Source):
+		if d := ListDetail(b); d != "" {
+			who = b.Name + " · " + d
+		}
 	case b.Person != "" && b.Kind == store.IPKindStaff:
 		who = b.Person
 	case b.Person != "" && b.Name != "":

@@ -48,7 +48,7 @@ type labelPrefill struct {
 }
 
 // labelKinds are the kinds a person can give a label.
-var labelKinds = []string{store.IPKindStaff, store.IPKindAutomation, store.IPKindInfra, store.IPKindTailnet, store.IPKindPrivate}
+var labelKinds = []string{store.IPKindStaff, store.IPKindOffice, store.IPKindAutomation, store.IPKindInfra, store.IPKindTailnet, store.IPKindPrivate}
 
 // prefillFor reads the form's prefill from the query.
 func prefillFor(r *http.Request, v *auth.Viewer) labelPrefill {

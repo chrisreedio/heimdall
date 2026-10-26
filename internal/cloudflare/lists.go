@@ -15,7 +15,8 @@ import (
 // The only writes Heimdall makes to Cloudflare, for bans (internal/bans),
 // with a second token that has edit rights: an account-level IP list per
 // action and, in each opted-in zone, one custom rule per list. The
-// read-only token never calls these.
+// read-only token only reads lists (Accounts, Lists, ListItems), for IP
+// labels from the lists you keep (iplists.go).
 //
 // API references (checked Oct 2026):
 //   - accounts: https://developers.cloudflare.com/api/resources/accounts/methods/list/

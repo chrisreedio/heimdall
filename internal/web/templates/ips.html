@@ -1,7 +1,7 @@
 {{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
 <h1>IP addresses</h1>
 {{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
-<p class="muted">What Heimdall knows about an address: whose it is. Privileged sessions from addresses nobody knows raise an alert, so label the ones that are yours: an office, a VPN, a person's home connection. Ranges a source keeps in sync (a deploy service, the tailnet) are listed with their source and can't be changed here. <a href="https://github.com/realmwatch/heimdall/blob/main/docs/ip-awareness.md">How it works</a>.</p>
+<p class="muted">What Heimdall knows about an address: whose it is. Privileged sessions from addresses nobody knows raise an alert, so label the ones that are yours: an office, a VPN, a person's home connection. Ranges a source keeps in sync (a deploy service, the tailnet, a Cloudflare IP list) are listed with their source and can't be changed here. <a href="https://github.com/realmwatch/heimdall/blob/main/docs/ip-awareness.md">How it works</a>.</p>
 
 {{if or .Admin .AllOrgs}}
 <section class="card">
@@ -40,6 +40,22 @@
     <thead><tr><th>Address or range</th><th>Kind</th><th>Name</th><th>Person</th></tr></thead>
     <tbody>{{range .Labels}}<tr><td><code>{{.Prefix}}</code></td><td>{{.Kind}}</td><td>{{.Name}}</td><td>{{template "personlink" .Person}}</td></tr>{{end}}</tbody>
   </table></div>
+  {{end}}
+</section>
+{{end}}
+
+{{if .Lists}}
+<section class="card" aria-labelledby="ips-lists">
+  <h2 id="ips-lists">From Cloudflare IP lists</h2>
+  <p class="muted small">Managed in Cloudflare, for every org: change a list there and it's read again within the hour.{{if $.Body.AllOrgs}} Which lists become labels, and of what kind, is set on the <a href="/cloudflare#ip-lists">Cloudflare page</a>.{{end}} At the same range size a list's label comes before a manual one.</p>
+  {{range .Lists}}
+  <h3>{{.Name}} <span class="pill {{kindClass .Kind}}">{{.Kind}}</span>
+    <span class="muted small">{{num (len .Labels)}} item{{if ne (len .Labels) 1}}s{{end}}{{if not .State.LastSuccess.IsZero}} · synced {{ago .State.LastSuccess}}{{end}}{{if .Href}} · <a href="{{.Href}}" target="_blank" rel="noopener noreferrer">open in Cloudflare</a>{{end}}</span></h3>
+  {{with .State.LastError}}<p class="muted small"><span class="pill warn">sync failed</span> {{.}}</p>{{end}}
+  {{if .Labels}}<div class="scroll"><table>
+    <thead><tr><th>Address or range</th><th>{{if or (eq .Kind "staff") (eq .Kind "office")}}Person{{else}}Note{{end}}</th></tr></thead>
+    <tbody>{{range .Labels}}<tr><td><code>{{.Prefix}}</code></td><td>{{if .Person}}{{template "personlink" .Person}}{{else}}<span class="muted">{{.Note}}</span>{{end}}</td></tr>{{end}}</tbody>
+  </table></div>{{else if .State.LastSuccess.IsZero}}<p class="empty">Not synced yet.</p>{{else}}<p class="empty">The list has no addresses or ranges.</p>{{end}}
   {{end}}
 </section>
 {{end}}

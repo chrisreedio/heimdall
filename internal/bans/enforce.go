@@ -271,7 +271,7 @@ func (e *Enforcer) ensureLists(ctx context.Context) (ListsState, error) {
 		if err := e.checkPause(ctx); err != nil {
 			return err
 		}
-		l, err := e.Client.CreateList(ctx, acct, ref.Name, "Heimdall bans ("+what+"); managed by Heimdall, items expire on their own")
+		l, err := e.Client.CreateList(ctx, acct, ref.Name, cloudflare.BanListDescription+what+"); managed by Heimdall, items expire on their own")
 		e.audit(ctx, "cf.list.create", "", ref.Name, err, map[string]any{"list": ref.Name})
 		if err != nil {
 			return err

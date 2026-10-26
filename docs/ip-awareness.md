@@ -8,7 +8,8 @@ Every address gets a **verdict**: everything known about it, the most telling fi
 
 | Kind | Means | Badge |
 |---|---|---|
-| `staff` | a person on the team: an office, a home connection, a VPN exit | the person, e.g. "alice" |
+| `staff` | a person on the team: their home connection, their laptop's VPN exit | the person, e.g. "alice" |
+| `office` | a trusted network: an office, a VPN exit, a home network, not one person | its name, e.g. "Office", or "offices · Alice Example - Developer" from a Cloudflare IP list |
 | `automation` | a deploy service or CI that logs in for you (Forge, Ploi, your own deploy tool, GitHub Actions) | its name, e.g. "Laravel Forge" |
 | `infra` | your own servers, the hub, a proxy | the host names |
 | `tailnet` | on your Tailscale tailnet (100.64.0.0/10, fd7a:115c:a1e0::/48), device or person not known | "Tailnet", or the device |
@@ -18,7 +19,7 @@ Every address gets a **verdict**: everything known about it, the most telling fi
 Knowledge comes from:
 
 - **Manual labels** you add (below).
-- **Synced labels** that a source keeps current: a deploy service's published ranges, the Tailscale API, Cloudflare. They're replaced wholesale on each sync and can't be edited by hand; the last good sync stays if a source is down.
+- **Synced labels** that a source keeps current: a deploy service's published ranges, the Tailscale API, Cloudflare's edge ranges, and the Cloudflare IP lists you map ([cloudflare.md](cloudflare.md#ip-lists)). They're replaced wholesale on each sync and can't be edited by hand; the last good sync stays if a source is down. A sync never touches manual labels, and removing a manual label never touches synced ones.
 - **Built-in ranges**: the tailnet's CGNAT range, private networks, loopback and link-local.
 - **Your hosts**: the address each host's last report came from is labeled `infra` with the host's name.
 - **Heimdall sign-ins** (a guess, below).
@@ -28,20 +29,21 @@ A label applies to one org, or (added by a global admin or `--all-orgs`) to ever
 
 ### Ranking and guesses
 
-When several labels match, the verdict lists them all and the badge shows the first. Known labels come before guesses, then the most specific range (a `/32` before a `/24`), then the most telling kind (in the table's order). So a `/32` labeled `staff` beats the deploy service's `/24` it sits in, and a manual label beats a sign-in guess.
+When several labels match, the verdict lists them all and the badge shows the first. Known labels come before guesses, then the most specific range (a `/32` before a `/24`), then a Cloudflare IP list's label before any other source's, then the most telling kind (in the table's order). So a `/32` labeled `staff` beats the deploy service's `/24` it sits in, and a manual label beats a sign-in guess. A list's label outranks a manual one only at the same range size: the list's `/32` beats a manual `/32` whatever their kinds, but a manual `/32` still beats the list's `/24`.
 
 A **guess** is inferred, not known. Badges for guesses say "probably alice" and are shown in italics.
 
 ## Labeling addresses
 
-Org admins label addresses on **IP addresses** (`/ips`, in the navigation for admins): an address or CIDR range, a kind, a name ("Office", "Alice's home") and optionally the person and a note. The page lists every label that applies to each org you administer, manual ones (removable) and synced ones grouped by source with when they last synced. Global admins also see and manage labels for every org. Adding and removing labels is audited.
+Org admins label addresses on **IP addresses** (`/ips`, in the navigation for admins): an address or CIDR range, a kind, a name ("Office", "Alice's home") and optionally the person and a note. The page lists every label that applies to each org you administer, manual ones (removable) and synced ones grouped by source with when they last synced; labels from Cloudflare IP lists are grouped by list, with its kind and a link to it in Cloudflare (managed there, not here). Global admins also see and manage labels for every org. Adding and removing labels is audited.
 
 Each privilege session's address links to its **IP page** (`/ips/<address>`), with the verdict and every label, and everywhere the address appears in the orgs you can see: privilege sessions (host, user, kind, when) and hosts whose reports come from it. Global admins also see Heimdall sign-ins from it; admins see audit log entries recorded from it (org admins only their orgs'). Admins get a **Label this address** button that opens the form prefilled, and **It's me**, which also fills in `staff` and you as the person. The form's Person field suggests the Heimdall users in your orgs and the people labels already name.
 
 From the CLI:
 
 ```sh
-heimdall ip label add --org acme --kind staff --name "Office" --person alice@example.com 203.0.113.0/24
+heimdall ip label add --org acme --kind office --name "Office" 203.0.113.0/24
+heimdall ip label add --org acme --kind staff --name "Alice home" --person alice@example.com 198.51.100.4
 heimdall ip label add --all-orgs --kind automation --name "CI runners" 198.51.100.7
 heimdall ip label list [--org acme]     # every label, manual and synced, with its ID
 heimdall ip label rm --org acme 12
@@ -60,7 +62,7 @@ A label's Person (an email, usually) gets a **person page**, `/ips/person/<perso
 - their Heimdall sign-ins (global admins only);
 - **Add an address**, the label form with them filled in (admins).
 
-If the person is a Heimdall user you can see (a user in one of your orgs; any user, for a global admin), labels naming their email or their display name both count, so "alice@example.com" and the guess "probably Alice" meet on one page. The badges link there: a staff badge ("alice", "probably Alice") goes to the person, the address beside it to its IP page. So do the Person column on the IP addresses page, the labels on an IP page, and **addresses** beside each user on the Users page.
+If the person is a Heimdall user you can see (a user in one of your orgs; any user, for a global admin), labels naming their email or their display name both count, so "alice@example.com" and the guess "probably Alice" meet on one page. The badges link there: a staff or office badge naming someone ("alice", "probably Alice", "offices · Alice Example - Developer") goes to the person, the address beside it to its IP page. So do the Person column on the IP addresses page, the labels on an IP page, and **addresses** beside each user on the Users page.
 
 It shows what the IP pages would: labels from the orgs you can view and every org's, never another org's.
 
@@ -165,4 +167,4 @@ See [tailscale.md](tailscale.md).
 
 ## Cloudflare
 
-See [cloudflare.md](cloudflare.md).
+See [cloudflare.md](cloudflare.md): its edge ranges are labeled `infra`, Radar names the network of unknown addresses, and your account's IP lists can become labels ([IP lists](cloudflare.md#ip-lists)).

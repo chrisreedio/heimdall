@@ -71,6 +71,10 @@ func KnownNote(addr string, l ipinfo.Label) string {
 	case "signin":
 		what += ", signed in to Heimdall from it"
 	default:
+		if store.IsIPListSource(l.Source) {
+			what += ", Cloudflare IP list '" + l.Name + "'"
+			break
+		}
 		what += ", '" + l.Name + "' from " + l.Source
 	}
 	return "resolved: " + addr + " is now known (" + what + ")"

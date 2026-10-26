@@ -145,8 +145,9 @@ type cloudflareBody struct {
 	LastSync  time.Time
 	SyncError string
 	EdgeSync  time.Time
-	TokenURL  string // admins: the pre-filled read-only token form
-	TokenHand string // what the form can't pre-fill
+	TokenURL  string       // admins: the pre-filled read-only token form
+	TokenHand string       // what the form can't pre-fill
+	Lists     *cfListsView // admins: which IP lists become labels (cflists.go)
 }
 
 // cloudflarePage is the overview: zones and their security events, origin
@@ -167,6 +168,10 @@ func (s *server) cloudflarePage(w http.ResponseWriter, r *http.Request, v *auth.
 	body := cloudflareBody{Admin: v.Scope.Admin}
 	if body.Admin {
 		body.TokenURL, body.TokenHand = cloudflare.TokenURL("Heimdall (read-only)", cloudflare.ReadPerms), cloudflare.ReadManual
+		if body.Lists, err = s.cfLists(ctx); err != nil {
+			s.fail(w, r, v, err)
+			return
+		}
 	}
 	if d == nil {
 		s.render(w, r, http.StatusOK, "cloudflare", v, "Cloudflare", "cloudflare", body)

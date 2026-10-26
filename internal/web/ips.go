@@ -48,7 +48,7 @@ type ipBadge struct {
 // personURL is a person's page: every address labeled theirs.
 func personURL(person string) string { return "/ips/person/" + url.PathEscape(person) }
 
-var badgeClass = map[string]string{store.IPKindStaff: "ok", store.IPKindTailnet: "ok", store.IPKindAutomation: "info",
+var badgeClass = map[string]string{store.IPKindStaff: "ok", store.IPKindOffice: "ok", store.IPKindTailnet: "ok", store.IPKindAutomation: "info",
 	store.IPKindInfra: "info", store.IPKindPrivate: "muted", store.IPKindUnknown: "warn"}
 
 func badgeFor(v ipinfo.Verdict) ipBadge {
@@ -69,7 +69,7 @@ func badgeFor(v ipinfo.Verdict) ipBadge {
 	if v.Best().Guess {
 		b.Class += " guess"
 	}
-	if best := v.Best(); best.Kind == store.IPKindStaff && best.Person != "" {
+	if best := v.Best(); (best.Kind == store.IPKindStaff || best.Kind == store.IPKindOffice) && best.Person != "" {
 		b.PersonHref = personURL(best.Person)
 	}
 	var lines []string
@@ -80,10 +80,13 @@ func badgeFor(v ipinfo.Verdict) ipBadge {
 	return b
 }
 
-// labelLine describes a label in a line: "staff: Office (alice), manual".
+// labelLine describes a label in a line: "staff: Office (alice), from a
+// manual label", "office: offices · Alice Example, from a Cloudflare IP list".
 func labelLine(l ipinfo.Label) string {
 	s := l.Kind + ": " + l.Name
-	if l.Person != "" {
+	if d := privilege.ListDetail(l); d != "" {
+		s += " · " + d
+	} else if l.Person != "" {
 		s += " (" + l.Person + ")"
 	}
 	if l.Guess {
@@ -103,6 +106,9 @@ func sourceName(src string) string {
 		return "your hosts' reports"
 	case "signin":
 		return "Heimdall sign-ins"
+	}
+	if store.IsIPListSource(src) {
+		return "a Cloudflare IP list"
 	}
 	return src
 }
@@ -137,7 +143,8 @@ func unknownSource(resolve func(ip, user string, at time.Time) ipinfo.Verdict, s
 
 type ipsBody struct {
 	Orgs     []ipsOrg
-	Global   []store.IPLabel // labels for every org
+	Global   []store.IPLabel // labels for every org, but the Cloudflare lists'
+	Lists    []ipListGroup   // mapped Cloudflare IP lists and their labels (cflists.go)
 	AllOrgs  bool            // global admin: may add and remove labels for every org
 	Admin    []store.Org     // orgs the viewer can label
 	Form     labelForm       // people.go
@@ -185,6 +192,10 @@ func (s *server) renderIPs(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 	}
 	body := ipsBody{AllOrgs: v.IsAdmin, Admin: orgs, Error: errMsg, ShowOrgs: len(orgs) > 1}
 	if body.Global, err = s.st.IPLabels(ctx, 0); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if body.Lists, body.Global, err = s.ipListGroups(ctx, body.Global); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}

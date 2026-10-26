@@ -29,6 +29,7 @@ import (
 	"github.com/realmwatch/heimdall/internal/bans"
 	"github.com/realmwatch/heimdall/internal/handoff"
 	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/privilege"
 	"github.com/realmwatch/heimdall/internal/report"
 	"github.com/realmwatch/heimdall/internal/search"
 	"github.com/realmwatch/heimdall/internal/store"
@@ -82,6 +83,9 @@ type Config struct {
 
 	// Cloudflare: [cloudflare] is on, so operators get the overview link.
 	Cloudflare bool
+	// CloudflareLists syncs the Cloudflare IP lists now, after an admin maps
+	// one (cloudflare.go); nil without a Cloudflare token.
+	CloudflareLists func(context.Context) error
 
 	// Tailnet: [tailscale] is on, so host pages show their tailnet device
 	// and /hosts can filter for hosts not on the tailnet (tailscale.go).
@@ -211,8 +215,9 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /ips/labels/{id}/remove", s.requireAuth(s.ipLabelRemove))
 	mux.HandleFunc("POST /ips/policy", s.requireAuth(s.ipPolicySet))
 	mux.HandleFunc("GET /ips/{addr}", s.requireAuth(s.withScope(s.ipPage)))
-	mux.HandleFunc("GET /ips/person/{person}", s.requireAuth(s.withScope(s.personPage))) // people.go
-	mux.HandleFunc("GET /cloudflare", s.requireAuth(s.cloudflarePage))                   // Cloudflare overview (cloudflare.go)
+	mux.HandleFunc("GET /ips/person/{person}", s.requireAuth(s.withScope(s.personPage)))          // people.go
+	mux.HandleFunc("GET /cloudflare", s.requireAuth(s.cloudflarePage))                            // Cloudflare overview (cloudflare.go)
+	mux.HandleFunc("POST /cloudflare/lists", s.requireAuth(s.requireAdmin(s.cloudflareListsSet))) // which IP lists become labels
 	// Failed logins: repeat offenders across the viewer's hosts (logins.go).
 	mux.HandleFunc("GET /offenders", s.requireAuth(s.withScope(s.offendersPage)))
 	mux.HandleFunc("GET /surface", s.requireAuth(s.surfacePage)) // attack-surface map (surface.go)
@@ -551,6 +556,12 @@ var funcs = template.FuncMap{
 	"userRef":   store.UserRef,
 	"hostURL":   hostURL,
 	"personURL": personURL,
+	// IP labels (ips.go): a kind's pill class, a Cloudflare list item's
+	// comment, and where a label came from in words.
+	"kindClass":    func(kind string) string { return badgeClass[kind] },
+	"listDetail":   privilege.ListDetail,
+	"sourceName":   sourceName,
+	"isListSource": store.IsIPListSource,
 	// aitext renders AI text escaped, with known names linked (aiLinker).
 	"aitext": func(l *aiLinker, text string) template.HTML { return l.HTML(text) },
 	"time": func(t time.Time) string {
