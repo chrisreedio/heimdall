@@ -144,8 +144,9 @@ elif [ "$tailnet_only" = 0 ] && [ "$use_ts" = 1 ]; then
 	die "choose --ingest-host NAME (servers anywhere) or --tailnet-only"
 fi
 if [ -n "$proxy_ui$proxy_ingest" ]; then
-	[ "$use_ts" = 0 ] && [ -z "$ingest_host" ] && [ "$tailnet_only" = 0 ] ||
+	if [ "$use_ts" = 1 ] || [ -n "$ingest_host" ] || [ "$tailnet_only" = 1 ]; then
 		die "--ui-url and --ingest-url go with --no-tailscale, without --ingest-host or --tailnet-only"
+	fi
 	for u in "$proxy_ui" "$proxy_ingest"; do
 		case $u in https://*/* | *[!A-Za-z0-9:/.-]*) die "--ui-url and --ingest-url must be https://name, with no path" ;; https://?*) ;; *) die "--ui-url and --ingest-url must both be given, as https://name" ;; esac
 	done
