@@ -8,10 +8,51 @@ on:
 permissions:
   contents: read
 
+# A newer push to a PR cancels its older run. Pushes to main each run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # A squash merge of a PR that was up to date with main puts on main exactly
+  # the tree the PR's CI already passed, so the push run would only repeat it.
+  # Skip the rest then; anything else (main moved on meanwhile, a direct push,
+  # this lookup failing) runs everything. Releases test the tagged commit
+  # again regardless (release.yml).
+  fresh:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    outputs:
+      skip: ${{ steps.same.outputs.skip }}
+    steps:
+      - id: same
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          skip=false
+          tree() { gh api "repos/$REPO/git/commits/$1" -q .tree.sha; }
+          head=$(gh api "repos/$REPO/commits/$SHA/pulls" -q '[.[] | select(.merged_at != null)][0].head.sha // empty' || true)
+          # A change to a cache key's inputs runs everything, so main saves the
+          # new caches PRs restore from (they can only read main's).
+          keys=$(gh api "repos/$REPO/commits/$SHA" -q '[.files[].filename | select(. == "go.sum" or . == "Makefile" or . == ".github/workflows/ci.yml")] | length' || echo 1)
+          if [ -n "$head" ] && [ "${keys:-1}" = 0 ] && [ "$(tree "$SHA")" = "$(tree "$head")" ]; then
+            ok=$(gh api "repos/$REPO/commits/$head/check-runs?check_name=check" -q '[.check_runs[] | select(.conclusion == "success")] | length' || echo 0)
+            [ "${ok:-0}" -gt 0 ] && skip=true
+          fi
+          echo "skip=$skip" | tee -a "$GITHUB_OUTPUT"
+
   # Static checks and tests run side by side; "check" (the required status)
   # passes only if both did.
   lint:
+    needs: fresh
+    if: ${{ !cancelled() && needs.fresh.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -41,6 +82,8 @@ jobs:
       - run: make -j4 --output-sync=target fmt vet lint vuln
 
   test:
+    needs: fresh
+    if: ${{ !cancelled() && needs.fresh.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -64,18 +107,22 @@ jobs:
       - run: make build
 
   check:
-    needs: [lint, test]
+    needs: [fresh, lint, test]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
-      # A skipped or cancelled dependency must fail this, not pass it.
-      - run: test "$LINT" = success && test "$TEST" = success
+      # A skipped or cancelled dependency must fail this, not pass it,
+      # unless fresh skipped them all on purpose.
+      - run: test "$SKIP" = true || { test "$LINT" = success && test "$TEST" = success; }
         env:
+          SKIP: ${{ needs.fresh.outputs.skip }}
           LINT: ${{ needs.lint.result }}
           TEST: ${{ needs.test.result }}
 
   collector:
+    needs: fresh
+    if: ${{ !cancelled() && needs.fresh.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -97,6 +144,8 @@ jobs:
   # what unit tests stub away: sudo and privilege drops, systemd units, and
   # first runs on a quiet box. See deploy/test/installed-smoke.sh.
   installed:
+    needs: fresh
+    if: ${{ !cancelled() && needs.fresh.outputs.skip != 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
