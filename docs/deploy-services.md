@@ -21,6 +21,10 @@ heimdall ip policy --org acme --count-services on    # off (exempt) by default
 
 or turn on **count deploy-service sessions as privileged access** for the org on the IP addresses page (`/ips`). Changes are audited (`ip_policy.set`). See [ip-awareness.md](ip-awareness.md#deploy-service-sessions-and-privileged-access) for the full rules and a worked example.
 
+## Reporting after a deploy
+
+With systemd, the collector sends a report about a minute after a Forge or Ploi deploy, so a site's packages and findings update right away instead of on the next hourly report. It watches each site it found at install time (the `current` symlink swap of a zero-downtime deploy, or `composer.lock` in place), and you can add `heimdall-collect deployed || true` to the end of the deploy script for any site. That line needs no sudo. See [Reporting after deploys](collector.md#reporting-after-deploys).
+
 ## Catalog
 
 Only vendors that publish their addresses themselves are listed. The hub fetches exactly the URLs below and nothing else (each service's client is allowlisted to its own hosts).

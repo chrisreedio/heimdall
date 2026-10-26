@@ -1,9 +1,9 @@
-# Heimdall collector: report soon after packages change.
+# Heimdall collector: report soon after packages change, or a site deploys.
 #
-# A change to the package database starts heimdall-collect-changes.service,
+# A change to a watched path starts heimdall-collect-changes.service,
 # which restarts heimdall-collect-soon.timer, which starts
 # heimdall-collect.service 60s after the LAST change. So a whole `apt
-# upgrade` sends one report about a minute after it ends.
+# upgrade` (or a deploy) sends one report about a minute after it ends.
 #
 # install.sh keeps only the PathChanged= lines whose path exists on the box.
 # Watch the database files themselves, not their directories: root's
@@ -11,7 +11,7 @@
 # files, but rpmdb.sqlite only changes when packages do.
 
 [Unit]
-Description=Watch the package database for Heimdall reports
+Description=Watch the package database and site deploys for Heimdall reports
 Documentation=https://github.com/realmwatch/heimdall/blob/main/docs/collector.md
 
 [Path]
@@ -24,6 +24,10 @@ PathChanged=/var/lib/rpm/Packages
 PathChanged=/lib/apk/db/installed
 # pacman (Arch): one directory per installed package
 PathChanged=/var/lib/pacman/local
+# `heimdall-collect deployed`, from a deploy script (any user may touch it)
+PathChanged=/var/lib/heimdall-collect/deployed
+# install.sh adds each site's deploy markers here (heimdall-collect
+# --deploy-watches); re-run it, or `heimdall-collect upgrade`, for new sites.
 
 [Install]
 WantedBy=paths.target

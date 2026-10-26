@@ -1,9 +1,9 @@
-# Heimdall collector: one report 60s after the last package change.
+# Heimdall collector: one report 60s after the last package change or deploy.
 # Not enabled by itself: heimdall-collect-changes.service restarts it on
 # each change, which starts the countdown again.
 
 [Unit]
-Description=Heimdall report shortly after a package change
+Description=Heimdall report shortly after a package change or deploy
 Documentation=https://github.com/realmwatch/heimdall/blob/main/docs/collector.md
 
 [Timer]

@@ -17,7 +17,9 @@
 #      and /etc/heimdall/collect.env
 #   3. schedules an hourly push (systemd timer, or cron without systemd), a
 #      push a minute after packages change (a systemd path unit, or apk/apt
-#      hooks) and, with systemd, one 3 minutes after boot. Then it runs the
+#      hooks), with systemd one a minute after a site deploys (the sites it
+#      finds now, and `heimdall-collect deployed`) and one 3 minutes after
+#      boot. Then it runs the
 #      first push. Re-running it (as `heimdall-collect upgrade` does)
 #      refreshes all of this.
 set -eu
@@ -326,6 +328,24 @@ if [ -d /run/systemd/system ] && have systemctl; then
 	for f in heimdall-collect.timer heimdall-collect-boot.timer heimdall-collect-soon.timer heimdall-collect-changes.service; do
 		install -m 0644 "$work/$f" /etc/systemd/system/
 	done
+	# Report after deploys: `heimdall-collect deployed` touches this file
+	# as the deploy user, so anyone may write it. Its content is never read.
+	install -d -m 0755 -o root -g root /var/lib/heimdall-collect
+	trigger=/var/lib/heimdall-collect/deployed
+	if [ -L "$trigger" ] || [ ! -f "$trigger" ]; then
+		rm -rf "$trigger"
+		: >"$trigger"
+	fi
+	# Only when needed: a chmod is a change, and would send a report.
+	if [ "$(stat -c '%u:%g %a' "$trigger")" != '0:0 666' ]; then
+		chown root:root "$trigger"
+		chmod 0666 "$trigger"
+	fi
+	# ...and after each site's deploys (the first 50 sites; collect.sh
+	# deploy_watches says what's watched and why).
+	HEIMDALL_ALLOW_ROOT=1 HEIMDALL_SITES=$sites /usr/local/bin/heimdall-collect --deploy-watches >"$work/deploys" ||
+		: >"$work/deploys"
+	deploys=$(wc -l <"$work/deploys" | tr -d ' ')
 	# Report after package changes: watch only the databases this box has.
 	# (A comment line right above a PathChanged= line goes with it.)
 	watching=0 note=
@@ -335,6 +355,14 @@ if [ -d /run/systemd/system ] && have systemctl; then
 		PathChanged=*)
 			if [ ! -e "${line#PathChanged=}" ]; then note=; continue; fi
 			watching=1
+			;;
+		'[Install]')
+			if [ "$deploys" -gt 0 ]; then
+				echo "# Site deploys (heimdall-collect --deploy-watches, when install.sh ran)"
+				sed 's/^/PathChanged=/' "$work/deploys"
+				echo
+				watching=1
+			fi
 			;;
 		esac
 		[ -z "$note" ] || printf '%s\n' "$note"
@@ -358,12 +386,15 @@ if [ -d /run/systemd/system ] && have systemctl; then
 	if [ "$watching" = 1 ]; then
 		systemctl enable heimdall-collect-changes.path >/dev/null 2>&1
 		systemctl restart heimdall-collect-changes.path # picks up a changed watch list
-		scheduler="$scheduler, and a minute after packages change"
+		scheduler="$scheduler, and a minute after packages change or a deploy"
+		say "Watching $deploys deploy paths for sites, and 'heimdall-collect deployed' (re-run this for new sites)"
 	fi
 	run_now() { systemctl start heimdall-collect.service; }
 else
 	# No systemd (e.g. Alpine/OpenRC, containers): an hourly cron job, plus
-	# apk/apt hooks that report a minute after packages change.
+	# apk/apt hooks that report a minute after packages change. Nothing
+	# watches deploys: `heimdall-collect deployed` says so, and exits 0.
+	rm -rf /var/lib/heimdall-collect # a deploy trigger left from systemd
 	install -d -m 0755 "$lib"
 	cat >"$lib/cron.sh" <<EOF
 #!/bin/sh
