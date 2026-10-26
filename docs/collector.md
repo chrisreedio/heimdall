@@ -523,6 +523,8 @@ sudo setfacl -d -m u:heimdall:rX /home/forge/example.com/releases
 | `this hub can't enroll servers yet` (install.sh) | Upgrade the hub to the release the installer came from, or use a token from Add a host |
 | `waiting for an admin to approve it on the hub` (install.sh) | Not an error: approve the server under Hosts → Add servers, or `heimdall enroll approve`. Until then the hub discards its reports. |
 | `hub rejected the snapshot as invalid (HTTP 422)` | Run `--print` and check the output with `heimdall import --check` |
+| `could not reach https://… (curl exit N)` | No answer from the hub. curl's own error is on the line before; check the URL, DNS, firewall and that the hub is up |
+| `hub returned HTTP N: …` | The hub answered with an error; the rest of the line is the first line of its reply. Check the hub's log (`journalctl -u heimdall`) at that time |
 | `rate limited by the hub (HTTP 429)` | It's running too often. The default limit is 30 per hour per host (`[ingest] rate_per_host`). |
 | `curl is required for --push` | Install curl |
 

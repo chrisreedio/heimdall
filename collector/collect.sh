@@ -1128,7 +1128,8 @@ EOF
 	http://127.0.0.1[:/]* | http://localhost[:/]* | http://\[::1\][:/]*) ;; # local proxy or tests
 	*) die "HEIMDALL_URL must use https://" ;;
 	esac
-	have curl || die "curl is required for --push"
+	curl=${HEIMDALL_CURL:-curl} # another curl (tests)
+	have "$curl" || die "curl is required for --push"
 	[ -r "$token_file" ] || die "cannot read token file $token_file"
 	if [ -n "$(find "$token_file" -prune \( -perm -040 -o -perm -004 \) 2>/dev/null)" ]; then
 		die "$token_file is readable by other users; run: chmod 400 $token_file"
@@ -1172,19 +1173,28 @@ EOF
 	repos_header="header = \"X-Heimdall-Site-Repos: $(site_repos <"$tmp/snapshot.json" | tr -cd 'A-Za-z0-9._~:/@+, -' | cut -c1-4096)\""
 
 	# The token goes to curl on stdin via --config (printf is a shell
-	# builtin), so it never appears in any process's arguments.
+	# builtin), so it never appears in any process's arguments. The reply
+	# goes to a file, not /dev/null: on a retry curl truncates its output,
+	# which fails on /dev/null (curl error 23) and hid the hub's status.
+	rc=0
 	status=$(printf '%s\n' \
 		"header = \"Authorization: Bearer $token\"" \
 		'header = "Content-Type: application/json"' \
 		"$encoding" "$cacert" "$hostname_header" "$machine_header" "$triggers_header" "$repos_header" "$(privilege_config)" "$(logins_config)" |
-		curl --config - --silent --show-error \
+		"$curl" --config - --silent --show-error \
 			--proto '=https,http' --tlsv1.2 \
 			--connect-timeout 10 --max-time 120 \
 			--retry 2 --retry-delay 10 \
 			--data-binary "@$body" \
 			--dump-header "$tmp/headers" \
-			--output /dev/null --write-out '%{http_code}' \
-			"${url%/}/api/v1/ingest") || die "could not reach $url"
+			--output "$tmp/reply" --write-out '%{http_code}' \
+			"${url%/}/api/v1/ingest") || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		case $status in
+		[1-5][0-9][0-9]) die "hub returned HTTP $status, then curl failed (exit $rc)" ;;
+		esac
+		die "could not reach $url (curl exit $rc)"
+	fi
 
 	case $status in
 	2??)
@@ -1198,7 +1208,11 @@ EOF
 	413) die "snapshot too large for the hub (HTTP 413)" ;;
 	422) die "hub rejected the snapshot as invalid (HTTP 422); run --print and check it with 'heimdall import --check'" ;;
 	429) die "rate limited by the hub (HTTP 429); try again later" ;;
-	*) die "hub returned HTTP $status" ;;
+	*)
+		# The first line of the hub's reply says why, e.g. a 400.
+		reply=$(head -c 200 "$tmp/reply" 2>/dev/null | tr -d '\r' | head -n 1 | tr -cd '[:print:]')
+		die "hub returned HTTP $status${reply:+: $reply}"
+		;;
 	esac
 }
 
