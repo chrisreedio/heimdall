@@ -26,6 +26,7 @@ import (
 const (
 	advisoryID      = "DEBIAN-CVE-2023-5678" // fixed in 3.0.13-1~deb12u1 for Debian:12
 	laravelAdvisory = "GHSA-78fx-h6xr-vch4"  // laravel/framework: fixed in 10.48.29, 11.44.1, 12.1.1
+	semverAdvisory  = "GHSA-c2qf-rxjj-qqgw"  // npm semver: fixed in 5.7.2, 6.3.1, 7.5.2
 )
 
 type fakeOSV struct {
@@ -67,10 +68,13 @@ func (f *fakeOSV) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if q.Package.Ecosystem == "Packagist" && q.Package.Name == "laravel/framework" && q.Version < "11.44.1" {
 				res.Vulns = []ref{{ID: laravelAdvisory, Modified: "2025-03-01T00:00:00Z"}}
 			}
+			if q.Package.Ecosystem == "npm" && q.Package.Name == "semver" && slices.Contains([]string{"6.3.0", "7.5.0"}, q.Version) {
+				res.Vulns = []ref{{ID: semverAdvisory, Modified: "2025-01-01T00:00:00Z"}}
+			}
 			out.Results = append(out.Results, res)
 		}
 		json.NewEncoder(w).Encode(out)
-	case r.URL.Path == "/v1/vulns/"+advisoryID, r.URL.Path == "/v1/vulns/"+laravelAdvisory:
+	case r.URL.Path == "/v1/vulns/"+advisoryID, r.URL.Path == "/v1/vulns/"+laravelAdvisory, r.URL.Path == "/v1/vulns/"+semverAdvisory:
 		f.vulnFetches.Add(1)
 		b, _ := os.ReadFile("../feeds/osv/testdata/" + strings.TrimPrefix(r.URL.Path, "/v1/vulns/") + ".json")
 		w.Write(b)
@@ -271,6 +275,81 @@ func TestSiteFindings(t *testing.T) {
 	push(s)
 	if res, err = e.eng.EvaluateHost(t.Context(), e.host); err != nil || res.Resolved != 1 {
 		t.Fatalf("after upgrade: %+v %v", res, err)
+	}
+}
+
+// A site's npm packages (snapshot v4) are matched against OSV's npm
+// ecosystem and their findings belong to the site, like Composer's. One
+// package at two vulnerable versions is one finding, on the older one; it's
+// a dev finding only while every vulnerable copy is dev.
+func TestSiteNpmFindings(t *testing.T) {
+	e := newEnv(t)
+	b, err := os.ReadFile("../snapshot/testdata/debian12-v2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s snapshot.Snapshot
+	json.Unmarshal(b, &s)
+	s.Format, s.Containers, s.Lockfiles = snapshot.FormatV4, []snapshot.Container{}, []snapshot.Lockfile{}
+	push := func(npm ...snapshot.NpmPackage) {
+		t.Helper()
+		e.now = e.now.Add(time.Hour)
+		s.CollectedAt = e.now
+		s.Sites[0].NpmPackages = npm
+		raw, _ := json.Marshal(s)
+		acc := ingest.Accepter{Store: e.st, Now: func() time.Time { return e.now }}
+		if res, err := acc.Accept(t.Context(), e.host, "push", raw); err != nil || res.Status != http.StatusCreated {
+			t.Fatalf("store snapshot: %+v %v", res, err)
+		}
+		if _, err := e.eng.EvaluateHost(t.Context(), e.host); err != nil {
+			t.Fatal(err)
+		}
+	}
+	npm := func() []store.ReportFinding {
+		var out []store.ReportFinding
+		for _, f := range e.open() {
+			if f.Ecosystem == "npm" {
+				out = append(out, f)
+			}
+		}
+		return out
+	}
+
+	push(snapshot.NpmPackage{Name: "axios", Version: "1.7.2"},
+		snapshot.NpmPackage{Name: "semver", Version: "7.5.0", Dev: true},
+		snapshot.NpmPackage{Name: "semver", Version: "6.3.0", Dev: true},
+		snapshot.NpmPackage{Name: "semver", Version: "7.5.4"})
+	fs := npm()
+	if len(fs) != 1 {
+		t.Fatalf("npm findings = %+v", fs)
+	}
+	f := fs[0]
+	if f.SiteRoot != "/home/forge/example.com" || f.Package != "semver" || f.Version != "6.3.0" ||
+		f.FixedVersion != "6.3.1" || !f.Dev || f.Severity != "medium" {
+		t.Errorf("finding = %+v", f)
+	}
+	counts, err := e.st.OpenFindingCounts(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c := counts[e.host.ID]["/home/forge/example.com"]; c.Dev != 1 || c.Total != 2 || c.Fixable != 1 || c.Medium != 1 { // the other is Laravel's
+		t.Errorf("site counts with a dev finding: %+v", c)
+	}
+
+	// A runtime copy of a vulnerable version: no longer dev.
+	push(snapshot.NpmPackage{Name: "semver", Version: "7.5.0"}, snapshot.NpmPackage{Name: "semver", Version: "6.3.0", Dev: true})
+	if fs = npm(); len(fs) != 1 || fs[0].Dev || fs[0].Version != "6.3.0" {
+		t.Errorf("with a runtime copy: %+v", fs)
+	}
+	counts, _ = e.st.OpenFindingCounts(t.Context())
+	if c := counts[e.host.ID]["/home/forge/example.com"]; c.Dev != 0 || c.Total != 2 || c.Fixable != 2 || c.Medium != 2 {
+		t.Errorf("site counts: %+v", c)
+	}
+
+	// Both updated: resolved.
+	push(snapshot.NpmPackage{Name: "semver", Version: "7.5.4"})
+	if fs = npm(); len(fs) != 0 {
+		t.Errorf("after the update: %+v", fs)
 	}
 }
 

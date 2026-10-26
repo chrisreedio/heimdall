@@ -440,10 +440,14 @@ type InventorySite struct {
 	FrameworkVersion   string
 	PHPRequirement     string // composer.json require.php
 	DeployedAt         time.Time
-	Packages           []AppPackage
+	Packages           []AppPackage // Composer, from composer.lock
+	NpmPackages        []AppPackage // npm, from package-lock.json (snapshot v4)
 }
 
-type AppPackage struct{ Name, Version string }
+type AppPackage struct {
+	Name, Version string
+	Dev           bool // npm only: needed only to build or test the app
+}
 
 type InventoryPackage struct {
 	Name, Version, Arch, SourceName, SourceVersion string
@@ -535,7 +539,12 @@ func (s *Store) loadV3(ctx context.Context, inv *HostInventory) error {
 	}
 	rows, err = s.db.QueryContext(ctx, `
 		SELECT manifest_path, ecosystem, name, version FROM app_packages
-		WHERE snapshot_id = ? AND ecosystem != 'Packagist' ORDER BY manifest_path, name`, inv.SnapshotID)
+		WHERE snapshot_id = ?1 AND ecosystem != 'Packagist'
+		  -- a site's own package-lock.json belongs to the site (sites), even
+		  -- when HEIMDALL_LOCKFILES lists it too
+		  AND NOT (ecosystem = 'npm' AND manifest_path IN
+		      (SELECT rtrim(root, '/') || '/package-lock.json' FROM sites WHERE snapshot_id = ?1))
+		ORDER BY manifest_path, name`, inv.SnapshotID)
 	if err != nil {
 		return err
 	}
@@ -577,26 +586,34 @@ func (s *Store) sites(ctx context.Context, snapshotID int64) ([]InventorySite, e
 		}
 		json.Unmarshal([]byte(names), &site.ServerNames)
 		site.Readable, site.DeployedAt = readable == 1, parseNullTime(deployed)
-		byManifest[strings.TrimSuffix(site.Root, "/")+"/composer.lock"] = len(out)
+		byManifest["Packagist\x00"+strings.TrimSuffix(site.Root, "/")+"/composer.lock"] = len(out)
+		byManifest["npm\x00"+NpmManifest(site.Root)] = len(out)
 		out = append(out, site)
 	}
 	if err := rows.Err(); err != nil || len(out) == 0 {
 		return out, err
 	}
 	pkgs, err := s.db.QueryContext(ctx, `
-		SELECT manifest_path, name, version FROM app_packages
-		WHERE snapshot_id = ? AND ecosystem = 'Packagist' ORDER BY name`, snapshotID)
+		SELECT ecosystem, manifest_path, name, version, dev FROM app_packages
+		WHERE snapshot_id = ? AND ecosystem IN ('Packagist', 'npm') ORDER BY name, version`, snapshotID)
 	if err != nil {
 		return nil, err
 	}
 	defer pkgs.Close()
 	for pkgs.Next() {
-		var manifest string
+		var eco, manifest string
 		var p AppPackage
-		if err := pkgs.Scan(&manifest, &p.Name, &p.Version); err != nil {
+		var dev int64
+		if err := pkgs.Scan(&eco, &manifest, &p.Name, &p.Version, &dev); err != nil {
 			return nil, err
 		}
-		if i, ok := byManifest[manifest]; ok {
+		p.Dev = dev == 1
+		i, ok := byManifest[eco+"\x00"+manifest]
+		switch {
+		case !ok:
+		case eco == "npm":
+			out[i].NpmPackages = append(out[i].NpmPackages, p)
+		default:
 			out[i].Packages = append(out[i].Packages, p)
 		}
 	}
@@ -612,7 +629,8 @@ type Finding struct {
 	Binaries     []string // installed binary packages built from it
 	FixedVersion string   // "" if no fix published
 	FixPending   bool     // a pending update reaches FixedVersion
-	SiteRoot     string   // app root for Composer findings; "" for OS packages
+	SiteRoot     string   // app root for Composer and npm findings; "" for OS packages
+	Dev          bool     // npm: every copy of the package is a dev dependency
 }
 
 // SetFindings makes the host's open findings exactly fs: new ones are
@@ -638,15 +656,15 @@ func (s *Store) SetFindings(ctx context.Context, hostID int64, fs []Finding, at 
 			}
 			if _, err := tx.ExecContext(ctx, `
 				INSERT INTO findings (host_id, site_root, advisory_id, ecosystem, package_name, package_version, fixed_version,
-					binaries, fix_pending, first_seen_at, last_seen_at)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+					binaries, fix_pending, dev, first_seen_at, last_seen_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				ON CONFLICT (host_id, site_root, advisory_id, package_name) DO UPDATE SET
 					ecosystem = excluded.ecosystem, package_version = excluded.package_version,
 					fixed_version = excluded.fixed_version, binaries = excluded.binaries,
-					fix_pending = excluded.fix_pending, last_seen_at = excluded.last_seen_at,
+					fix_pending = excluded.fix_pending, dev = excluded.dev, last_seen_at = excluded.last_seen_at,
 					resolved_at = NULL`,
 				hostID, f.SiteRoot, f.AdvisoryID, f.Ecosystem, f.Package, f.Version, nullString(f.FixedVersion),
-				string(bins), boolInt(f.FixPending), ts, ts); err != nil {
+				string(bins), boolInt(f.FixPending), boolInt(f.Dev), ts, ts); err != nil {
 				return err
 			}
 			if existed == 0 {
@@ -692,6 +710,8 @@ type ReportFinding struct {
 	FixPending    bool
 	FirstSeen     time.Time
 	SiteRoot      string  // "" for OS packages
+	Ecosystem     string  // OSV's: the distro's, "Packagist", "npm" or "PyPI"
+	Dev           bool    // an npm dev dependency (see Finding.Dev)
 	EPSS          float64 // highest EPSS score among the advisory's CVEs (0 if none)
 	InNews        bool    // one of its CVEs is named by a live news incident
 }
@@ -703,7 +723,7 @@ func (s *Store) OpenFindings(ctx context.Context, hostID int64) ([]ReportFinding
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT f.advisory_id, a.summary, a.severity, coalesce(a.cvss_score, 0),
 		       f.package_name, f.package_version, f.binaries, coalesce(f.fixed_version, ''), f.fix_pending,
-		       f.first_seen_at, f.site_root,
+		       f.first_seen_at, f.site_root, f.ecosystem, f.dev,
 		       coalesce((SELECT group_concat(alias, ' ') FROM advisory_aliases WHERE advisory_id = a.id AND alias LIKE 'CVE-%'), ''),
 		       coalesce((SELECT max(k.known_ransomware) + 1 FROM kev_entries k
 		                 WHERE k.cve_id = a.id OR k.cve_id IN (SELECT alias FROM advisory_aliases WHERE advisory_id = a.id)), 0),
@@ -719,13 +739,13 @@ func (s *Store) OpenFindings(ctx context.Context, hostID int64) ([]ReportFinding
 	for rows.Next() {
 		var f ReportFinding
 		var bins, first, cves string
-		var pending, kev int64
+		var pending, kev, dev int64
 		if err := rows.Scan(&f.AdvisoryID, &f.Summary, &f.Severity, &f.CVSS, &f.Package, &f.Version, &bins,
-			&f.FixedVersion, &pending, &first, &f.SiteRoot, &cves, &kev, &f.EPSS); err != nil {
+			&f.FixedVersion, &pending, &first, &f.SiteRoot, &f.Ecosystem, &dev, &cves, &kev, &f.EPSS); err != nil {
 			return nil, err
 		}
 		json.Unmarshal([]byte(bins), &f.Binaries)
-		f.FixPending, f.FirstSeen = pending == 1, parseTime(first)
+		f.FixPending, f.FirstSeen, f.Dev = pending == 1, parseTime(first), dev == 1
 		if cves != "" {
 			f.CVEs = strings.Fields(cves)
 		} else if strings.HasPrefix(f.AdvisoryID, "CVE-") {

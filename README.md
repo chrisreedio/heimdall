@@ -17,7 +17,7 @@ It's meant for people who look after a handful to a few hundred servers spread a
 
 **Status:** pre-1.0. Milestones M0–M11 are implemented. The remaining steps before 1.0 are an independent security review and a run on real servers.
 
-**Guides:** [Getting started](docs/getting-started.md) · [Hosting](docs/hosting.md) · [Deployment](docs/deployment.md) · [MCP](docs/mcp.md) · [Threat list](docs/threats.md) · [Collector](docs/collector.md) · [Snapshot format](docs/snapshot-format.md) · [Anomaly signals](docs/anomaly-signals.md)
+**Guides:** [Getting started](docs/getting-started.md) · [Hosting](docs/hosting.md) · [Deployment](docs/deployment.md) · [SSO and roles](docs/sso.md) · [MCP](docs/mcp.md) · [Threat list](docs/threats.md) · [Collector](docs/collector.md) · [Snapshot format](docs/snapshot-format.md) · [Anomaly signals](docs/anomaly-signals.md)
 
 ---
 
@@ -85,7 +85,7 @@ These risks are knowingly accepted to keep things simple:
 - Language runtimes: PHP, Node.js, Python, Ruby, Go, Java
 - Common services: nginx, Apache, MySQL/MariaDB, PostgreSQL, Redis, OpenSSH, Docker
 - Docker containers and images (name, image, tag, digest), if the collector user is allowed to query Docker
-- **Laravel / PHP sites:** each site the web server serves (domains, document root, PHP-FPM version), its Laravel version and every Composer package from `composer.lock`. See [Sites & Laravel](#sites--laravel).
+- **Laravel / PHP sites:** each site the web server serves (domains, document root, PHP-FPM version), its Laravel version, every Composer package from `composer.lock` and every npm package from `package-lock.json`. See [Sites & Laravel](#sites--laravel).
 - Optional application lockfiles (`package-lock.json`, `requirements.txt`) from an allowlist of paths you configure *on the host*
 - Snapshot history, so you can see what changed on a host between two check-ins
 
@@ -102,11 +102,12 @@ Most PHP apps are a site on a shared box, so Heimdall inventories **sites**, not
 - **Per site:** server names, document root, app root, web server, and the **PHP-FPM version serving it** (read from the `fastcgi_pass` / `SetHandler` socket, e.g. `php8.3-fpm.sock`)
 - **Laravel:** framework version and the PHP requirement from `composer.json`/`composer.lock`, plus the last deploy time (the `composer.lock` modification time)
 - **Composer packages:** every package in `composer.lock`, matched against OSV's Packagist advisories, so findings are reported **per site**
+- **npm packages:** every package in the app's `package-lock.json` (lockfile v1 to v3), matched against OSV's npm advisories in the same site card. Dev dependencies (frontend build tools) are marked and kept out of what needs attention
 - **PHP on the host:** every installed PHP version (CLI and FPM), taken from the package list
 - **End of life:** EOL warnings for both PHP and Laravel versions
 - **Fleet questions:** e.g. "which sites still run Laravel 9?", "which sites are served by PHP 8.1?", or "where is `laravel/framework` < 11.31 deployed?"
 
-**Never done:** reading `.env`, running `artisan`, `php` or `composer`, or executing any app code. Heimdall only reads `composer.json` and `composer.lock`. The collector user needs read access to just those two files, granted with an ACL or group membership. It never needs access to the whole app.
+**Never done:** reading `.env`, running `artisan`, `php`, `composer` or `npm`, or executing any app code. Heimdall only reads `composer.json`, `composer.lock` and `package-lock.json`. The collector user needs read access to just those files, granted with an ACL or group membership. It never needs access to the whole app.
 
 ### Vulnerability & lifecycle checks
 - Matches package versions against **[OSV.dev](https://osv.dev)**, which aggregates the Debian, Ubuntu, Alpine, Red Hat, Rocky, Alma, npm, Packagist, PyPI and other advisory feeds
@@ -246,7 +247,7 @@ Heimdall acts as a confidential OIDC client using the **authorization code flow 
   - `tid` is in `allowed_tenants`
 - **Identity:** users are keyed by the immutable **`tid` + `oid`** pair, never by email or UPN, which can change or be reused.
 - **No silent self-signup:** an Entra user has to be provisioned in Heimdall first, either by `oid` or by an email that is bound to the `oid` on first login, and only within an allowed tenant. Unknown users are rejected, and the rejection is logged.
-- **Roles:** granted in Heimdall, or optionally mapped from Entra **app roles** in the token (`Heimdall.Admin`, `Heimdall.Operator`, `Heimdall.Viewer`). Per-org role names such as `Heimdall.Org.acme.Viewer` only matter on multi-org installs. Group claims aren't used, because of the group overage limit.
+- **Roles:** granted in Heimdall, or optionally mapped from Entra **app roles** in the token (`Heimdall.Admin`, `Heimdall.Operator`, `Heimdall.Viewer`). Per-org role names such as `Heimdall.Org.acme.Viewer` only matter on multi-org installs. Group claims aren't used, because of the group overage limit. How roles, app roles and Entra groups fit together, and what changes at each sign-in: [docs/sso.md](docs/sso.md).
 - **MFA and device policy:** enforced on the Entra side through Conditional Access. Heimdall doesn't ask for TOTP again for SSO users.
 - **Credentials:** a client secret or certificate is loaded from systemd credentials, never from the config file. A certificate is preferred. `sudo heimdall sso setup` walks through it: it shows the redirect URI to register, asks for the IDs and the secret (echo off), writes the config, the secret (`/etc/heimdall/entra-secret`, owner-only) and the unit's `LoadCredential` line, and restarts the hub. `heimdall sso set-secret` rotates the secret.
 - **Sessions:** a Heimdall session is created after login and is limited by the same idle and absolute timeouts. No refresh tokens are kept, and Heimdall calls no Graph APIs and requests only the `openid profile email` scopes.

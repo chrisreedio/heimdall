@@ -26,6 +26,8 @@ var severityRank = map[string]int{"critical": 4, "high": 3, "medium": 2, "low": 
 // pkgGroup is one package's findings.
 type pkgGroup struct {
 	Package, Version string
+	Ecosystem        string // OSV's: "npm" marks an npm package in a site's list
+	Dev              bool   // every finding is on an npm dev dependency
 	Binaries         []string
 	Worst            string // highest severity
 	KEV              int
@@ -40,18 +42,19 @@ type pkgGroup struct {
 
 type findingsView struct {
 	View    string // "packages" or "all"
-	PM      string // dpkg, rpm, apk or composer: what the patch command uses
+	PM      string // dpkg, rpm, apk or composer (a site: Composer and npm): what the patch command uses
 	Sev     string // "" or kev, critical, high, medium, low, unknown
 	Fixable bool
 	// Focus: no filter is set and show=all isn't, so only the findings
 	// that need attention are shown; Hidden counts the rest.
-	Focus  bool
-	Hidden int
-	Total  int // findings after filters
-	Groups []pkgGroup
-	Rows   []report.Finding
-	Page   int
-	Pages  int
+	Focus     bool
+	Hidden    int // with no fix and little sign of exploitation
+	HiddenDev int // on npm dev dependencies (a site's)
+	Total     int // findings after filters
+	Groups    []pkgGroup
+	Rows      []report.Finding
+	Page      int
+	Pages     int
 	// Links, built here so templates don't assemble query strings.
 	SevLinks          map[string]string
 	AllSevLink        string // every finding, no filters
@@ -62,6 +65,7 @@ type findingsView struct {
 	// FixCmd upgrades just the packages that fix the findings shown, and
 	// have a pending update.
 	FixCmd     *command
+	NpmCmds    []command // a site's npm fixes (PM composer), after FixCmd
 	FixPkgs    int
 	FixPending int // of those, how many have an update that reaches the fixed version
 	// RebootCmd puts the newer installed kernel in use, which clears the
@@ -97,8 +101,11 @@ func oldKernelCommand(pkgs []string, findings int) *command {
 }
 
 // live reports whether a finding is live exposure: not on an old kernel
-// that isn't running, nor only on kernel userland packages.
-func live(f report.Finding) bool { return !f.NotRunning && f.KernelStatus != kernel.StatusUserland }
+// that isn't running, nor only on kernel userland packages, nor on an npm
+// dev dependency (needed to build the site, not to run it).
+func live(f report.Finding) bool {
+	return !f.NotRunning && f.KernelStatus != kernel.StatusUserland && !f.Dev
+}
 
 // needsAction reports whether a finding needs attention: it's live, and
 // fixable now or, with no fix yet, still worth watching (known-exploited,
@@ -119,6 +126,7 @@ type kernelInfo struct{ Running, Newer string }
 func (fv *findingsView) fixCommands(list []report.Finding, pkgs report.Pkgs, k kernelInfo) {
 	if fv.PM == "composer" {
 		fv.FixCmd, fv.FixPkgs, fv.FixPending = composerFixCommand(list)
+		fv.NpmCmds = npmCommands("cmd-fix-npm", list)
 		return
 	}
 	u := report.PlanUpgrade(fv.PM, list, pkgs)
@@ -150,7 +158,7 @@ func rebootCommand(u report.Upgrade, k kernelInfo) *command {
 func composerFixCommand(list []report.Finding) (*command, int, int) {
 	var names []string
 	for _, f := range list {
-		if f.Fixed != "" && composerName.MatchString(f.Package) && !slices.Contains(names, f.Package) {
+		if f.Fixed != "" && f.Ecosystem != npmEcosystem && composerName.MatchString(f.Package) && !slices.Contains(names, f.Package) {
 			names = append(names, f.Package)
 		}
 	}
@@ -216,13 +224,20 @@ func buildFindingsView(base, pm string, q url.Values, list []report.Finding, pkg
 	var kept []report.Finding
 	for _, f := range list {
 		if fv.Focus && !needsAction(f) {
-			fv.Hidden++
+			if f.Dev {
+				fv.HiddenDev++
+			} else {
+				fv.Hidden++
+			}
 			continue
 		}
 		// Like the chips' counts, the known-exploited and fixable filters
 		// leave out what isn't live kernel exposure.
 		notLive := !live(f)
 		if fv.Fixable && (f.Fixed == "" || notLive) {
+			continue
+		}
+		if f.Dev && fv.Sev != "" { // like the chips' severity counts
 			continue
 		}
 		switch fv.Sev {
@@ -308,16 +323,17 @@ func groupByPackage(list []report.Finding) []pkgGroup {
 	idx := map[string]int{}
 	var groups []pkgGroup
 	for _, f := range list {
-		key := f.Package + "\x00" + f.Version
+		key := f.Ecosystem + "\x00" + f.Package + "\x00" + f.Version
 		i, ok := idx[key]
 		if !ok {
 			i = len(groups)
 			idx[key] = i
-			groups = append(groups, pkgGroup{Package: f.Package, Version: f.Version, Binaries: f.Binaries, BySev: map[string]int{},
-				NotRunning: f.NotRunning, KernelStatus: f.KernelStatus})
+			groups = append(groups, pkgGroup{Package: f.Package, Version: f.Version, Ecosystem: f.Ecosystem, Binaries: f.Binaries,
+				BySev: map[string]int{}, NotRunning: f.NotRunning, KernelStatus: f.KernelStatus, Dev: f.Dev})
 		}
 		g := &groups[i]
 		g.NotRunning = g.NotRunning && f.NotRunning
+		g.Dev = g.Dev && f.Dev
 		if g.KernelStatus != f.KernelStatus {
 			g.KernelStatus = ""
 		}
@@ -343,9 +359,9 @@ func groupByPackage(list []report.Finding) []pkgGroup {
 		}
 	}
 	slices.SortStableFunc(groups, func(a, b pkgGroup) int {
-		running := map[bool]int{false: 1, true: 0} // old kernels that aren't running, and kernel userland, go last
+		running := map[bool]int{false: 1, true: 0} // old kernels that aren't running, kernel userland and npm dev dependencies go last
 		for _, d := range [][2]int{
-			{running[a.NotRunning || a.KernelStatus == kernel.StatusUserland], running[b.NotRunning || b.KernelStatus == kernel.StatusUserland]}, {a.KEV, b.KEV}, {a.News, b.News}, {severityRank[a.Worst], severityRank[b.Worst]},
+			{running[a.NotRunning || a.KernelStatus == kernel.StatusUserland || a.Dev], running[b.NotRunning || b.KernelStatus == kernel.StatusUserland || b.Dev]}, {a.KEV, b.KEV}, {a.News, b.News}, {severityRank[a.Worst], severityRank[b.Worst]},
 			{a.BySev["critical"], b.BySev["critical"]}, {a.BySev["high"], b.BySev["high"]}, {a.Total, b.Total},
 		} {
 			if d[0] != d[1] {

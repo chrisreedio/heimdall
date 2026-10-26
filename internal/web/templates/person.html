@@ -1,0 +1,58 @@
+{{define "content"}}{{with .Body}}
+<nav class="crumbs" aria-label="Breadcrumb">{{if .CanLabel}}<a href="/ips">IP addresses</a>{{else}}IP addresses{{end}} <span aria-hidden="true">/</span> People <span aria-hidden="true">/</span> {{.Person}}</nav>
+<div class="head">
+  <h1>{{with .User}}{{if .DisplayName}}{{.DisplayName}}{{else}}{{$.Body.Person}}{{end}}{{else}}{{.Person}}{{end}}</h1>
+</div>
+<p class="muted">{{with .User}}A Heimdall user{{if .Email}}, <code>{{.Email}}</code>{{end}}.{{else}}Not a Heimdall user you can see: only labels name them.{{end}} Every address labeled theirs, the privileged sessions from those addresses in the last 30 days, and where they signed in from. {{if gt (len .Names) 1}}Labels naming any of {{range $i, $n := .Names}}{{if $i}}, {{end}}<strong>{{$n}}</strong>{{end}} count.{{end}}</p>
+
+<section class="card" aria-labelledby="person-labels">
+  <h2 id="person-labels">Their addresses</h2>
+  {{if .Labels}}<div class="scroll"><table class="cards-sm">
+    <thead><tr><th>Address or range</th><th>Kind</th><th>Name</th><th>Source</th>{{if .ShowOrgs}}<th>Org</th>{{end}}</tr></thead>
+    <tbody>{{range .Labels}}<tr>
+      <td data-label="Address">{{if .Href}}<a href="{{.Href}}"><code>{{.Prefix.Addr}}</code></a>{{else}}<code>{{.Prefix}}</code>{{end}}</td>
+      <td data-label="Kind">{{.Kind}}</td><td data-label="Name">{{.Name}}</td>
+      <td data-label="Source">{{if eq .Source "manual"}}manual{{else}}{{.Source}} <span class="muted small">synced</span>{{end}}</td>
+      {{if $.Body.ShowOrgs}}<td data-label="Org">{{if .Org}}{{.Org}}{{else}}<span class="muted">every org</span>{{end}}</td>{{end}}
+    </tr>{{end}}</tbody>
+  </table></div>{{else}}<p class="empty">No label names them yet.{{if .CanLabel}} Add their home or office address below.{{end}}</p>{{end}}
+  {{if .SignedIn}}<h3>Signed in to Heimdall from <span class="muted small">a guess, last 30 days</span></h3>
+  <p class="muted small">A privileged session from one of these within 12 hours of a sign-in is probably them.</p>
+  <ul class="priv-recent small">{{range .SignedIn}}<li><a href="{{.Href}}">{{.Addr}}</a> <span class="muted">{{.Count}} sign-in{{if ne .Count 1}}s{{end}}, last <span title="{{time .Last}}">{{dayAgo (timep .Last)}}</span></span></li>{{end}}</ul>{{end}}
+</section>
+
+<section class="card" aria-labelledby="person-priv">
+  <h2 id="person-priv">Privileged sessions from their addresses</h2>
+  {{if .Sessions}}<div class="scroll"><table class="cards-sm">
+    <thead><tr><th>Last</th><th>Host</th><th>From</th><th>Sessions</th><th>Users</th></tr></thead>
+    <tbody>{{range .Sessions}}<tr>
+      <td class="nowrap" data-label="Last" title="{{time .Last}}">{{dayAgo (timep .Last)}}</td>
+      <td data-label="Host"><a href="{{hostURL .Host.OrgSlug .Host.Name}}#privilege">{{.Host.Name}}</a>{{if $.Body.ShowOrgs}} <span class="muted small">{{.Host.OrgSlug}}</span>{{end}}</td>
+      <td data-label="From">{{if .Href}}<a href="{{.Href}}">{{.Source}}</a>{{else}}{{.Source}}{{end}} {{template "ipbadge" .Badge}}</td>
+      <td data-label="Sessions">{{.Kinds}}</td><td data-label="Users">{{join .Users ", "}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>{{else}}<p class="empty">None in the last 30 days on hosts you can see.</p>{{end}}
+</section>
+
+{{if and .ShowSignIns .User}}
+<section class="card" aria-labelledby="person-signins">
+  <h2 id="person-signins">Heimdall sign-ins <span class="muted small">newest, from an address</span></h2>
+  {{if .SignIns}}<div class="scroll"><table class="cards-sm">
+    <thead><tr><th>Signed in</th><th>From</th><th>Tailnet user</th><th>Session</th></tr></thead>
+    <tbody>{{range .SignIns}}<tr>
+      <td class="nowrap" data-label="Signed in" title="{{time .At}}">{{dayAgo (timep .At)}}</td>
+      <td data-label="From"><a href="/ips/{{.IP}}">{{.IP}}</a></td>
+      <td data-label="Tailnet user">{{.TailscaleUser}}</td>
+      <td data-label="Session">{{if .Open}}open, last active <span title="{{time .Until}}">{{ago .Until}}</span>{{else}}<span class="muted">ended</span>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>{{else}}<p class="empty">No sign-ins recorded from an address (sign-ins through a local proxy have none).</p>{{end}}
+</section>
+{{end}}
+
+{{if .CanLabel}}
+<section class="card" aria-labelledby="person-add">
+  <h2 id="person-add">Add an address for {{with .User}}{{if .DisplayName}}{{.DisplayName}}{{else}}{{$.Body.Person}}{{end}}{{else}}{{.Person}}{{end}}</h2>
+  {{template "labelform" .Form}}
+</section>
+{{end}}
+{{end}}{{end}}

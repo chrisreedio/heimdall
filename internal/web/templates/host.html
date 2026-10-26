@@ -91,7 +91,7 @@
 <section id="findings">
   <h2>Findings</h2>
   {{template "chips" (chipsFor .Report.Counts .OSView)}}
-  {{with .Attn}}{{if or .Sites .Lockfiles}}<p class="small attn-where">{{if or .OSFixable .OSWatch}}<a href="#os-packages">OS packages</a>: {{attn .OSFixable .OSWatch}}{{end}}{{if .Sites}}{{if or .OSFixable .OSWatch}} · {{end}}<a href="#sites">{{.Sites}} site{{if ne .Sites 1}}s{{end}}' Composer packages</a>: {{attn .SiteFixable .SiteWatch}}{{end}}{{if .Lockfiles}}{{if or .OSFixable .OSWatch .Sites}} · {{end}}<a href="#lockfiles">{{.Lockfiles}} lockfile{{if ne .Lockfiles 1}}s{{end}}</a>: {{attn .LockFixable .LockWatch}}{{end}}</p>{{end}}{{end}}
+  {{with .Attn}}{{if or .Sites .Lockfiles}}<p class="small attn-where">{{if or .OSFixable .OSWatch}}<a href="#os-packages">OS packages</a>: {{attn .OSFixable .OSWatch}}{{end}}{{if .Sites}}{{if or .OSFixable .OSWatch}} · {{end}}<a href="#sites">{{.Sites}} site{{if ne .Sites 1}}s{{end}}' {{.SitePackages}}</a>: {{attn .SiteFixable .SiteWatch}}{{end}}{{if .Lockfiles}}{{if or .OSFixable .OSWatch .Sites}} · {{end}}<a href="#lockfiles">{{.Lockfiles}} lockfile{{if ne .Lockfiles 1}}s{{end}}</a>: {{attn .LockFixable .LockWatch}}{{end}}</p>{{end}}{{end}}
   <h3 id="os-packages">OS packages</h3>
   {{if and .OSView.Focus .Attn.OSWatch (not .Attn.OSFixable)}}<p class="muted small attn-note">None of these can be fixed by updating yet: no fix is released. They're listed because they're known-exploited, in the news or likely to be exploited. Heimdall shows the fix here once one ships.</p>{{end}}
   {{if not .Report.Ecosystem}}<p class="empty">Vulnerability matching isn't supported for this OS yet.</p>
@@ -114,21 +114,15 @@
       {{if .Framework}}<li><span class="k cap">{{.Framework}}</span><span class="v">{{.FrameworkVersion}}{{with .FrameworkLife}} {{template "lifepill" .}}{{end}}</span></li>{{end}}
       {{with .DeployedAt}}<li><span class="k">Last deploy</span><span class="v" title="{{fullDate .}}">{{dayAgo .}}</span></li>{{end}}
       {{if .Readable}}<li><span class="k">Composer packages</span><span class="v">{{.Packages}}</span></li>{{end}}
+      {{if .NpmPackages}}<li><span class="k">npm packages</span><span class="v">{{.NpmPackages}}{{with .NpmDev}} <span class="muted">({{.}} dev)</span>{{end}}</span></li>{{end}}
       {{with .Repo}}<li class="repo-fact"><span class="k">Repository</span><span class="v">{{with repoWeb .}}<a href="{{.}}" rel="noopener noreferrer"><code class="path">{{repoShort .}}</code></a>{{else}}<code class="path">{{.}}</code>{{end}}</span></li>{{end}}
     </ul>
     {{with .HandoffURL}}<p class="site-handoff"><a class="button secondary handoff-btn" href="{{.}}">Hand off to agent</a></p>{{end}}
     {{if .Findings}}
-    {{with .Command}}
-    <div class="cmd">
-      <div class="cmd-label">{{.Label}}</div>
-      <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
-    </div>
-    {{end}}
-    <details class="site-findings"{{if eq (len $.Body.Sites) 1}} open{{end}}>
-      <summary>{{len .Findings}} finding{{if ne (len .Findings) 1}}s{{end}} in {{len .Groups}} package{{if ne (len .Groups) 1}}s{{end}}{{if or .Fixable .Watch}} · {{attn .Fixable .Watch}}{{end}}</summary>
-      {{template "pkggroups" .Groups}}
-    </details>
-    {{else if .Readable}}<p class="empty">No open findings in Composer packages.</p>{{end}}
+    {{$open := eq (len $.Body.Sites) 1}}
+    {{with .Composer}}{{if .Findings}}{{template "siteeco" (siteEco "Composer" "" . $open)}}{{end}}{{end}}
+    {{with .Npm}}{{if .Findings}}{{template "siteeco" (siteEco "npm" "package-lock.json" . $open)}}{{end}}{{end}}
+    {{else if .Readable}}<p class="empty">No open findings in {{if .NpmPackages}}Composer or npm{{else}}Composer{{end}} packages.</p>{{end}}
   </div>
   {{end}}
 </section>

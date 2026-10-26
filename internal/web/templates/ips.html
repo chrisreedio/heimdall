@@ -6,16 +6,8 @@
 {{if or .Admin .AllOrgs}}
 <section class="card">
   <h2>Label an address</h2>
-  <form method="post" action="/ips/labels" class="row">
-    <input type="hidden" name="csrf" value="{{$csrf}}">
-    <label>Address or range <input name="prefix" required maxlength="64" value="{{.Prefill}}" placeholder="203.0.113.7 or 203.0.113.0/24" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
-    <label>Kind <select name="kind">{{range .Kinds}}<option value="{{.}}">{{.}}</option>{{end}}</select></label>
-    <label>Name <input name="name" required maxlength="100" placeholder="Office"></label>
-    <label>Person <input name="person" maxlength="200" placeholder="alice@example.com"></label>
-    <label>Note <input name="note" maxlength="500"></label>
-    <label>Org <select name="org">{{range .Admin}}<option value="{{.Slug}}">{{.Name}}</option>{{end}}{{if .AllOrgs}}<option value="">All orgs</option>{{end}}</select></label>
-    <button type="submit">Add label</button>
-  </form>
+  {{if and .Form.Prefill.Me (ne .Form.Prefill.Kind "staff")}}<p class="small"><a href="/ips?{{if .Form.Prefill.Addr}}addr={{.Form.Prefill.Addr}}&amp;{{end}}me=1">It's me</a> <span class="muted">· fills in staff and you as the person</span></p>{{end}}
+  {{template "labelform" .Form}}
 </section>
 {{end}}
 
@@ -34,7 +26,7 @@
   {{if .Manual}}<div class="scroll"><table>
     <thead><tr><th>Address or range</th><th>Kind</th><th>Name</th><th>Person</th><th>Note</th><th>Added by</th><th></th></tr></thead>
     <tbody>{{range .Manual}}<tr>
-      <td><code>{{.Prefix}}</code></td><td>{{.Kind}}</td><td>{{.Name}}</td><td>{{.Person}}</td><td class="muted">{{.Note}}</td>
+      <td><code>{{.Prefix}}</code></td><td>{{.Kind}}</td><td>{{.Name}}</td><td>{{template "personlink" .Person}}</td><td class="muted">{{.Note}}</td>
       <td class="muted small">{{.CreatedBy}}</td>
       <td><form method="post" action="/ips/labels/{{.ID}}/remove" class="inline">
         <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{$org}}">
@@ -46,7 +38,7 @@
   <h3>From {{.Source}} <span class="muted small">updated {{dayAgo (timep .Updated)}}</span></h3>
   <div class="scroll"><table>
     <thead><tr><th>Address or range</th><th>Kind</th><th>Name</th><th>Person</th></tr></thead>
-    <tbody>{{range .Labels}}<tr><td><code>{{.Prefix}}</code></td><td>{{.Kind}}</td><td>{{.Name}}</td><td>{{.Person}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .Labels}}<tr><td><code>{{.Prefix}}</code></td><td>{{.Kind}}</td><td>{{.Name}}</td><td>{{template "personlink" .Person}}</td></tr>{{end}}</tbody>
   </table></div>
   {{end}}
 </section>
@@ -58,7 +50,7 @@
   <div class="scroll"><table>
     <thead><tr><th>Address or range</th><th>Kind</th><th>Name</th><th>Person</th><th>Source</th><th>Updated</th><th></th></tr></thead>
     <tbody>{{range .Global}}<tr>
-      <td><code>{{.Prefix}}</code></td><td>{{.Kind}}</td><td>{{.Name}}</td><td>{{.Person}}</td>
+      <td><code>{{.Prefix}}</code></td><td>{{.Kind}}</td><td>{{.Name}}</td><td>{{template "personlink" .Person}}</td>
       <td>{{if eq .Source "manual"}}manual{{else}}{{.Source}}{{end}}</td><td class="muted small">{{dayAgo (timep .UpdatedAt)}}</td>
       <td>{{if and (eq .Source "manual") $.Body.AllOrgs}}<form method="post" action="/ips/labels/{{.ID}}/remove" class="inline">
         <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="">

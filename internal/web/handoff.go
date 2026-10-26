@@ -97,12 +97,14 @@ func agentNames(agents []handoff.Agent) []string {
 func handoffFindings(h report.Host, root string) []handoff.Finding {
 	var out []handoff.Finding
 	for _, f := range h.Findings {
-		if f.Fixed == "" || f.Site == "" {
+		if f.Fixed == "" || f.Site == "" || f.Dev { // dev dependencies don't need attention
 			continue
 		}
 		hf := handoff.Finding{Package: f.Package, Installed: f.Version, Fixed: f.Fixed, Advisory: f.Advisory,
 			Severity: f.Severity, CVEs: f.CVEs, KEV: f.KEV, EPSS: f.EPSS}
 		switch {
+		case f.Site == root && f.Ecosystem == npmEcosystem: // the site's own package-lock.json
+			hf.Ecosystem, hf.Lockfile = "npm", store.NpmManifest(root)
 		case f.Site == root:
 			hf.Ecosystem = "composer"
 		case strings.HasPrefix(f.Site, strings.TrimSuffix(root, "/")+"/") && strings.HasSuffix(f.Site, "/package-lock.json"):

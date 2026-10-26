@@ -284,6 +284,7 @@ func cmdTailscaleSync(a *app, args []string) error {
 		return fmt.Errorf("sync failed (the last good labels stay): %w", err)
 	}
 	fmt.Fprintf(a.stdout, "OK: %d devices, %d address labels, %d of your hosts on the tailnet\n", res.Devices, res.Labels, res.Hosts)
+	resolveKnownCLI(a, s) // ipinfo.go
 	if !res.KeyExpires.IsZero() {
 		fmt.Fprintf(a.stdout, "The API access token expires %s.\n", formatTime(res.KeyExpires))
 	}

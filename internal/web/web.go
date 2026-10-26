@@ -205,7 +205,8 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /ips/labels/{id}/remove", s.requireAuth(s.ipLabelRemove))
 	mux.HandleFunc("POST /ips/policy", s.requireAuth(s.ipPolicySet))
 	mux.HandleFunc("GET /ips/{addr}", s.requireAuth(s.withScope(s.ipPage)))
-	mux.HandleFunc("GET /cloudflare", s.requireAuth(s.cloudflarePage)) // Cloudflare overview (cloudflare.go)
+	mux.HandleFunc("GET /ips/person/{person}", s.requireAuth(s.withScope(s.personPage))) // people.go
+	mux.HandleFunc("GET /cloudflare", s.requireAuth(s.cloudflarePage))                   // Cloudflare overview (cloudflare.go)
 	// Failed logins: repeat offenders across the viewer's hosts (logins.go).
 	mux.HandleFunc("GET /offenders", s.requireAuth(s.withScope(s.offendersPage)))
 	mux.HandleFunc("GET /surface", s.requireAuth(s.surfacePage)) // attack-surface map (surface.go)
@@ -510,12 +511,12 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, v *auth.Viewer, er
 func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
 		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "enroll", "site", "news", "handoff"}
-	names = append(names, "assistants") // AI assistants (MCP tokens)
-	names = append(names, "ips", "ip")  // IP awareness (ips.go)
-	names = append(names, "cloudflare") // Cloudflare overview (cloudflare.go)
-	names = append(names, "offenders")  // failed logins (logins.go)
-	names = append(names, "surface")    // attack-surface map (surface.go)
-	names = append(names, "bans")       // bans (bans.go)
+	names = append(names, "assistants")          // AI assistants (MCP tokens)
+	names = append(names, "ips", "ip", "person") // IP awareness (ips.go, people.go)
+	names = append(names, "cloudflare")          // Cloudflare overview (cloudflare.go)
+	names = append(names, "offenders")           // failed logins (logins.go)
+	names = append(names, "surface")             // attack-surface map (surface.go)
+	names = append(names, "bans")                // bans (bans.go)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/ai.html", "templates/"+n+".html")
@@ -539,10 +540,11 @@ var severities = map[string]bool{"critical": true, "high": true, "medium": true,
 const findingsCap = 200
 
 var funcs = template.FuncMap{
-	"devMode":  func() bool { return devMode },
-	"devLogin": func() string { return devLoginEmail },
-	"userRef":  store.UserRef,
-	"hostURL":  hostURL,
+	"devMode":   func() bool { return devMode },
+	"devLogin":  func() string { return devLoginEmail },
+	"userRef":   store.UserRef,
+	"hostURL":   hostURL,
+	"personURL": personURL,
 	// aitext renders AI text escaped, with known names linked (aiLinker).
 	"aitext": func(l *aiLinker, text string) template.HTML { return l.HTML(text) },
 	"time": func(t time.Time) string {
@@ -633,6 +635,11 @@ var funcs = template.FuncMap{
 	"attn": attnText,
 	"chipsFor": func(c report.Counts, v findingsView) map[string]any {
 		return map[string]any{"C": chipCounts{c}, "V": v}
+	},
+	// siteEco is the "siteeco" partial's input: an ecosystem's name, its
+	// lockfile (shown beside it, or ""), its section, and whether it's open.
+	"siteEco": func(name, file string, e ecoSection, open bool) map[string]any {
+		return map[string]any{"Name": name, "File": file, "E": e, "Open": open}
 	},
 	"sevChips": func() []string { return []string{"critical", "high", "medium", "low", "unknown"} },
 	// hotEPSS: an EPSS score worth watching even with no fix (store.WatchEPSS).

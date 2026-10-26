@@ -25,13 +25,14 @@ Every row runs in CI as an unprivileged user (`make test-collector`), and each s
 | **Arch Linux** (pacman) | Automatic | Inventory and pending updates only. OSV has no Arch ecosystem. |
 | **Docker containers** | `HEIMDALL_DOCKER=1` in `collect.env`, and give the `heimdall` user access to the Docker socket | Inventory (name, image, tag, state) |
 | **Windows** | `install-windows.ps1`, see [Windows](#windows) | Inventory, pending KB updates, reboot status and Windows Server end of life. No CVE findings, since OSV has no Windows ecosystem. |
-| **npm / pip lockfiles** | `HEIMDALL_LOCKFILES="/srv/app/package-lock.json /srv/api/requirements.txt"` | Matched against OSV's npm and PyPI data, keyed by the lockfile path |
+| **npm / pip lockfiles** | `HEIMDALL_LOCKFILES="/srv/app/package-lock.json /srv/api/requirements.txt"` | Matched against OSV's npm and PyPI data, keyed by the lockfile path. A site's own `package-lock.json` is read without this (see [npm packages](#npm-packages-snapshot-v4)). |
 
 ⚠️ **Docker socket access is root-equivalent.** Anyone who can talk to `/var/run/docker.sock` can start a privileged container. Only enable `HEIMDALL_DOCKER` on hosts where you accept that, or point the collector at a read-only socket proxy.
 
 **Lockfiles:**
 - Paths must be absolute. Anything containing `..` or `.` segments is ignored.
-- `package-lock.json` must be lockfile version 2 or 3. Version 1 isn't parsed.
+- `package-lock.json` can be lockfile version 1, 2 or 3, read the same way as a site's (see [npm packages](#npm-packages-snapshot-v4)).
+- A listed `package-lock.json` in a site's app root belongs to that site: the hub shows it in the site's card, not as a separate lockfile.
 - `requirements*.txt` must pin `name==version`. Ranges, `-e` lines and URLs are skipped.
 
 ### Windows
@@ -105,7 +106,7 @@ The collector runs on every server you manage, so it's built to be **boring, rea
 | **One request, then done** | No daemon, no listening port, no other network calls | Nothing persistent to attack |
 | **Private temp files** | `umask 077` and a `mktemp -d` directory that's removed on exit | Other users can't read the snapshot while it's being sent |
 | **Collects only what's listed** | OS, kernel, uptime, reboot flag, packages, pending updates, and [sites](#sites--laravel) (paths, hostnames, PHP-FPM version, Composer packages). See [What it never touches](#what-it-never-touches). | Nothing sensitive leaves the box |
-| **Never runs app code** | Sites are found by *reading* vhost files and `composer.json`/`composer.lock` with `awk`. It never runs `php`, `composer` or `artisan`, and never reads `.env`. | A compromised or broken app can't affect the collector, and secrets stay put |
+| **Never runs app code** | Sites are found by *reading* vhost files, `composer.json`/`composer.lock` and `package-lock.json` with `awk`. It never runs `php`, `composer`, `npm`, `node` or `artisan`, and never reads `.env`. | A compromised or broken app can't affect the collector, and secrets stay put |
 | **Reports its own checksum** | It sends the SHA-256 of itself with every snapshot | Tampering shows up as "collector changed" (M8) |
 | **Installed from a release, not the hub** | You download it from a tagged release and verify `SHA256SUMS` | A compromised hub can't push code to your servers |
 
@@ -113,7 +114,7 @@ The collector runs on every server you manage, so it's built to be **boring, rea
 - `.env` files, config file contents, environment variables
 - Users, groups, SSH keys, shell history
 - Process lists or process arguments
-- Any file other than `/etc/os-release`, `/proc/uptime`, `/etc/machine-id` (only a hash of it is sent, see [Many servers](#many-servers-enrollment-keys)), the package database, `/var/run/reboot-required`, enabled nginx/Apache vhost files, each discovered app's `composer.json` and `composer.lock`, its own script file and the token file (plus, for the opt-in [privilege watch](#privilege-watch), its events file and whether `/etc/pam.d/sudo`, `su` and `sshd` contain its line)
+- Any file other than `/etc/os-release`, `/proc/uptime`, `/etc/machine-id` (only a hash of it is sent, see [Many servers](#many-servers-enrollment-keys)), the package database, `/var/run/reboot-required`, enabled nginx/Apache vhost files, each discovered app's `composer.json`, `composer.lock` and `package-lock.json`, its own script file and the token file (plus, for the opt-in [privilege watch](#privilege-watch), its events file and whether `/etc/pam.d/sudo`, `su` and `sshd` contain its line)
 - Application source code, `vendor/`, logs or storage
 
 ### What it trusts
@@ -453,6 +454,22 @@ sudo setfacl -m u:heimdall:r /home/forge/example.com/composer.json /home/forge/e
 
 A site the collector can't read is still reported, with its hostnames and PHP version, but `readable: false` and no Composer data. That makes missing permissions visible instead of silent.
 
+### npm packages (snapshot v4)
+
+Laravel apps usually build their frontend with npm, so the collector also reads `<app root>/package-lock.json` when there is one, and the hub matches its packages against OSV's npm advisories. Findings belong to the site, next to its Composer ones. Grant read access the same way:
+
+```sh
+sudo setfacl -m u:heimdall:r /home/forge/example.com/package-lock.json
+```
+
+- **Lockfile versions 1, 2 and 3** (npm 6 and later). Versions 2 and 3 list packages under `"packages"`, keyed by their `node_modules/` path; an aliased package (`"string-width-cjs": "npm:string-width@^4"`) is reported under its real name. Version 1 nests them under `"dependencies"`. Version 2 has both, and `"packages"` wins.
+- **Dev dependencies** keep npm's flag: a package is `dev` when every copy of that name and version is marked `"dev": true` (needed only to build or test the app). `"devOptional"` packages count as runtime, since a production install can include them. Version 1 marks dev packages the same way.
+- **Same caps as the rest:** only a readable regular file of at most 32 MiB is read, names and versions must match npm's rules (a git URL, a tarball or an `npm:` alias version is skipped), the same name at several versions (nested `node_modules`) is kept, and at most 5,000 packages are sent per site. An unreadable or malformed file sends none; the site itself is still reported.
+- **Like `composer.lock`,** the file must be in npm's normal pretty-printed layout (two-space indents). A minified lockfile yields no packages.
+- **Not read yet: `yarn.lock` and `pnpm-lock.yaml`.** Both could be parsed the same way (yarn's v1 format and Berry's YAML list `name@range:` headers with a `version` line; pnpm's lists `name@version:` keys), but yarn.lock has no dev flag at all, so it would also take `package.json`'s `devDependencies` and walking the dependency graph to tell dev from runtime packages. List the site's `package-lock.json` if you have one, or wait for a later version.
+
+**Why dev dependencies don't need attention:** a Vite or webpack plugin runs when you build the frontend, on a developer's machine or in CI, and never handles a request in production. A vulnerability in it is real, but it's a build-time risk, not exposure of the running site. The hub lists dev findings with a **dev** badge (last in each list), but leaves them out of what needs attention, the fix commands and the severity, known-exploited and fixable counts; they're counted apart as "on dev dependencies". Composer's `packages-dev` aren't told apart: `composer.lock` is read as one list, as before.
+
 ### Site repositories
 
 For the hub's [Hand off to an agent](deployment.md#hand-off-to-an-agent), the collector reports each site's git remote: the `url` of `[remote "origin"]` in a git config file. It reads the file directly. **git is never run**, so nothing touches the network and no privileges are needed: a file the `heimdall` user can't read is skipped. It looks in, first match wins:
@@ -478,7 +495,8 @@ sudo setfacl -d -m u:heimdall:rX /home/forge/example.com/releases
 **Known limitations**
 - `include` lines aren't followed, so `server_name`/`root`/`fastcgi_pass` must be in the vhost file itself. That's true for Forge, Ploi and most hand-written configs.
 - Regex server names (`~^…`), roots containing variables (`$…`) and TCP PHP pools (`127.0.0.1:9000`) are skipped or reported without a PHP version.
-- `composer.lock` must be in Composer's normal pretty-printed layout. A minified lock file yields no packages.
+- `composer.lock` and `package-lock.json` must be in their tools' normal pretty-printed layout. A minified lock file yields no packages.
+- `package-lock.json` is read only from the app root, so a frontend in a subfolder (or a Node app whose document root isn't `public`) isn't found. List that lockfile in `HEIMDALL_LOCKFILES`.
 - Caddy, LiteSpeed and apps inside Docker containers aren't discovered yet. List their roots in `HEIMDALL_SITES`, or wait for M9.
 
 ## Exit codes & messages

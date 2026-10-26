@@ -87,8 +87,13 @@ func cmdServe(a *app, args []string) error {
 		}()
 	}
 
-	ips, ipSyncers := newIPResolver(cfg, s, log) // what's known about IP addresses (ipinfo.go)
+	ips, ipSyncers := newIPResolver(cfg, s, log)  // what's known about IP addresses (ipinfo.go)
+	resolveKnown := resolveKnownFunc(s, ips, log) // close unknown-address alerts once the address is known
+	for i, sy := range ipSyncers {
+		ipSyncers[i] = ipinfo.Then(sy, resolveKnown)
+	}
 	ipinfo.Run(a.ctx, log, ipSyncers...)
+	go everyHour(a.ctx, resolveKnown)       // for sign-ins, which no sync announces
 	h.IPs = ips                             // privilege sessions' sources (internal/privilege/source.go)
 	h.TrustedEdge = cloudflareTrustedEdge() // CF-Connecting-IP from Cloudflare's edge only; nil when off (cloudflare.go)
 	startBans(a.ctx, cfg, s, log, ips)      // bans and their alerts (bans.go)

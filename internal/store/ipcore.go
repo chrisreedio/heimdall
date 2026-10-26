@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/netip"
 	"slices"
 	"strings"
@@ -65,23 +66,36 @@ func (s *Store) SignInsFrom(ctx context.Context, ip string, limit int) ([]SignIn
 	return s.signIns(ctx, ip, "", nil, 0, limit)
 }
 
+// SignInsBy returns a user's newest sign-ins from any address, open
+// sessions and audited ones, for the person page.
+func (s *Store) SignInsBy(ctx context.Context, userID int64, limit int) ([]SignIn, error) {
+	return s.signInsWhere(ctx, `user_id = ?`, `actor = ?`, []any{userID, fmt.Sprintf("user:%d", userID)}, "", nil, 0, limit)
+}
+
 func (s *Store) signIns(ctx context.Context, ip, where string, args []any, orgID int64, limit int) ([]SignIn, error) {
 	a, err := netip.ParseAddr(ip)
 	if err != nil {
 		return nil, nil
 	}
 	ip = a.Unmap().String()
+	return s.signInsWhere(ctx, `ip = ?`, `ip = ?`, []any{ip, ip}, where, args, orgID, limit)
+}
+
+// signInsWhere picks sessions by sessWhere and audited sign-ins by
+// auditWhere (by holds their arguments, in that order), then filters
+// both with where.
+func (s *Store) signInsWhere(ctx context.Context, sessWhere, auditWhere string, by []any, where string, args []any, orgID int64, limit int) ([]SignIn, error) {
 	q := `
 		SELECT x.user_id, u.email, u.display_name, x.ip, x.at, x.until, x.open, x.ts FROM (
 		  SELECT user_id, ip, created_at AS at, last_seen_at AS until, 1 AS open,
 		         CASE WHEN ts_name <> '' THEN ts_name || ' (' || ts_login || ')' ELSE ts_login END AS ts
-		  FROM sessions WHERE ip = ?
+		  FROM sessions WHERE ` + sessWhere + `
 		  UNION ALL
 		  SELECT CAST(substr(actor, 6) AS INTEGER), ip, at, at, 0, ''
-		  FROM audit_log WHERE ip = ? AND action IN (` + signInActions + `) AND actor LIKE 'user:%'
+		  FROM audit_log WHERE ` + auditWhere + ` AND action IN (` + signInActions + `) AND actor LIKE 'user:%'
 		) x JOIN users u ON u.id = x.user_id
 		WHERE 1 = 1 ` + where
-	qargs := append([]any{ip, ip}, args...)
+	qargs := append(slices.Clone(by), args...)
 	if orgID != 0 {
 		q += ` AND (u.is_admin = 1 OR EXISTS (SELECT 1 FROM memberships m WHERE m.user_id = u.id AND m.org_id = ?))`
 		qargs = append(qargs, orgID)

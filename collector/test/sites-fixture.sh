@@ -102,6 +102,36 @@ EOF
 
 # 1. Forge-style site: TLS block with PHP 8.3, plus a redirect block (no root).
 laravel_app /home/forge/example.com 'v11.31.0' '^8.2'
+# Its frontend build: a v3 package-lock.json with a dev dependency.
+cat >/home/forge/example.com/package-lock.json <<'JSON'
+{
+  "name": "example.com",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "dependencies": {
+        "axios": "^1.6.0"
+      },
+      "devDependencies": {
+        "vite": "^5.0.0"
+      }
+    },
+    "node_modules/axios": {
+      "version": "1.6.0",
+      "resolved": "https://registry.npmjs.org/axios/-/axios-1.6.0.tgz"
+    },
+    "node_modules/vite": {
+      "version": "5.0.10",
+      "dev": true
+    },
+    "node_modules/vite/node_modules/semver": {
+      "version": "7.5.4",
+      "dev": true
+    }
+  }
+}
+JSON
 cat >/etc/nginx/sites-enabled/example.com <<'EOF'
 # FORGE CONFIG (DO NOT REMOVE!)
 include forge-conf/example.com/before/*;

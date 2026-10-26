@@ -18,7 +18,7 @@
 #   HEIMDALL_SITES           extra app roots to inventory, space-separated
 #   HEIMDALL_DISCOVER_SITES  set to 0 to skip reading nginx/Apache vhosts
 #
-# Format: heimdall.snapshot/v2 (docs/snapshot-format.md). POSIX sh; tested
+# Format: heimdall.snapshot/v4 (docs/snapshot-format.md). POSIX sh; tested
 # with dash, busybox ash and bash.
 
 set -eu
@@ -28,7 +28,7 @@ PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
 VERSION=0.4.38
-FORMAT=heimdall.snapshot/v3
+FORMAT=heimdall.snapshot/v4
 
 die() { printf 'heimdall-collect: %s\n' "$*" >&2; exit 1; }
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -130,23 +130,65 @@ containers_json() {
 
 # ── Application lockfiles (v3, allowlisted) ─────────────────────────────────
 # HEIMDALL_LOCKFILES lists absolute paths: package-lock.json (npm, lockfile
-# v2/v3) and requirements.txt (PyPI, pinned name==version lines).
+# v1-v3) and requirements.txt (PyPI, pinned name==version lines).
+
+# "name<TAB>version<TAB>dev" for every installed package in a
+# package-lock.json, lockfileVersion 1, 2 or 3. npm writes it with
+# two-space indents, and nesting is read from them: v2/v3 key packages by
+# node_modules path under "packages" (an alias's real name is its "name"),
+# v1 nests them under "dependencies". v2 carries both; "packages" wins.
+# dev is true only when every copy of that name and version is marked
+# "dev": true ("devOptional" ones can be installed without dev deps, so
+# they count as runtime). Quotes are structure here, so only control
+# characters are dropped; every name and version is then checked against a
+# strict pattern before it's printed, and at most 5000 are.
+npm_lock_packages() {
+	tr -d '\000-\010\013-\037\177' <"$1" | awk '
+		function value(s) { sub(/^ *"[^"]*": *"?/, "", s); sub(/"?,? *$/, "", s); return s }
+		function flush(i,   k) {
+			if (nm[i] != "" && vr[i] != "") {
+				if (real[i] != "") nm[i] = real[i]
+				if (nm[i] ~ /^(@[a-z0-9._~-]+\/)?[a-z0-9._~-]+$/ && length(nm[i]) <= 214 &&
+					vr[i] ~ /^[A-Za-z0-9][A-Za-z0-9._+!-]*$/ && length(vr[i]) <= 100) {
+					k = sect[i] "\t" nm[i] "\t" vr[i]
+					if (!(k in dev)) { order[++n] = k; dev[k] = 1 }
+					if (!dv[i]) dev[k] = 0
+				}
+			}
+			nm[i] = ""; vr[i] = ""; real[i] = ""; dv[i] = 0
+		}
+		{
+			match($0, /^ */); ind = RLENGTH
+			for (i = deepest; i >= ind; i -= 2) flush(i)
+		}
+		/^ *"[^"]*": *\{ *$/ {
+			key = $0; sub(/^ *"/, "", key); sub(/".*$/, "", key)
+			at[ind] = key
+			if (ind == 4 && at[2] == "packages" && key ~ /(^|\/)node_modules\//) {
+				c = split(key, part, "node_modules/"); nm[ind] = part[c]; sect[ind] = "p"
+			} else if (ind >= 4 && ind % 4 == 0 && at[2] == "dependencies" && at[ind - 2] == "dependencies") {
+				nm[ind] = key; sect[ind] = "d"
+			}
+			if (nm[ind] != "" && ind > deepest) deepest = ind
+			next
+		}
+		nm[ind - 2] != "" && /^ *"version": *"[^"]*",? *$/ { vr[ind - 2] = value($0) }
+		nm[ind - 2] != "" && /^ *"name": *"[^"]*",? *$/ { real[ind - 2] = value($0) }
+		nm[ind - 2] != "" && /^ *"dev": *true/ { dv[ind - 2] = 1 }
+		END {
+			for (i = deepest; i >= 0; i -= 2) flush(i)
+			want = "d"
+			for (j = 1; j <= n; j++) if (substr(order[j], 1, 1) == "p") want = "p"
+			for (j = 1; j <= n && out < 5000; j++) {
+				split(order[j], f, "\t")
+				if (f[1] == want) { print f[2] "\t" f[3] "\t" (dev[order[j]] ? "true" : "false"); out++ }
+			}
+		}'
+}
+
 lockfile_packages() {
 	case $1 in
-	*/package-lock.json)
-		# Quotes are structure here, so only control characters are dropped;
-		# every extracted name and version is then checked against a strict
-		# pattern before it's printed.
-		tr -d '\000-\010\013-\037\177' <"$1" | awk '
-			/"node_modules\/[^"]+": \{/ {
-				key = $0; sub(/^[^"]*"/, "", key); sub(/".*$/, "", key)
-				n = split(key, p, "node_modules/"); name = p[n]
-			}
-			/^ *"version": "/ && name != "" {
-				v = $0; sub(/^ *"version": "/, "", v); sub(/".*$/, "", v)
-				if (name ~ /^(@[a-z0-9._~-]+\/)?[a-z0-9._~-]+$/ && v ~ /^[A-Za-z0-9][A-Za-z0-9._+!-]*$/) print name "\t" v
-				name = ""
-			}' ;;
+	*/package-lock.json) npm_lock_packages "$1" | cut -f 1,2 ;;
 	*/requirements*.txt)
 		clean_tsv <"$1" | awk '
 			{ sub(/#.*/, ""); gsub(/[ \t]/, "") }
@@ -307,8 +349,9 @@ reboot_apk() {
 
 # ── Sites (format v2) ───────────────────────────────────────────────────────
 # Web apps the host serves: enabled nginx/Apache vhosts plus any roots in
-# HEIMDALL_SITES. Reads only vhost files and each app's composer.json and
-# composer.lock. Never reads .env, never runs php, composer or artisan.
+# HEIMDALL_SITES. Reads only vhost files and each app's composer.json,
+# composer.lock and package-lock.json. Never reads .env, never runs php,
+# composer, npm or artisan.
 
 NGINX_VHOSTS='/etc/nginx/sites-enabled/* /etc/nginx/conf.d/*.conf /etc/nginx/http.d/*.conf'
 APACHE_VHOSTS='/etc/apache2/sites-enabled/* /etc/httpd/conf.d/*.conf'
@@ -469,8 +512,21 @@ composer_php_requirement() {
 		}' "$1"
 }
 
+# A site's package-lock.json as the body of npm_packages (v4): read only
+# when it's a readable regular file of at most 32 MiB.
+site_npm_json() {
+	f=$1/package-lock.json
+	if [ ! -f "$f" ] || [ ! -r "$f" ]; then return 0; fi
+	size=$(wc -c <"$f" 2>/dev/null) || return 0
+	[ "$size" -le 33554432 ] || return 0
+	npm_lock_packages "$f" | awk -F '\t' 'NF == 3 {
+		printf "%s\n      {\"name\": \"%s\", \"version\": \"%s\", \"dev\": %s}", (n++ ? "," : ""), $1, $2, $3 }
+		END { if (n) printf "\n    " }'
+}
+
 # One site as JSON. Composer data is only read when the app directory and
-# its composer files are readable by this (unprivileged) user.
+# its composer files are readable by this (unprivileged) user; npm data
+# when package-lock.json is, too.
 site_json() {
 	root=$1 ws=$2 docroot=$3 php=$4 names=$5
 	readable=false
@@ -480,9 +536,10 @@ site_json() {
 			if [ -e "$f" ] && [ ! -r "$f" ]; then readable=false; fi
 		done
 	fi
-	framework='' fwver='' phpreq='' deployed=null pkgs=''
+	framework='' fwver='' phpreq='' deployed=null pkgs='' npm=''
 	if [ "$readable" = true ]; then
 		[ ! -f "$root/composer.json" ] || phpreq=$(composer_php_requirement "$root/composer.json")
+		npm=$(site_npm_json "$root")
 		if [ -f "$root/composer.lock" ]; then
 			tsv=$(composer_packages "$root/composer.lock")
 			pkgs=$(printf '%s\n' "$tsv" | tsv_to_json name version)
@@ -496,9 +553,9 @@ site_json() {
 	fi
 	# shellcheck disable=SC2086 # word splitting is intended
 	server_names=$(printf '%s\n' $names | awk 'NF { printf "%s\"%s\"", (n++ ? ", " : ""), $0 }')
-	printf '{"root": "%s", "document_root": "%s", "server_names": [%s], "web_server": "%s", "php_fpm_version": "%s", "readable": %s, "framework": "%s", "framework_version": "%s", "php_requirement": "%s", "deployed_at": %s, "composer_packages": [%s]}' \
+	printf '{"root": "%s", "document_root": "%s", "server_names": [%s], "web_server": "%s", "php_fpm_version": "%s", "readable": %s, "framework": "%s", "framework_version": "%s", "php_requirement": "%s", "deployed_at": %s, "composer_packages": [%s], "npm_packages": [%s]}' \
 		"$(clean "$root")" "$(clean "$docroot")" "$server_names" "$ws" "$php" "$readable" \
-		"$framework" "$(clean "$fwver")" "$(clean "$phpreq")" "$deployed" "$pkgs"
+		"$framework" "$(clean "$fwver")" "$(clean "$phpreq")" "$deployed" "$pkgs" "$npm"
 }
 
 # Every site as "root|web_server|document_root|php|names", de-duplicated by

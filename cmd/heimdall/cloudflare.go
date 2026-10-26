@@ -346,6 +346,7 @@ func cmdCloudflareSync(a *app, args []string) error {
 		fmt.Fprintf(a.stderr, "edge ranges: %v\n", err)
 	} else {
 		fmt.Fprintf(a.stderr, "edge ranges: %d\n", len(es.Edge.Prefixes()))
+		resolveKnownCLI(a, s) // ipinfo.go
 	}
 	token, _, err := cloudflareToken(isRoot())
 	if err != nil {

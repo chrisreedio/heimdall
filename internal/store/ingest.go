@@ -285,6 +285,13 @@ func saveSites(ctx context.Context, tx *sql.Tx, snapshotID int64, sites []snapsh
 		return err
 	}
 	defer pkgStmt.Close()
+	npmStmt, err := tx.PrepareContext(ctx, `
+		INSERT OR IGNORE INTO app_packages (snapshot_id, manifest_path, ecosystem, name, version, dev)
+		VALUES (?, ?, 'npm', ?, ?, ?)`)
+	if err != nil {
+		return err
+	}
+	defer npmStmt.Close()
 	for _, site := range sites {
 		names := site.ServerNames
 		if names == nil {
@@ -306,9 +313,21 @@ func saveSites(ctx context.Context, tx *sql.Tx, snapshotID int64, sites []snapsh
 				return fmt.Errorf("site %q package %q: %w", site.Root, p.Name, err)
 			}
 		}
+		// Stored before any allowlisted lockfile at the same path (saveV3),
+		// so the site's dev flags win.
+		npmManifest := NpmManifest(site.Root)
+		for _, p := range site.NpmPackages {
+			if _, err := npmStmt.ExecContext(ctx, snapshotID, npmManifest, p.Name, p.Version, boolInt(p.Dev)); err != nil {
+				return fmt.Errorf("site %q npm package %q: %w", site.Root, p.Name, err)
+			}
+		}
 	}
 	return nil
 }
+
+// NpmManifest is where a site's npm packages come from: its root's
+// package-lock.json.
+func NpmManifest(root string) string { return strings.TrimSuffix(root, "/") + "/package-lock.json" }
 
 // saveV3 stores containers and allowlisted lockfiles.
 func saveV3(ctx context.Context, tx *sql.Tx, snapshotID int64, snap *snapshot.Snapshot) error {
