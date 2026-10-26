@@ -28,11 +28,15 @@ func mcpUser(a *app, s *store.Store, email string) (store.User, error) {
 }
 
 func cmdMCPTokenCreate(a *app, args []string) error {
-	fs := a.flags("user mcp-token create", "[--name laptop] <email>")
-	name := fs.String("name", "mcp", "label for this token, e.g. the device")
+	fs := a.flags("user mcp-token create", "[--name laptop] [--purpose mcp|threats] <email>")
+	name := fs.String("name", "", "label for this token, e.g. the device (default: the purpose)")
+	purpose := fs.String("purpose", store.PurposeMCP, "mcp (the MCP endpoint) or threats (the threat list's REST API, docs/threats.md)")
 	pos, err := parse(fs, args, 1)
 	if err != nil {
 		return err
+	}
+	if store.TokenPrefix(*purpose) == "" {
+		return fmt.Errorf("--purpose must be mcp or threats")
 	}
 	s, err := a.openStore()
 	if err != nil {
@@ -43,9 +47,16 @@ func cmdMCPTokenCreate(a *app, args []string) error {
 	if err != nil {
 		return err
 	}
-	token, id, err := s.CreateMCPToken(a.ctx, actor(), u.ID, *name)
+	token, id, err := s.CreateToken(a.ctx, actor(), u.ID, *name, *purpose)
 	if err != nil {
 		return err
+	}
+	if *purpose == store.PurposeThreats {
+		fmt.Fprintf(a.stderr, "Created threat-list token %d for %s (shown once). It reads only /api/v1/threats, "+
+			"over what their UI login can see; it can't use /mcp.\n"+
+			"Pull with: curl --config <file holding: header = \"Authorization: Bearer <token>\"> https://<hub>/api/v1/threats?format=plain\n\n", id, u.Email)
+		fmt.Fprintln(a.stdout, token)
+		return nil
 	}
 	fmt.Fprintf(a.stderr, "Created MCP token %d for %s (shown once). It grants the same read access as their UI login.\n"+
 		"Connect with: claude mcp add --transport http heimdall https://<hub>/mcp --header \"Authorization: Bearer <token>\"\n\n", id, u.Email)
@@ -77,9 +88,9 @@ func cmdMCPTokenList(a *app, args []string) error {
 		if !t.RevokedAt.IsZero() {
 			status = "revoked"
 		}
-		rows[i] = []string{strconv.FormatInt(t.ID, 10), t.Name, formatTime(t.CreatedAt), formatTime(t.LastUsedAt), status}
+		rows[i] = []string{strconv.FormatInt(t.ID, 10), t.Name, t.Purpose, formatTime(t.CreatedAt), formatTime(t.LastUsedAt), status}
 	}
-	return table(a, "ID\tNAME\tCREATED\tLAST USED\tSTATUS", rows)
+	return table(a, "ID\tNAME\tPURPOSE\tCREATED\tLAST USED\tSTATUS", rows)
 }
 
 func cmdMCPTokenRevoke(a *app, args []string) error {

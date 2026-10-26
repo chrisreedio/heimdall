@@ -331,3 +331,35 @@ func TestAdminSeesAndRevokesTokens(t *testing.T) {
 		t.Errorf("mismatched user: %d", w.Code)
 	}
 }
+
+func TestAssistantsThreatsToken(t *testing.T) {
+	e := mcpEnv(t, true)
+	e.asBob()
+	if body := e.get("/account/assistants", signedIn(e)).Body.String(); !strings.Contains(body, `<option value="threats"`) {
+		t.Error("no purpose choice")
+	}
+	w := e.formPost("/account/assistants", url.Values{"name": {"edge firewall"}, "purpose": {"threats"}})
+	token := regexp.MustCompile(`hmd_threats_[A-Za-z0-9_-]{43}`).FindString(w.Body.String())
+	body := w.Body.String()
+	if w.Code != http.StatusOK || token == "" || !strings.Contains(body, testMCPURL+"/api/v1/threats") ||
+		!strings.Contains(body, "--config ~/.heimdall-threats.curl") || strings.Contains(body, "Bearer "+token) {
+		t.Fatalf("create: %d token=%v", w.Code, token != "")
+	}
+	// It's a threats token: it doesn't work for MCP.
+	if _, _, err := e.st.TokenUser(t.Context(), sha256.Sum256([]byte(token)), store.PurposeThreats, testNow); err != nil {
+		t.Errorf("threats token: %v", err)
+	}
+	if _, _, err := e.st.MCPTokenUser(t.Context(), sha256.Sum256([]byte(token)), testNow); err == nil {
+		t.Error("threats token works for MCP")
+	}
+	if again := e.get("/account/assistants", signedIn(e)).Body.String(); !strings.Contains(again, "Threat list</td>") {
+		t.Error("purpose not listed")
+	}
+	if w := e.formPost("/account/assistants", url.Values{"name": {"x"}, "purpose": {"admin"}}); w.Code != http.StatusBadRequest {
+		t.Errorf("bad purpose: %d", w.Code)
+	}
+	at, err := e.st.LastAuditAt(t.Context(), "mcp_token.create")
+	if err != nil || at.IsZero() {
+		t.Error("create not audited")
+	}
+}

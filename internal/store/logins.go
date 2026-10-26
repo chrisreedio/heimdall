@@ -172,6 +172,40 @@ func (s *Store) LoginDayTotals(ctx context.Context, sc Scope, org string, hostID
 	return failures, rows.Err()
 }
 
+// LoginDaysFor counts, per address, the distinct UTC days with a failure
+// since a time, on hosts the scope can view: one org's (org "" every
+// org's). With AllScope and every org it's LoginDays.
+func (s *Store) LoginDaysFor(ctx context.Context, sc Scope, org string, since time.Time) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT f.ip, h.org_id, f.day FROM login_failures f JOIN hosts h ON h.id = f.host_id
+		JOIN organizations o ON o.id = h.org_id
+		WHERE f.last_at >= ? AND (? = '' OR o.slug = ?) GROUP BY f.ip, h.org_id, f.day`, since.Unix(), org, org)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	days := map[string]map[string]bool{}
+	for rows.Next() {
+		var ip, day string
+		var orgID int64
+		if err := rows.Scan(&ip, &orgID, &day); err != nil {
+			return nil, err
+		}
+		if !sc.CanView(orgID) {
+			continue
+		}
+		if days[ip] == nil {
+			days[ip] = map[string]bool{}
+		}
+		days[ip][day] = true
+	}
+	out := make(map[string]int, len(days))
+	for ip, d := range days {
+		out[ip] = len(d)
+	}
+	return out, rows.Err()
+}
+
 // RadarCached returns what's cached from Cloudflare Radar for these
 // addresses, by address. It never asks Radar: only what's already known.
 func (s *Store) RadarCached(ctx context.Context, ips []string) (map[string]CloudflareRadar, error) {

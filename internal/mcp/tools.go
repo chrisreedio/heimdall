@@ -187,6 +187,7 @@ func (s *Server) registerTools() {
 			return map[string]any{"hosts": hosts, "packages": first(rows, maxItems), "total": len(rows), "truncated": len(rows) > maxItems}, nil
 		},
 	})
+	s.registerThreatTools() // threats.go
 }
 
 // visibleHost resolves a host the caller may see; others look missing.

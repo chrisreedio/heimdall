@@ -59,6 +59,8 @@ func (l *tokenLimiter) allow(userID int64, now time.Time) bool {
 type tokenRow struct {
 	ID       int64
 	Name     string
+	Purpose  string // store.PurposeMCP or store.PurposeThreats
+	Threats  bool   // a threat-list token
 	Created  *time.Time
 	LastUsed *time.Time // nil = never
 }
@@ -72,11 +74,15 @@ type assistantsBody struct {
 	Full     bool // at the cap
 	NewToken string
 	NewName  string
-	Notice   string
-	Error    string
-	Desktop  string // claude_desktop_config.json fallback
-	Code     string // Claude Code, POSIX shells
-	CodePS   string // Claude Code, PowerShell
+	// NewThreats: the new token (or the form's choice) is a threat-list one.
+	NewThreats  bool
+	ThreatsURL  string // <base_url>/api/v1/threats
+	ThreatsCurl string // how to pull it without the token on a command line
+	Notice      string
+	Error       string
+	Desktop     string // claude_desktop_config.json fallback
+	Code        string // Claude Code, POSIX shells
+	CodePS      string // Claude Code, PowerShell
 }
 
 var assistantNotices = map[string]string{
@@ -109,6 +115,11 @@ func (s *server) renderAssistants(w http.ResponseWriter, r *http.Request, v *aut
 	body.Tokens = activeTokens(tokens)
 	body.Full = len(body.Tokens) >= maxMCPTokens
 	body.BaseURL, body.Endpoint = s.cfg.MCP.BaseURL, s.mcpEndpoint()
+	body.ThreatsURL = strings.TrimRight(s.cfg.MCP.BaseURL, "/") + "/api/v1/threats"
+	body.ThreatsCurl = "read -rs HMD_TOKEN   # paste your token, then press Enter\n" +
+		"printf 'header = \"Authorization: Bearer %s\"\\n' \"$HMD_TOKEN\" > ~/.heimdall-threats.curl\n" +
+		"chmod 600 ~/.heimdall-threats.curl; unset HMD_TOKEN\n" +
+		"curl -fsS --config ~/.heimdall-threats.curl '" + body.ThreatsURL + "?format=plain&min_score=12'"
 	body.Desktop = desktopConfig(body.Endpoint)
 	body.Code = "read -rs HMD_TOKEN   # paste your token, then press Enter\n" +
 		"claude mcp add --scope user --transport http heimdall " + body.Endpoint + " \\\n" +
@@ -126,7 +137,7 @@ func activeTokens(ts []store.MCPToken) []tokenRow {
 		if !t.RevokedAt.IsZero() {
 			continue
 		}
-		row := tokenRow{ID: t.ID, Name: t.Name, Created: &t.CreatedAt}
+		row := tokenRow{ID: t.ID, Name: t.Name, Purpose: t.Purpose, Threats: t.Purpose == store.PurposeThreats, Created: &t.CreatedAt}
 		if !t.LastUsedAt.IsZero() {
 			row.LastUsed = &t.LastUsedAt
 		}
@@ -158,11 +169,20 @@ func (s *server) assistantCreate(w http.ResponseWriter, r *http.Request, v *auth
 	}
 	ctx := r.Context()
 	name := strings.TrimSpace(r.PostForm.Get("name"))
+	purpose := r.PostForm.Get("purpose")
+	if purpose == "" {
+		purpose = store.PurposeMCP
+	}
+	threatsToken := purpose == store.PurposeThreats
 	fail := func(status int, msg string) {
-		s.renderAssistants(w, r, v, status, assistantsBody{Error: msg, NewName: name})
+		s.renderAssistants(w, r, v, status, assistantsBody{Error: msg, NewName: name, NewThreats: threatsToken})
 	}
 	if name == "" {
 		fail(http.StatusBadRequest, "Give the token a name, like the device it's for.")
+		return
+	}
+	if store.TokenPrefix(purpose) == "" {
+		fail(http.StatusBadRequest, "Choose what the token is for: an AI assistant or the threat list.")
 		return
 	}
 	tokens, err := s.st.ListMCPTokens(ctx, v.UserID)
@@ -178,7 +198,7 @@ func (s *server) assistantCreate(w http.ResponseWriter, r *http.Request, v *auth
 		fail(http.StatusTooManyRequests, "That's a lot of new tokens at once. Try again in a few minutes.")
 		return
 	}
-	token, _, err := s.st.CreateMCPToken(ctx, fmt.Sprintf("user:%d", v.UserID), v.UserID, name)
+	token, _, err := s.st.CreateToken(ctx, fmt.Sprintf("user:%d", v.UserID), v.UserID, name, purpose)
 	if err != nil {
 		var ve *store.ValidationError
 		if errors.As(err, &ve) {
@@ -188,7 +208,7 @@ func (s *server) assistantCreate(w http.ResponseWriter, r *http.Request, v *auth
 		s.fail(w, r, v, err)
 		return
 	}
-	s.renderAssistants(w, r, v, http.StatusOK, assistantsBody{NewToken: token, NewName: name})
+	s.renderAssistants(w, r, v, http.StatusOK, assistantsBody{NewToken: token, NewName: name, NewThreats: threatsToken})
 }
 
 // assistantRevoke revokes one of the signed-in user's own tokens. The
