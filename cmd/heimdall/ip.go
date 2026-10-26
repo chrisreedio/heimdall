@@ -84,6 +84,7 @@ func cmdIPLabelAdd(a *app, args []string) error {
 		return err
 	}
 	fmt.Fprintln(a.stdout, id)
+	resolveKnownCLI(a, s) // ipinfo.go
 	return nil
 }
 

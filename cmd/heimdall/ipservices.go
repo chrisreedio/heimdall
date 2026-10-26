@@ -267,6 +267,7 @@ func cmdIPServicesSync(a *app, args []string) error {
 			return err
 		}
 	}
+	resolveKnownCLI(a, s) // ipinfo.go
 	if len(failed) > 0 {
 		return fmt.Errorf("%d service(s) failed: %s", len(failed), strings.Join(failed, ", "))
 	}

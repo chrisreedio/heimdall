@@ -16,6 +16,23 @@ type Syncer interface {
 	Sync(context.Context) error
 }
 
+// Then is s with f run after each sync that works, e.g. to close alerts
+// its new labels answer (privilege.ResolveKnown).
+func Then(s Syncer, f func(context.Context)) Syncer { return then{s, f} }
+
+type then struct {
+	Syncer
+	f func(context.Context)
+}
+
+func (t then) Sync(ctx context.Context) error {
+	err := t.Syncer.Sync(ctx)
+	if err == nil {
+		t.f(ctx)
+	}
+	return err
+}
+
 // Run syncs each syncer shortly after start and then on its own schedule,
 // each in its own goroutine, until ctx ends. A failing sync is logged and
 // retried on schedule; its labels from the last good sync stay.

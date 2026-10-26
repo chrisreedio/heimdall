@@ -40,7 +40,13 @@ type ipBadge struct {
 	Title string // every label, for the tooltip
 	Class string // pill classes
 	Href  string // the address's IP page ("" if it isn't an address)
+	// PersonHref is the person's page, for a staff badge naming one. The
+	// pill links there; Href stays for the address itself.
+	PersonHref string
 }
+
+// personURL is a person's page: every address labeled theirs.
+func personURL(person string) string { return "/ips/person/" + url.PathEscape(person) }
 
 var badgeClass = map[string]string{store.IPKindStaff: "ok", store.IPKindTailnet: "ok", store.IPKindAutomation: "info",
 	store.IPKindInfra: "info", store.IPKindPrivate: "muted", store.IPKindUnknown: "warn"}
@@ -62,6 +68,9 @@ func badgeFor(v ipinfo.Verdict) ipBadge {
 	}
 	if v.Best().Guess {
 		b.Class += " guess"
+	}
+	if best := v.Best(); best.Kind == store.IPKindStaff && best.Person != "" {
+		b.PersonHref = personURL(best.Person)
 	}
 	var lines []string
 	for _, l := range v.Labels {
@@ -131,8 +140,7 @@ type ipsBody struct {
 	Global   []store.IPLabel // labels for every org
 	AllOrgs  bool            // global admin: may add and remove labels for every org
 	Admin    []store.Org     // orgs the viewer can label
-	Kinds    []string
-	Prefill  string // ?addr=, from an IP page
+	Form     labelForm       // people.go
 	Error    string
 	ShowOrgs bool
 }
@@ -150,9 +158,6 @@ type ipSourceGroup struct {
 	Updated time.Time
 	Labels  []store.IPLabel
 }
-
-// labelKinds are the kinds a person can give a label.
-var labelKinds = []string{store.IPKindStaff, store.IPKindAutomation, store.IPKindInfra, store.IPKindTailnet, store.IPKindPrivate}
 
 // labelOrgs are the orgs the viewer administers (may label).
 func (s *server) labelOrgs(r *http.Request, v *auth.Viewer) ([]store.Org, error) {
@@ -178,14 +183,12 @@ func (s *server) renderIPs(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		s.notFound(w, r, v)
 		return
 	}
-	body := ipsBody{AllOrgs: v.IsAdmin, Admin: orgs, Kinds: labelKinds, Error: errMsg, ShowOrgs: len(orgs) > 1}
-	if a, err := store.ParseIPPrefix(r.URL.Query().Get("addr")); err == nil {
-		body.Prefill = a.String()
-		if a.IsSingleIP() {
-			body.Prefill = a.Addr().String()
-		}
-	}
+	body := ipsBody{AllOrgs: v.IsAdmin, Admin: orgs, Error: errMsg, ShowOrgs: len(orgs) > 1}
 	if body.Global, err = s.st.IPLabels(ctx, 0); err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	if body.Form, err = s.labelFormFor(r, v, orgs, prefillFor(r, v), ""); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}
@@ -257,7 +260,17 @@ func (s *server) ipLabelAdd(w http.ResponseWriter, r *http.Request, v *auth.View
 		s.renderIPs(w, r, v, http.StatusBadRequest, userError(err))
 		return
 	}
-	http.Redirect(w, r, "/ips", http.StatusSeeOther)
+	// The label may answer an open unknown-address alert.
+	if n, err := privilege.ResolveKnown(r.Context(), s.st, s.cfg.IPs, s.now()); err != nil {
+		s.log.Warn("closing unknown-address anomalies failed", "err", err)
+	} else if n > 0 {
+		s.nav.forget(v.UserID) // its badge counted them
+	}
+	back := "/ips"
+	if b := f.Get("back"); strings.HasPrefix(b, "/ips/person/") { // the person page's form
+		back = b
+	}
+	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
 func (s *server) ipLabelRemove(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
@@ -307,8 +320,8 @@ type ipBody struct {
 	Logins   []store.HostLoginFailure // failed logins from it (logins.go)
 	// What the viewer may see: sign-ins (admins), audit entries (admins of
 	// an org), and whether they can label it.
-	ShowSignIns, ShowAudit, CanLabel bool
-	ShowOrgs                         bool
+	ShowSignIns, ShowAudit, CanLabel, CanSayMe bool // CanSayMe: offer "It's me"
+	ShowOrgs                                   bool
 }
 
 type ipVerdict struct {
@@ -361,6 +374,7 @@ func (s *server) ipPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer) 
 		}
 	}
 	body.CanLabel, body.ShowAudit = len(adminOrgs) > 0 || v.IsAdmin, len(adminOrgs) > 0 || v.IsAdmin
+	body.CanSayMe = body.CanLabel && (v.Email != "" || v.DisplayName != "")
 	evs, err := s.st.PrivilegeFrom(ctx, v.Scope, addr, ipPageLimit)
 	if err != nil {
 		s.fail(w, r, v, err)
