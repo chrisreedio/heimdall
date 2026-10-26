@@ -489,6 +489,15 @@ details.rename > summary::-webkit-details-marker { display: none; }
 details.rename[open] > form { position: absolute; right: 16px; z-index: 5; margin-top: 8px; box-shadow: var(--shadow); }
 .head { position: relative; }
 
+/* Users: delete (disabled users only) opens a confirm box in the cell. */
+.user-status { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .25rem; }
+.user-status form.inline { margin: 0; }
+details.user-delete[open] { flex-basis: 100%; }
+details.user-delete > summary { list-style: none; margin: 0; font-weight: 400; color: var(--link); }
+details.user-delete > summary::-webkit-details-marker { display: none; }
+details.user-delete[open] > form { display: grid; gap: 8px; min-width: 220px; max-width: 280px; margin: 8px 0 0; font-size: 13px; }
+details.user-delete label.check { align-items: flex-start; }
+
 /* Drift: compare and tag side by side. */
 .drift-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
 .drift-grid .card { margin-top: 0; }
@@ -989,7 +998,7 @@ details.repo-pick form { flex-wrap: wrap; align-items: flex-end; max-width: 560p
 .ip-labels { margin: 8px 0 0; padding-left: 18px; }
 
 /* Bans (bans.go): the pause switch and the proposal cards */
-button.danger { background: var(--crit-fg); color: #fff; }
+button.danger { background: var(--crit-fg); color: var(--crit-bg); }
 #bans-status .row, #status .row { align-items: center; gap: 12px; }
 article.card h3 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 /* Attack surface map (surface.html) */

@@ -258,9 +258,12 @@ func (s *Store) CreateEntraUser(ctx context.Context, actor, tenantID, objectID, 
 		if objectID != "" {
 			oid = sql.NullString{String: objectID, Valid: true}
 		}
+		if err := entraDuplicate(ctx, tx, tenantID, objectID, email); err != nil {
+			return err
+		}
 		err := tx.QueryRowContext(ctx, `
-			INSERT INTO users (kind, email, display_name, is_admin, entra_tid, entra_oid)
-			VALUES ('entra', ?, ?, ?, ?, ?) RETURNING id`,
+			INSERT INTO users (id, kind, email, display_name, is_admin, entra_tid, entra_oid)
+			VALUES (`+newUserID+`, 'entra', ?, ?, ?, ?, ?) RETURNING id`,
 			email, strings.TrimSpace(displayName), boolInt(isAdmin), tenantID, oid).Scan(&id)
 		if isUnique(err) {
 			return fmt.Errorf("entra user %s/%s: %w", tenantID, firstNonEmpty(objectID, email), ErrExists)
@@ -273,6 +276,50 @@ func (s *Store) CreateEntraUser(ctx context.Context, actor, tenantID, objectID, 
 	})
 	return id, err
 }
+
+// entraDuplicate refuses a second Entra user in a tenant with the same
+// email (bound or pending) or object ID. Sign-in matches (tid, oid) first,
+// so a pending duplicate of a bound user could never bind: when the old
+// row was disabled, the person was locked out. The unique indexes only
+// cover pending emails and bound oids, and hubs may already hold such
+// duplicates, so this is checked here rather than by a new index.
+func entraDuplicate(ctx context.Context, tx *sql.Tx, tenantID, objectID, email string) error {
+	var id int64
+	var bound, disabled bool
+	var what string
+	err := tx.QueryRowContext(ctx, `
+		SELECT id, entra_oid IS NOT NULL, disabled_at IS NOT NULL,
+			CASE WHEN ? != '' AND entra_oid = ? THEN 'object ID' ELSE 'email' END
+		FROM users
+		WHERE kind = 'entra' AND entra_tid = ?
+			AND ((? != '' AND email = ?) OR (? != '' AND entra_oid = ?))
+		ORDER BY disabled_at IS NOT NULL, id LIMIT 1`,
+		objectID, objectID, tenantID, email, email, objectID, objectID).Scan(&id, &bound, &disabled, &what)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	state := "active"
+	switch {
+	case disabled:
+		state = "disabled"
+	case !bound:
+		state = "pending first sign-in"
+	}
+	fix := "use it, or delete it first"
+	if disabled {
+		fix = "enable it or delete it first"
+	}
+	return existsError(fmt.Sprintf("an Entra user with that %s already exists (%s, %s): %s", what, UserRef(id), state, fix))
+}
+
+// existsError is ErrExists with a message that says what to do.
+type existsError string
+
+func (e existsError) Error() string { return string(e) }
+func (e existsError) Unwrap() error { return ErrExists }
 
 // EntraIdentity is what a validated ID token says about the user.
 type EntraIdentity struct {

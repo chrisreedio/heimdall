@@ -124,6 +124,62 @@ func TestUserCommands(t *testing.T) {
 	}
 }
 
+func TestUserDelete(t *testing.T) {
+	awayFromStepBoundary()
+	c := newCLI(t)
+	c.ok("init")
+	const tenantA, tenantB = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+	secret := []byte("12345678901234567890")
+	newTOTPSecret = func() []byte { return bytes.Clone(secret) }
+	t.Cleanup(func() { newTOTPSecret = auth.NewTOTPSecret })
+	if out, err := c.user(t, cmdUserCreate, "correct horse battery\n"+totpNow(secret, 0)+"\n", "--password-stdin", "--admin", "admin@example.com"); err != nil {
+		t.Fatalf("create admin: %v\n%s", err, out)
+	}
+	c.ok("user", "create", "--entra", "--tenant", tenantA, "alice@example.com") // #2
+	c.ok("user", "create", "--entra", "--tenant", tenantB, "alice@example.com") // #3
+
+	// A second Entra user with the same email in a tenant is refused.
+	if _, _, err := c.run("user", "create", "--entra", "--tenant", tenantA, "Alice@example.com"); err == nil ||
+		!strings.Contains(err.Error(), "already exists (#2, pending first sign-in)") {
+		t.Errorf("duplicate Entra user: %v", err)
+	}
+
+	if _, _, err := c.run("user", "delete", "--yes"); err == nil {
+		t.Error("no user accepted")
+	}
+	if _, _, err := c.run("user", "delete", "--yes", "#x"); err == nil || !strings.Contains(err.Error(), "#<id>") {
+		t.Errorf("bad ID: %v", err)
+	}
+	if _, _, err := c.run("user", "delete", "--yes", "#99"); err == nil || !strings.Contains(err.Error(), "not found") {
+		t.Errorf("unknown ID: %v", err)
+	}
+	// An email two users share lists both, so the caller can pick.
+	_, _, err := c.run("user", "delete", "--yes", "alice@example.com")
+	if err == nil || !strings.Contains(err.Error(), "#2, entra, active") || !strings.Contains(err.Error(), "#3, entra, active") {
+		t.Errorf("ambiguous email: %v", err)
+	}
+	// Without --yes nothing happens.
+	if _, _, err := c.run("user", "delete", "#3"); err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Errorf("no --yes: %v", err)
+	}
+	if out := c.ok("user", "list"); strings.Count(out, "alice@example.com") != 2 {
+		t.Fatalf("deleted without --yes:\n%s", out)
+	}
+	_, errOut, err := c.run("user", "delete", "#3", "--yes")
+	if err != nil || !strings.Contains(errOut, "Deleted alice@example.com (#3, entra, active)") {
+		t.Fatalf("delete: %v\n%s", err, errOut)
+	}
+	// Now the email is unambiguous.
+	c.ok("user", "delete", "--yes", "alice@example.com")
+	if out := c.ok("user", "list"); strings.Contains(out, "alice@") {
+		t.Errorf("still listed:\n%s", out)
+	}
+	// The last admin who can sign in stays.
+	if _, _, err := c.run("user", "delete", "--yes", "admin@example.com"); err == nil || !strings.Contains(err.Error(), "last active admin") {
+		t.Errorf("last admin: %v", err)
+	}
+}
+
 func TestSharedEmailPickedByKind(t *testing.T) {
 	awayFromStepBoundary()
 	c := newCLI(t)

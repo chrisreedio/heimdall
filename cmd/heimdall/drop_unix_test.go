@@ -115,7 +115,7 @@ var hubUserCommands = map[string]bool{
 	"notify preview": true, "offenders": true, "org create": true, "org list": true, "plan add": true,
 	"plan close": true, "plan create": true, "plan done": true, "plan list": true, "plan rm": true,
 	"plan show": true, "plan undo": true, "report": true, "sbom": true, "serve": true, "surface": true,
-	"user create": true, "user disable": true, "user enable": true, "user grant": true, "user list": true,
+	"user create": true, "user delete": true, "user disable": true, "user enable": true, "user grant": true, "user list": true,
 	"user mcp-token": true, "user passwd": true, "user reset-totp": true, "user revoke": true,
 	"window add": true, "window list": true, "window rm": true,
 }
