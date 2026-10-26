@@ -5,6 +5,7 @@ package ipinfo
 import (
 	"net/netip"
 	"slices"
+	"time"
 
 	"github.com/realmwatch/heimdall/internal/store"
 )
@@ -17,6 +18,21 @@ func Internal(a netip.Addr) bool {
 	a = a.Unmap()
 	return a.IsValid() && (Tailnet.Contains(a) || Tailnet6.Contains(a) || a.IsLoopback() || a.IsPrivate() || a.IsLinkLocalUnicast())
 }
+
+// InternalRanges are nobody's attacker: the tailnet, private networks,
+// loopback, link-local, and the unspecified and multicast space. Bans
+// never target them and the web offender list never stores them.
+var InternalRanges = []netip.Prefix{
+	Tailnet, Tailnet6,
+	netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("172.16.0.0/12"), netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("169.254.0.0/16"), netip.MustParsePrefix("0.0.0.0/8"),
+	netip.MustParsePrefix("224.0.0.0/4"), netip.MustParsePrefix("fc00::/7"), netip.MustParsePrefix("fe80::/10"),
+	netip.MustParsePrefix("::1/128"), netip.MustParsePrefix("::/128"), netip.MustParsePrefix("ff00::/8"),
+}
+
+// SignInLookback is how far back a Heimdall sign-in from an address makes
+// it friendly, to bans and to the web offender list.
+const SignInLookback = 30 * 24 * time.Hour
 
 // SyncedAutomation reports whether the address is in a range a synced
 // source labels automation (a deploy service's published ranges). Manual

@@ -29,17 +29,10 @@ type Guard struct {
 }
 
 // signInLookback is how far back a Heimdall sign-in vouches for an address.
-const signInLookback = 30 * 24 * time.Hour
+const signInLookback = ipinfo.SignInLookback
 
-// internalRanges are never banned: the tailnet, private networks,
-// loopback, link-local, and the unspecified and multicast space.
-var internalRanges = []netip.Prefix{
-	ipinfo.Tailnet, ipinfo.Tailnet6,
-	netip.MustParsePrefix("10.0.0.0/8"), netip.MustParsePrefix("172.16.0.0/12"), netip.MustParsePrefix("192.168.0.0/16"),
-	netip.MustParsePrefix("127.0.0.0/8"), netip.MustParsePrefix("169.254.0.0/16"), netip.MustParsePrefix("0.0.0.0/8"),
-	netip.MustParsePrefix("224.0.0.0/4"), netip.MustParsePrefix("fc00::/7"), netip.MustParsePrefix("fe80::/10"),
-	netip.MustParsePrefix("::1/128"), netip.MustParsePrefix("::/128"), netip.MustParsePrefix("ff00::/8"),
-}
+// internalRanges are never banned (ipinfo.InternalRanges).
+var internalRanges = ipinfo.InternalRanges
 
 // LoadGuard reads what the guard checks. edge nil is the built-in list;
 // vouched are addresses IP awareness knew among the failures.
