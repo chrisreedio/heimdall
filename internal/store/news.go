@@ -201,6 +201,13 @@ func (s *Store) PruneNews(ctx context.Context, cutoff time.Time) (int, error) {
 // one of its CVEs is an open finding there (the advisory's own ID or one of
 // its aliases). hostID 0 recomputes every host. Matches that still hold
 // keep their first matched_at; resolved findings drop theirs.
+//
+// hostID 0 also recounts every host's findings, since it runs after the
+// incidents themselves changed (going live or closing changes what's "in
+// the news"). One host's recount is skipped unless its matches changed:
+// it runs after SetFindings, which already counted against the same
+// incidents, and a recount of a host with tens of thousands of findings
+// isn't free.
 func (s *Store) MatchNews(ctx context.Context, hostID int64, at time.Time) error {
 	ts := at.UTC().Format(timeLayout)
 	return s.tx(ctx, func(tx *sql.Tx) error {
@@ -231,11 +238,19 @@ func (s *Store) MatchNews(ctx context.Context, hostID int64, at time.Time) error
 			GROUP BY m.item_id, m.host_id`, hostID); err != nil {
 			return err
 		}
-		if _, err := tx.ExecContext(ctx, `
-			DELETE FROM news_matches WHERE kind = 'confirmed' AND (?1 = 0 OR host_id = ?1)
-			  AND (item_id, host_id) NOT IN (SELECT item_id, host_id FROM temp.current_news_matches)`, hostID); err != nil {
+		var added int64
+		if err := tx.QueryRowContext(ctx, `
+			SELECT count(*) FROM temp.current_news_matches c WHERE NOT EXISTS (
+				SELECT 1 FROM news_matches m WHERE m.kind = 'confirmed' AND m.item_id = c.item_id AND m.host_id = c.host_id)`).Scan(&added); err != nil {
 			return err
 		}
+		res, err := tx.ExecContext(ctx, `
+			DELETE FROM news_matches WHERE kind = 'confirmed' AND (?1 = 0 OR host_id = ?1)
+			  AND (item_id, host_id) NOT IN (SELECT item_id, host_id FROM temp.current_news_matches)`, hostID)
+		if err != nil {
+			return err
+		}
+		removed, _ := res.RowsAffected()
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO news_matches (item_id, host_id, kind, reason, matched_at)
 			SELECT item_id, host_id, 'confirmed', reason, ? FROM temp.current_news_matches WHERE true
@@ -245,7 +260,9 @@ func (s *Store) MatchNews(ctx context.Context, hostID int64, at time.Time) error
 		if _, err := tx.ExecContext(ctx, `DELETE FROM temp.current_news_matches`); err != nil {
 			return err
 		}
-		// Incidents going live or closing change which findings are "in the news".
+		if hostID != 0 && added == 0 && removed == 0 {
+			return nil
+		}
 		return refreshFindingCounts(ctx, tx, hostID)
 	})
 }

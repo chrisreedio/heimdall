@@ -94,10 +94,11 @@ func (e *Engine) EvaluateHost(ctx context.Context, host store.IngestHost) (HostR
 	// npm can install a package at several versions: the oldest version
 	// stands for them all, and it's dev only if every copy is.
 	seen := map[[3]string]int{}
+	fixedVersions := cachedFixedVersions(e.Store.FixedVersions)
 	for _, t := range order {
 		ti := targets[t]
 		for _, id := range ids[t.key] {
-			fixedList, err := e.Store.FixedVersions(ctx, id, t.key.Ecosystem, t.key.Name)
+			fixedList, err := fixedVersions(ctx, id, t.key.Ecosystem, t.key.Name)
 			if err != nil {
 				return res, err
 			}
@@ -131,6 +132,27 @@ func (e *Engine) EvaluateHost(ctx context.Context, host store.IngestHost) (HostR
 	res.Findings = len(fs)
 	res.Added, res.Resolved, err = e.Store.SetFindings(ctx, host.ID, fs, e.Now())
 	return res, err
+}
+
+type fixedVersionsFunc func(ctx context.Context, advisoryID, ecosystem, pkg string) ([]string, error)
+
+// cachedFixedVersions remembers load's answers for one evaluation: they
+// don't depend on the installed version, and the same advisory and package
+// come up once per version, site and lockfile that has the package.
+func cachedFixedVersions(load fixedVersionsFunc) fixedVersionsFunc {
+	cache := map[[3]string][]string{}
+	return func(ctx context.Context, advisoryID, ecosystem, pkg string) ([]string, error) {
+		k := [3]string{advisoryID, ecosystem, pkg}
+		if v, ok := cache[k]; ok {
+			return v, nil
+		}
+		v, err := load(ctx, advisoryID, ecosystem, pkg)
+		if err != nil {
+			return nil, err
+		}
+		cache[k] = v
+		return v, nil
+	}
 }
 
 // target is one OSV query owned by the OS (site == "") or by a site.

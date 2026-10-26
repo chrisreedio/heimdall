@@ -3,9 +3,12 @@
 package findings
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -350,6 +353,71 @@ func TestSiteNpmFindings(t *testing.T) {
 	push(snapshot.NpmPackage{Name: "semver", Version: "7.5.4"})
 	if fs = npm(); len(fs) != 0 {
 		t.Errorf("after the update: %+v", fs)
+	}
+}
+
+// FixedVersions is looked up once per advisory and package in an
+// evaluation, and each copy still gets the fix for its own version.
+func TestFixedVersionsCachedPerEvaluation(t *testing.T) {
+	e := newEnv(t)
+	b, err := os.ReadFile("../snapshot/testdata/debian12-v2.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s snapshot.Snapshot
+	json.Unmarshal(b, &s)
+	s.Format, s.Containers, s.Lockfiles = snapshot.FormatV4, []snapshot.Container{}, []snapshot.Lockfile{}
+	s.CollectedAt = e.now
+	other := s.Sites[0]
+	other.Root, other.ComposerPackages = "/home/forge/api.example.com", []snapshot.ComposerPackage{}
+	s.Sites[0].NpmPackages = []snapshot.NpmPackage{{Name: "semver", Version: "6.3.0"}}
+	other.NpmPackages = []snapshot.NpmPackage{{Name: "semver", Version: "7.5.0"}}
+	s.Sites = append(s.Sites, other)
+	raw, _ := json.Marshal(s)
+	acc := ingest.Accepter{Store: e.st, Now: func() time.Time { return e.now }}
+	if res, err := acc.Accept(t.Context(), e.host, "push", raw); err != nil || res.Status != http.StatusCreated {
+		t.Fatalf("store snapshot: %+v %v", res, err)
+	}
+	if _, err := e.eng.EvaluateHost(t.Context(), e.host); err != nil {
+		t.Fatal(err)
+	}
+	fixed := map[string]string{}
+	for _, f := range e.open() {
+		if f.Package == "semver" {
+			fixed[f.SiteRoot+" "+f.Version] = f.FixedVersion
+		}
+	}
+	want := map[string]string{"/home/forge/example.com 6.3.0": "6.3.1", "/home/forge/api.example.com 7.5.0": "7.5.2"}
+	if !maps.Equal(fixed, want) {
+		t.Errorf("fixed versions %v, want %v", fixed, want)
+	}
+
+	var loads int
+	boom := errors.New("boom")
+	fv := cachedFixedVersions(func(_ context.Context, id, eco, pkg string) ([]string, error) {
+		loads++
+		if pkg == "bad" {
+			return nil, boom
+		}
+		return []string{id + eco + pkg}, nil
+	})
+	for range 3 {
+		if v, err := fv(t.Context(), "A", "npm", "semver"); err != nil || v[0] != "Anpmsemver" {
+			t.Fatal(v, err)
+		}
+	}
+	fv(t.Context(), "A", "npm", "other")
+	fv(t.Context(), "B", "npm", "semver")
+	if loads != 3 {
+		t.Errorf("%d loads, want 3", loads)
+	}
+	for range 2 {
+		if _, err := fv(t.Context(), "A", "npm", "bad"); !errors.Is(err, boom) {
+			t.Errorf("err %v", err)
+		}
+	}
+	if loads != 5 {
+		t.Errorf("errors were cached: %d loads", loads)
 	}
 }
 
