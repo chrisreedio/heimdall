@@ -611,6 +611,8 @@ var funcs = template.FuncMap{
 		return list[:n]
 	},
 	"findingsCap": func() int { return findingsCap },
+	// attn says how many need attention: "46 fixable now · 16 to watch (no fix yet)".
+	"attn": attnText,
 	"chipsFor": func(c report.Counts, v findingsView) map[string]any {
 		return map[string]any{"C": chipCounts{c}, "V": v}
 	},
