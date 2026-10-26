@@ -133,6 +133,7 @@ type server struct {
 	tokenLimit tokenLimiter // MCP token creation, per user
 	// handoffLimit: one hand-off per site and agent every few minutes.
 	handoffLimit handoffLimiter
+	nav          navCache // the sidebar's badges, per user (nav.go)
 }
 
 // New returns the UI handler.
@@ -437,11 +438,16 @@ type page struct {
 	News    bool             // threat news is on (shows the nav item)
 	MCP     bool             // MCP is on (shows the AI assistants link)
 	CF      bool             // [cloudflare] is on (shows the Cloudflare link to operators)
+	Perm    navPerm          // which sidebar links to show (nav.go)
+	Counts  navCounts        // the sidebar's badges
 	Body    any
 }
 
 func (s *server) render(w http.ResponseWriter, r *http.Request, status int, name string, v *auth.Viewer, title, nav string, body any) {
 	p := page{Title: title, Nav: nav, Viewer: v, Body: body}
+	if v != nil {
+		p.Perm, p.Counts = navPermOf(v), s.navCountsFor(r, v)
+	}
 	if v != nil && v.IsAdmin && s.cfg.Updates != nil {
 		if rel, ok := s.cfg.Updates(); ok {
 			p.Update = &rel
@@ -611,6 +617,18 @@ var funcs = template.FuncMap{
 		return list[:n]
 	},
 	"findingsCap": func() int { return findingsCap },
+	// navItem is one sidebar link (layout.html): nav names its icon and
+	// marks it current; class is "bad" for a badge in alarm colors, or a
+	// class for the link.
+	"navItem": func(p page, href, nav, label string, count int, class any) map[string]any {
+		tone, cls := "", ""
+		if c, ok := class.(string); ok && c == "bad" {
+			tone = c
+		} else if ok {
+			cls = c
+		}
+		return map[string]any{"Href": href, "Icon": nav, "Label": label, "Count": count, "Tone": tone, "Class": cls, "Current": p.Nav == nav}
+	},
 	// attn says how many need attention: "46 fixable now · 16 to watch (no fix yet)".
 	"attn": attnText,
 	"chipsFor": func(c report.Counts, v findingsView) map[string]any {

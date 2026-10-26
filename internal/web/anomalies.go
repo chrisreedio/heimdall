@@ -71,5 +71,6 @@ func (s *server) anomalyAction(w http.ResponseWriter, r *http.Request, v *auth.V
 		s.renderAnomalies(w, r, v, http.StatusBadRequest, userError(err))
 		return
 	}
+	s.nav.forget(v.UserID) // its badge counts this anomaly
 	http.Redirect(w, r, "/anomalies", http.StatusSeeOther)
 }

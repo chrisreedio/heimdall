@@ -53,7 +53,7 @@ func TestBansPageAdmin(t *testing.T) {
 	for _, want := range []string{"203.0.113.66", "203.0.113.77", "Waiting for approval", `id="ban-` + strconv.FormatInt(mine, 10) + `"`,
 		"hosts 1 → 2.0", "failures 50 → 5.7", "example.com", "turn on", "Pause all Cloudflare writes",
 		"permissionGroupKeys=%5B%7B%22key%22%3A%22firewall_services%22", "Account &gt; Account Filter Lists &gt; Edit",
-		"no write token", `aria-current="page">Bans`, "ban.proposed"} {
+		"no write token", `title="Bans" aria-current="page"`, "ban.proposed"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("page missing %q", want)
 		}

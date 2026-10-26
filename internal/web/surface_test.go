@@ -56,7 +56,7 @@ func TestSurfacePageCloudflareOn(t *testing.T) {
 	b := e.get("/surface", signedIn(e)).Body.String()
 	for _, want := range []string{idCell("example.com"), idCell("www.example.com"), idCell("other.example.com"), idCell("old.example.com"),
 		"origin exposed", "dangling", "Pro Website", "zone setting to fix", "no permission", "proxy turned off", "203.0.113.21",
-		`pill muted">no record<`, `aria-current="page">Surface`} {
+		`pill muted">no record<`, `title="Surface" aria-current="page"`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("admin page missing %q", want)
 		}

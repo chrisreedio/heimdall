@@ -64,7 +64,7 @@ func TestSitesPage(t *testing.T) {
 		t.Fatalf("status %d", w.Code)
 	}
 	b := w.Body.String()
-	for _, want := range []string{"example.com", siteRoot, "/hosts/acme/app-01", "8.3", "11.31.0", "nginx", `aria-current="page">Sites`} {
+	for _, want := range []string{"example.com", siteRoot, "/hosts/acme/app-01", "8.3", "11.31.0", "nginx", `title="Sites" aria-current="page"`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("sites page missing %q", want)
 		}
