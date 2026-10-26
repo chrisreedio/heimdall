@@ -27,7 +27,7 @@ export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
-VERSION=0.4.40
+VERSION=0.4.41
 FORMAT=heimdall.snapshot/v4
 
 die() { printf 'heimdall-collect: %s\n' "$*" >&2; exit 1; }
@@ -1213,7 +1213,7 @@ RELEASES=${HEIMDALL_RELEASES:-https://github.com/realmwatch/heimdall/releases/do
 # release workflow for a v* tag. cosign checks it: a pinned build, fetched
 # once into /usr/local/lib/heimdall and checked against its hash each use.
 COSIGN_VERSION=v3.1.4
-RELEASE_SIGNER='^https://github.com/(chrisreedio|realmwatch)/heimdall/\.github/workflows/release\.yml@refs/tags/v'
+RELEASE_SIGNER='^https://github.com/realmwatch/heimdall/\.github/workflows/release\.yml@refs/tags/v'
 
 # cosign_bin: print the path of the cosign to check signatures with,
 # fetching the pinned build first if it's missing or doesn't match.

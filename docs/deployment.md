@@ -166,6 +166,8 @@ Your config, data, Tailscale and Caddy settings and the unit's `LoadCredential` 
 
 Every release's `SHA256SUMS` is signed with Sigstore by this repository's release workflow, for a `v*` tag. It lists every other file in the release. `install-hub.sh`, `install.sh`, `install-windows.ps1`, `heimdall upgrade` and `heimdall-collect upgrade` all refuse a release whose signature doesn't check out, so release files swapped after the fact (with a stolen token, for example) or changed by a mirror or proxy are never installed.
 
+The installers and upgraders from v0.4.41 on accept only signatures from `realmwatch/heimdall`. Releases up to v0.4.31 were signed under the repository's old name, so they no longer pass: installing or rolling back to one of them needs `--skip-signature-check`.
+
 They check it with [cosign](https://github.com/sigstore/cosign). They don't use whatever `cosign` happens to be installed: they use a pinned build, whose version and SHA-256 are in the installer. It's fetched once from cosign's GitHub release, checked against its pinned hash every time it's used, and kept in `/usr/local/lib/heimdall` (`C:\ProgramData\Heimdall` on Windows). It's about 140 MB. On an architecture with no pinned build (other than amd64, arm64 and, for collectors, armv7), an installed `cosign` is used, and with none the install stops.
 
 The check needs outbound HTTPS to GitHub, as the install already does, and to Sigstore's `tuf-repo-cdn.sigstore.dev` for the current signing root (with revocations). Without it the check fails and nothing is installed.

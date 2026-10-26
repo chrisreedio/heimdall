@@ -30,9 +30,8 @@ import (
 const (
 	cosignVersion = "v3.1.4"
 	// releaseSigner is the certificate identity a release must be signed
-	// by. The old repo name stays until no installs older than the move
-	// remain.
-	releaseSigner = `^https://github.com/(chrisreedio|realmwatch)/heimdall/\.github/workflows/release\.yml@refs/tags/v`
+	// by: this repo's release workflow, for a v* tag.
+	releaseSigner = `^https://github.com/realmwatch/heimdall/\.github/workflows/release\.yml@refs/tags/v`
 	releaseIssuer = "https://token.actions.githubusercontent.com"
 )
 

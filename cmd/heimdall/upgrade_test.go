@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -277,6 +278,23 @@ func TestSignaturePinsMatch(t *testing.T) {
 	for _, p := range append(sh, "collector/install-windows.ps1") {
 		if strings.Contains(read(p), "have cosign") {
 			t.Errorf("%s still makes the signature check optional", p)
+		}
+		if strings.Contains(read(p), "chrisreedio") {
+			t.Errorf("%s still accepts the old repo's signatures", p)
+		}
+	}
+	// Only this repo's release workflow, for a v* tag, signs a release.
+	re := regexp.MustCompile(releaseSigner)
+	for id, want := range map[string]bool{
+		"https://github.com/realmwatch/heimdall/.github/workflows/release.yml@refs/tags/v0.4.41":                true,
+		"https://github.com/chrisreedio/heimdall/.github/workflows/release.yml@refs/tags/v0.4.31":               false,
+		"https://github.com/realmwatch/heimdall/.github/workflows/ci.yml@refs/tags/v0.4.41":                     false,
+		"https://github.com/realmwatch/heimdall/.github/workflows/release.yml@refs/heads/main":                  false,
+		"https://github.com/realmwatch/heimdall-fork/.github/workflows/release.yml@refs/tags/v1":                false,
+		"https://example.com/https://github.com/realmwatch/heimdall/.github/workflows/release.yml@refs/tags/v1": false,
+	} {
+		if re.MatchString(id) != want {
+			t.Errorf("signer %q accepted = %v, want %v", id, !want, want)
 		}
 	}
 }
