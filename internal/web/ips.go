@@ -287,7 +287,7 @@ func (s *server) ipPolicySet(w http.ResponseWriter, r *http.Request, v *auth.Vie
 		return
 	}
 	p := store.IPPolicy{OrgID: orgID, TailnetOnly: r.PostForm.Get("tailnet_only") == "on",
-		AllowServices: r.PostForm.Get("allow_services") == "on"}
+		AllowServices: r.PostForm.Get("allow_services") == "on", CountServices: r.PostForm.Get("count_services") == "on"}
 	if err := s.st.SetIPPolicy(r.Context(), actorOf(v), p, s.now()); err != nil {
 		s.fail(w, r, v, err)
 		return

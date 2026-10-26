@@ -26,6 +26,7 @@
     <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.Org.Slug}}">
     <label class="check"><input type="checkbox" name="tailnet_only"{{if .Policy.TailnetOnly}} checked{{end}}> SSH only from the tailnet</label>
     <label class="check" title="Forge, Ploi and the like deploy over the public internet from published ranges"><input type="checkbox" name="allow_services"{{if .Policy.AllowServices}} checked{{end}}> except deploy services</label>
+    <label class="check" title="Forge, Ploi and the like SSH in as root on every deploy"><input type="checkbox" name="count_services"{{if .Policy.CountServices}} checked{{end}}> count deploy-service sessions as privileged access</label>
     <button type="submit" class="secondary">Save policy</button>
   </form>
   <p class="muted small">With the policy on, a privileged session from anywhere but the tailnet, a private network or the server itself raises an alert, even from a labeled address.{{if not .Policy.UpdatedAt.IsZero}} Last changed {{dayAgo (timep .Policy.UpdatedAt)}} by {{.Policy.UpdatedBy}}.{{end}}</p>

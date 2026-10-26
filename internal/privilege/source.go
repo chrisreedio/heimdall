@@ -33,15 +33,8 @@ const (
 )
 
 func (e *Rules) sourceRules(ctx context.Context, host store.IngestHost, snapshotID int64,
-	fresh []store.PrivilegeEvent, windows []store.Window, now time.Time) ([]store.Anomaly, error) {
-	ips := e.IPs
-	if ips == nil {
-		ips = &ipinfo.Resolver{Store: e.Store}
-	}
-	policy, err := e.Store.IPPolicy(ctx, host.OrgID)
-	if err != nil {
-		return nil, err
-	}
+	fresh []store.PrivilegeEvent, windows []store.Window, policy store.IPPolicy,
+	resolve func(store.PrivilegeEvent) ipinfo.Verdict, now time.Time) ([]store.Anomaly, error) {
 	type key struct{ rule, day, source string }
 	type group struct {
 		counts map[string]int
@@ -49,15 +42,11 @@ func (e *Rules) sourceRules(ctx context.Context, host store.IngestHost, snapshot
 		label  string
 	}
 	groups := map[key]*group{}
-	var resolve func(ip, user string, at time.Time) ipinfo.Verdict
 	for _, ev := range fresh {
 		if ev.Source == "" || ev.Source == "?" {
 			continue
 		}
-		if resolve == nil {
-			resolve = ips.Batch(ctx, host.OrgID)
-		}
-		v := resolve(ev.Source, ev.User, ev.At)
+		v := resolve(ev)
 		k := key{day: ev.At.UTC().Format(time.DateOnly), source: ev.Source}
 		switch {
 		case policy.TailnetOnly && !ipinfo.Internal(v.Addr) && !(policy.AllowServices && v.SyncedAutomation()):
