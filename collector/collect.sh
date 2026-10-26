@@ -558,7 +558,9 @@ DEPLOY_TRIGGER=/var/lib/heimdall-collect/deployed
 # - in place: composer.lock (changes when packages do) and
 #   vendor/composer/installed.php (Composer rewrites it when the deployed
 #   commit changes; it leaves vendor/autoload.php alone).
-deploy_watches() {
+#
+# deploy_sites prints "root<TAB>path"; deploy_watches only the paths.
+deploy_sites() {
 	site_list | cut -d '|' -f 1 | head -n 50 | while IFS= read -r root; do
 		zdt=
 		for link in "$root" "${root%/*}"; do
@@ -574,15 +576,94 @@ deploy_watches() {
 		if [ -n "$zdt" ]; then
 			# The folder holding current: the swap, .env and new top-level
 			# entries change it; what's inside releases/ and storage/ doesn't.
-			echo "$zdt"
+			printf '%s\t%s\n' "$root" "$zdt"
 			continue
 		fi
 		for f in "$root/composer.lock" "$root/vendor/composer/installed.php"; do
-			[ ! -f "$f" ] || echo "$f"
+			[ ! -f "$f" ] || printf '%s\t%s\n' "$root" "$f"
 		done
-	done | awk '!seen[$0]++'
+	done | awk -F '\t' '!seen[$2]++'
+}
+
+deploy_watches() {
+	deploy_sites | cut -f 2
 	n=$(site_list | wc -l)
 	[ "$n" -le 50 ] || echo "heimdall-collect: watching deploys of the first 50 of $n sites" >&2
+}
+
+# deploy_unit FILE: print the path unit FILE with its site deploy lines
+# replaced by the current ones, as a block before [Install] that starts
+# with "# Site deploys: <watched> of <found> sites".
+deploy_unit() {
+	pairs=$(deploy_sites)
+	n=$(printf '%s\n' "$pairs" | awk -F '\t' 'NF && !seen[$1]++ { n++ } END { print n + 0 }')
+	found=$(site_list | wc -l | tr -d ' ')
+	block=
+	if [ "$n" -gt 0 ]; then
+		block="# Site deploys: $n of $found sites (heimdall-collect --deploy-watches; install.sh and upgrade refresh it)
+$(printf '%s\n' "$pairs" | cut -f 2 | sed 's/^/PathChanged=/')
+"
+	fi
+	BLOCK=$block awk '
+		/^# Site deploys:/ { skip = 1; next }
+		skip { if ($0 == "") skip = 0; next }
+		$0 == "[Install]" && ENVIRON["BLOCK"] != "" { print ENVIRON["BLOCK"] }
+		{ print }' "$1"
+}
+
+# deploy_count FILE: how many sites a path unit watches for deploys.
+deploy_count() {
+	n=$(sed -n 's/^# Site deploys: \([0-9][0-9]*\) of .*/\1/p' "$1" 2>/dev/null | head -n 1)
+	echo "${n:-0}"
+}
+
+# refresh_deploy_watches: as root, bring the installed path unit's site
+# lines up to date (for `upgrade` when there's nothing newer to install).
+# Quiet unless the list changed.
+refresh_deploy_watches() {
+	unit=/etc/systemd/system/heimdall-collect-changes.path
+	if [ ! -f "$unit" ] || [ ! -d /run/systemd/system ]; then return 0; fi
+	new=$unit.new
+	if deploy_unit "$unit" >"$new" 2>/dev/null && [ "$(cat "$new")" != "$(cat "$unit")" ]; then
+		was=$(deploy_count "$unit")
+		now=$(deploy_count "$new")
+		chmod 0644 "$new"
+		mv -f "$new" "$unit"
+		systemctl daemon-reload && systemctl restart heimdall-collect-changes.path ||
+			echo "heimdall-collect: couldn't restart heimdall-collect-changes.path" >&2
+		echo "heimdall-collect: watching $now sites for deploys (was $was)" >&2
+	fi
+	rm -f "$new"
+}
+
+# ── Event reports ───────────────────────────────────────────────────────────
+# heimdall-collect-soon.service runs `event-allowed` (as root) before it
+# starts a report for a package change, deploy or privileged login. Anyone
+# on the box can set off a deploy report, so at most EVENT_CAP of them go
+# out per rolling hour, well under the hub's 30 per hour per host: the
+# hourly report (heimdall-collect.timer starts it directly) always gets
+# through. The state is one Unix time a line, for the last hour.
+EVENT_CAP=12
+EVENT_STATE=${HEIMDALL_EVENT_STATE:-/var/lib/heimdall-collect/events}
+
+# event_allowed: exit 0 and record the time if fewer than EVENT_CAP event
+# reports started in the last hour; else say so and exit 1 (ExecCondition=
+# then skips the start without failing).
+event_allowed() {
+	now=${HEIMDALL_NOW:-}
+	case $now in '' | *[!0-9]*) now=$(date +%s) ;; esac
+	kept=$(awk -v now="$now" '$1 ~ /^[0-9]+$/ && $1 > now - 3600 && $1 <= now { print $1 }' "$EVENT_STATE" 2>/dev/null) || kept=
+	n=$(printf '%s' "$kept" | awk 'END { print NR }')
+	if [ "$n" -ge "$EVENT_CAP" ]; then
+		echo "heimdall-collect: skipping this event report: $n already in the last hour (the limit is $EVENT_CAP); the next hourly report includes the change" >&2
+		return 1
+	fi
+	# A count we can't save never stops a report.
+	if { [ -z "$kept" ] || printf '%s\n' "$kept"; echo "$now"; } >"$EVENT_STATE.tmp" 2>/dev/null; then
+		mv -f "$EVENT_STATE.tmp" "$EVENT_STATE" 2>/dev/null || true
+	fi
+	rm -f "$EVENT_STATE.tmp" 2>/dev/null || true
+	return 0
 }
 
 # deployed: tell the collector a deploy just finished, from a deploy script
@@ -1141,7 +1222,10 @@ upgrade() {
 	*) die "the hub didn't report a release version; give one: heimdall-collect upgrade vX.Y.Z" ;;
 	esac
 	if [ -z "$given" ] && [ -z "$priv" ] && [ -z "$logins" ] && ! newer "${want#v}" "$VERSION"; then
-		echo "heimdall-collect: already up to date ($VERSION; the hub runs $want). To reinstall anyway, e.g. to watch new sites for deploys: sudo heimdall-collect upgrade v$VERSION" >&2
+		echo "heimdall-collect: already up to date ($VERSION; the hub runs $want)" >&2
+		# Still pick up sites added since the install.
+		HEIMDALL_SITES=$sites
+		refresh_deploy_watches
 		return 0
 	fi
 
@@ -1206,10 +1290,19 @@ if [ "${1:-}" = upgrade ] && [ $# -le 5 ]; then
 	upgrade "$@"
 	exit 0
 fi
+# For install.sh (root, with HEIMDALL_ALLOW_ROOT=1): print a path unit
+# with its site deploy lines brought up to date.
+if [ "${1:-}" = --deploy-unit ] && [ $# -eq 2 ]; then
+	[ "$(id -u)" -ne 0 ] || [ "${HEIMDALL_ALLOW_ROOT:-}" = 1 ] || die "refusing to run as root; run as the unprivileged 'heimdall' user"
+	deploy_unit "$2"
+	exit 0
+fi
 [ $# -eq 1 ] || usage
 case $1 in
 --version) echo "$VERSION"; exit 0 ;;
 deployed) deployed; exit 0 ;; # any user, root too: it only touches a file
+# For heimdall-collect-soon.service (root), not for people:
+event-allowed) if event_allowed; then exit 0; else exit 1; fi ;;
 --print | --push | --site-repos | --deploy-watches | --logins) ;;
 *) usage ;;
 esac

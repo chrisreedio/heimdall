@@ -1,6 +1,8 @@
-# Heimdall collector: one report 60s after the last package change or deploy.
-# Not enabled by itself: heimdall-collect-changes.service restarts it on
-# each change, which starts the countdown again.
+# Heimdall collector: one report 60s after the last package change, deploy
+# or privileged login. Not enabled by itself: heimdall-collect-changes.service
+# (and the privilege watch's hook) restart it on each change, which starts
+# the countdown again. It starts heimdall-collect-soon.service, which caps
+# these event reports; the hourly and boot timers start the report directly.
 
 [Unit]
 Description=Heimdall report shortly after a package change or deploy
@@ -9,4 +11,4 @@ Documentation=https://github.com/realmwatch/heimdall/blob/main/docs/collector.md
 [Timer]
 OnActiveSec=60s
 AccuracySec=1s
-Unit=heimdall-collect.service
+Unit=heimdall-collect-soon.service

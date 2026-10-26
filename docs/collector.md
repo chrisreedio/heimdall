@@ -174,7 +174,7 @@ sudo install -m 0400 -o heimdall /dev/stdin /etc/heimdall/token   # paste the to
 # 4. Point it at the hub and schedule it
 sudo install -m 0644 collect.env.example /etc/heimdall/collect.env   # set HEIMDALL_URL
 sudo install -m 0644 heimdall-collect.service heimdall-collect.timer heimdall-collect-boot.timer heimdall-collect-soon.timer \
-  heimdall-collect-changes.service heimdall-collect-changes.path /etc/systemd/system/
+  heimdall-collect-soon.service heimdall-collect-changes.service heimdall-collect-changes.path /etc/systemd/system/
 #    (optional) delete the PathChanged= lines in heimdall-collect-changes.path for package
 #    managers this box doesn't have, and add your sites' deploy markers (see "Reporting
 #    after deploys"); install.sh does both for you
@@ -209,7 +209,7 @@ The hub runs its tripwire rules on every report, so these event reports let it s
 
 1. `heimdall-collect-changes.path` watches the package database: `/var/lib/dpkg/status` (dpkg), `/var/lib/rpm/rpmdb.sqlite` (rpm 4.16+, as on RHEL/Rocky/Alma 9) or `/var/lib/rpm/Packages` (older rpm), `/lib/apk/db/installed` (apk) and `/var/lib/pacman/local` (pacman). `install.sh` keeps only the paths that exist on the box.
 2. Each change starts `heimdall-collect-changes.service`, which only runs `systemctl restart --no-block heimdall-collect-soon.timer`. It runs as root (to talk to systemd) with no network, no capabilities and a read-only filesystem; `systemd-analyze security` rates it 1.1.
-3. `heimdall-collect-soon.timer` (`OnActiveSec=60s`) then starts the usual `heimdall-collect.service`.
+3. `heimdall-collect-soon.timer` (`OnActiveSec=60s`) then starts `heimdall-collect-soon.service`, which starts the usual `heimdall-collect.service`, at most 12 times per rolling hour (see [the cap](#the-cap-on-event-reports)). It's sandboxed like `heimdall-collect-changes.service`, and only writes its count in `/var/lib/heimdall-collect/events`. The hourly and boot timers start `heimdall-collect.service` directly, so the cap never touches them.
 
 Restarting the timer restarts its countdown, so the report goes out 60 seconds after the *last* change. A whole `apt upgrade` sends one report, about a minute after it ends. A change made while a report is running restarts the countdown too, so it gets a report of its own a minute later.
 
@@ -225,6 +225,18 @@ For rpm the path unit watches `rpmdb.sqlite` itself, not `/var/lib/rpm`: read-on
 Both run `/usr/local/lib/heimdall-collect/soon.sh` as root. It returns at once and always succeeds, so it can't slow down or break the package manager. A background process waits until there have been no changes for 60 seconds (a lock directory in `/run` holds the time of the last change), then pushes as the `heimdall` user, just like the hourly cron job. Its output goes to syslog (`logger -t heimdall-collect`). There's no hook for rpm or pacman without systemd; those boxes report hourly.
 
 Event reports count toward the hub's rate limit of 30 reports per hour per host (`[ingest] rate_per_host`; hubs set up before v0.4.13 have `"10/h"` in their config, which still fits hourly reports plus a few events). The 60-second wait keeps a busy upgrade to one of them.
+
+#### The cap on event reports
+
+With systemd, at most **12 event reports** go out per rolling hour: those after package changes, site deploys, `heimdall-collect deployed` and the privilege watch. The hourly report is never capped. Anyone on the server can set off a deploy report, so without a cap a local user could keep the host over the hub's limit of 30 reports an hour, and the hub would reject its hourly reports too. With the cap, a host sends at most about 12 + 1 + (a boot) reports an hour, whatever happens on it.
+
+Past the cap, `heimdall-collect-soon.service` logs one line and skips that report:
+
+```
+heimdall-collect: skipping this event report: 12 already in the last hour (the limit is 12); the next hourly report includes the change
+```
+
+Nothing is lost: every report is a full snapshot, so the next one (hourly, or an event report once the hour has room) includes the change. The count is the Unix times of the last hour's event reports, one a line, in `/var/lib/heimdall-collect/events` (root's, `0600`). The cap needs systemd 243 or later (`ExecCondition=`); older systemd ignores the line and doesn't cap. Without systemd, event reports come only from root's package hooks, so there's no cap.
 
 ## Reporting after deploys
 
@@ -252,7 +264,7 @@ Why these paths, checked with real systemd (252 and 255) and Composer 2.10:
 
 **Limits:**
 - **The first 50 sites**, in the order the collector finds them (nginx, then Apache, then `HEIMDALL_SITES`), at most 100 paths. Every watched path costs systemd an inotify watch on each folder along it. With more sites, `install.sh` prints `watching deploys of the first 50 of N sites`; use `heimdall-collect deployed` for the rest.
-- **The list is made at install time.** A site added later, or one switched between in-place and zero-downtime deploys, is picked up the next time `install.sh` or `sudo heimdall-collect upgrade` runs (`upgrade` with no newer release says it's up to date and changes nothing; give it the current version, e.g. `sudo heimdall-collect upgrade v0.4.38`, to refresh anyway). Until then, `heimdall-collect deployed` covers it.
+- **The list is made at install and upgrade time.** A site added later, or one switched between in-place and zero-downtime deploys, is picked up the next time `install.sh` or `sudo heimdall-collect upgrade` runs. A plain `sudo heimdall-collect upgrade` with no newer release to install still refreshes the list and restarts the path unit, and changes nothing else. It says `watching 3 sites for deploys (was 2)` when the list changed, and nothing about it otherwise. Until then, `heimdall-collect deployed` covers a new site.
 - Only paths that exist when it runs are watched. `cat /etc/systemd/system/heimdall-collect-changes.path` shows the list; the site lines are at the end.
 - Sites are found as described in [Sites & Laravel](#sites--laravel). A site that isn't found (no vhost, not in `HEIMDALL_SITES`) isn't watched.
 
@@ -290,7 +302,9 @@ The `|| true` covers a server where the collector isn't installed (`heimdall-col
 
 - **What anyone can do with the trigger file:** make the collector send one report, about a minute later. `/var/lib/heimdall-collect` is root's (`0755`), so nobody else can replace the file, link it elsewhere or add files next to it. The file itself is `0666` and its content is never read by anything: not by the collector, not by systemd, not by the hub. The report is the normal one, built from the server's own state as `heimdall`, so writing the file can't change what's reported, send data to the hub or run anything.
 - **What it can't do:** start a report sooner than 60 seconds after the last change (every change restarts the countdown), or stop the hourly report.
-- **The worst case:** a local user who touches it about once a minute sends about 60 reports an hour, more than the hub's limit of 30 per hour per host (`[ingest] rate_per_host`). The hub then answers `429` to part of that host's reports, the hourly ones included, until it stops; the collector's journal shows `rate limited by the hub (HTTP 429)`. That user could do the same with any watched site file they can write. Anyone who can run commands on the server could already fill its disk, through `/tmp`; the `0666` file adds no new way to do that.
+- **The worst case is capped.** Touching it about once a minute would mean about 60 reports an hour, more than the hub's limit of 30 per hour per host (`[ingest] rate_per_host`). But event reports are [capped at 12 per rolling hour](#the-cap-on-event-reports), and the hourly report bypasses the cap, so the host stays well under the hub's limit and its hourly reports always get through. The same holds for anyone who can write a watched site file.
+- **What the cap costs:** while someone keeps the cap used up, a genuine event (a deploy, a package change, a `sudo` the privilege watch records) waits for the next hourly report instead of going out a minute later. It's still recorded and sent; only the minute-later report is skipped. Each skip leaves a `skipping this event report` line in `journalctl -u heimdall-collect-soon`, so a steady stream of them is visible.
+- **The disk:** anyone who can run commands on the server can already fill its disk through `/tmp`. The `0666` file adds no new way to do that.
 - **The automatic watches** need nothing from site users: systemd (root) watches the paths, and the collector still reads only `composer.json`, `composer.lock` and `.git/config`, as `heimdall`.
 - **Compared with the sudoers rule** this page used to suggest (`forge ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block heimdall-collect.service`), nothing is added to sudoers, and a deploy user who never had sudo needs none.
 
@@ -299,7 +313,7 @@ The `|| true` covers a server where the collector isn't installed (`heimdall-col
 After a deploy, on the server:
 
 ```sh
-journalctl -u heimdall-collect-soon.timer -u heimdall-collect -n 20 --no-pager   # the countdown, then the report
+journalctl -u heimdall-collect-soon.timer -u heimdall-collect-soon -u heimdall-collect -n 20 --no-pager   # the countdown, the cap, the report
 systemctl list-timers heimdall-collect-soon.timer                                # a countdown in progress
 ```
 

@@ -36,12 +36,13 @@ SHELLCHECK_IMAGE := koalaman/shellcheck:v0.10.0
 COLLECTOR_OUT ?= $(CURDIR)/bin/collector-out
 
 shellcheck:
-	docker run --rm -v "$(CURDIR)/collector:/mnt:ro" $(SHELLCHECK_IMAGE) -s sh /mnt/collect.sh /mnt/install.sh /mnt/privilege-watch.sh /mnt/privilege-hook /mnt/login-watch.sh /mnt/test/run-containers.sh /mnt/test/sites-fixture.sh
+	docker run --rm -v "$(CURDIR)/collector:/mnt:ro" $(SHELLCHECK_IMAGE) -s sh /mnt/collect.sh /mnt/install.sh /mnt/privilege-watch.sh /mnt/privilege-hook /mnt/login-watch.sh /mnt/test/run-containers.sh /mnt/test/sites-fixture.sh /mnt/test/events-deploys.sh
 	docker run --rm -v "$(CURDIR)/deploy:/mnt:ro" $(SHELLCHECK_IMAGE) -s sh /mnt/install-hub.sh /mnt/test/installed-smoke.sh
 
 # Runs collect.sh as an unprivileged user on Debian, Ubuntu, Rocky and
 # Alpine, then validates every snapshot with the hub's strict decoder.
 test-collector: shellcheck
+	collector/test/events-deploys.sh
 	rm -rf "$(COLLECTOR_OUT)"
 	collector/test/run-containers.sh "$(COLLECTOR_OUT)"
 	HEIMDALL_COLLECTOR_OUT="$(COLLECTOR_OUT)" go test -mod=vendor -count=1 -run 'TestCollectorOutput|TestCollectorSites|TestCollectorSiteRepos' -v ./internal/snapshot
@@ -76,7 +77,7 @@ dist:
 	GOOS=linux GOARCH=arm64 go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o dist/heimdall-linux-arm64 ./cmd/heimdall & b=$$!; \
 	wait $$a && wait $$b
 	cp collector/collect.sh collector/collect.ps1 collector/install-windows.ps1 collector/privilege-watch.sh collector/privilege-hook collector/login-watch.sh deploy/heimdall.service deploy/heimdall-collect.service \
-		deploy/heimdall-collect.timer deploy/heimdall-collect-boot.timer deploy/heimdall-collect-soon.timer deploy/heimdall-collect-changes.service \
+		deploy/heimdall-collect.timer deploy/heimdall-collect-boot.timer deploy/heimdall-collect-soon.timer deploy/heimdall-collect-soon.service deploy/heimdall-collect-changes.service \
 		deploy/heimdall-collect-changes.path deploy/collect.env.example deploy/splash.html dist/
 	sed 's/^HEIMDALL_VERSION=dev /HEIMDALL_VERSION=$(VERSION) /' collector/install.sh > dist/install.sh
 	sed 's/^HEIMDALL_VERSION=dev /HEIMDALL_VERSION=$(VERSION) /' deploy/install-hub.sh > dist/install-hub.sh

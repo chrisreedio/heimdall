@@ -1,0 +1,46 @@
+# Heimdall collector: start an event report, at most 12 an hour. Started by
+# heimdall-collect-soon.timer, a minute after the last package change,
+# deploy or privileged login. Anyone can set off a deploy report (see
+# docs/collector.md, "Reporting after deploys"), so these are capped: past
+# the cap it logs one line and skips, and the next hourly report (started by
+# heimdall-collect.timer, never through here) carries the change. The
+# rolling count is in /var/lib/heimdall-collect/events.
+
+[Unit]
+Description=Start a Heimdall event report (at most 12 an hour)
+Documentation=https://github.com/realmwatch/heimdall/blob/main/docs/collector.md
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+StateDirectory=heimdall-collect
+# Exit 1 skips the start without failing the unit.
+ExecCondition=/usr/local/bin/heimdall-collect event-allowed
+ExecStart=systemctl start --no-block heimdall-collect.service
+
+# Root only to talk to systemd and keep the count; it needs nothing else.
+UMask=0077
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_UNIX

@@ -199,8 +199,35 @@ sudo -u heimdall sh -c 'set -a; . /etc/heimdall-collect/collect.env; exec heimda
 	grep -q '"framework_version": "11.0.1"' || fail "the snapshot doesn't have the new release's packages"
 reported_after "in-place deploy" inplace_deploy
 reported_after "heimdall-collect deployed" announced
+
+step "Event reports are capped at 12 an hour; past it, one line and no report"
+before=$(systemctl show -P InvocationID heimdall-collect.service)
+now=$(date +%s)
+i=0
+while [ $i -lt 12 ]; do echo "$((now - i))"; i=$((i + 1)); done | sudo tee /var/lib/heimdall-collect/events >/dev/null
+sudo systemctl start heimdall-collect-soon.service || fail "the soon service failed past the cap (it should skip)"
+sleep 2
+[ "$(systemctl show -P InvocationID heimdall-collect.service)" = "$before" ] || fail "a report started past the cap"
+sudo journalctl -u heimdall-collect-soon.service --no-pager | grep -q 'skipping this event report: 12 already' ||
+	fail "no skip line in the soon service's journal"
+sudo rm /var/lib/heimdall-collect/events
+sudo systemctl start heimdall-collect-soon.service || fail "the soon service failed under the cap"
+n=0
+while [ "$(systemctl show -P InvocationID heimdall-collect.service)" = "$before" ]; do
+	n=$((n + 1)); [ "$n" -lt 30 ] || fail "no report under the cap"; sleep 1
+done
+
+step "A plain upgrade, already current, picks up a new site for deploys"
+sudo mkdir -p /srv/new-site
+printf '{"packages": []}\n' | sudo tee /srv/new-site/composer.lock >/dev/null
+sudo sed -i "s#^HEIMDALL_SITES=.*#HEIMDALL_SITES='/srv/zdt-site/current /srv/inplace-site /srv/new-site'#" /etc/heimdall-collect/collect.env
+expect 'watching 3 sites for deploys (was 2)' sudo heimdall-collect upgrade
+grep -qx 'PathChanged=/srv/new-site/composer.lock' "$unit" || fail "upgrade didn't add the new site"
+systemctl is-active --quiet heimdall-collect-changes.path || fail "the path unit isn't running after the refresh"
+out=$(sudo heimdall-collect upgrade 2>&1) || fail "upgrade failed: $out"
+case $out in *watching*) fail "upgrade with nothing new still said: $out" ;; esac
 sudo systemctl start heimdall-collect.timer
-sudo rm -rf /srv/zdt-site /srv/inplace-site
+sudo rm -rf /srv/zdt-site /srv/inplace-site /srv/new-site
 
 step "Upgrade in place (hub first, then the collector)"
 sudo sh "$dist/install-hub.sh" --from-dir "$dist" --skip-signature-check

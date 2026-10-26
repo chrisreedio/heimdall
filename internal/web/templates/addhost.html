@@ -51,7 +51,7 @@
     <summary>Report after deploys</summary>
     <p class="muted">With systemd, the server also reports about a minute after a site it found at install time deploys. To cover any site, end the deploy script (Laravel Forge's or Ploi's, for example) with this line. It needs no sudo, returns at once and never fails the deploy.</p>
     <div class="codebox"><pre id="cmd-deploy">heimdall-collect deployed || true</pre><button type="button" class="copy" data-copy="cmd-deploy" hidden>Copy</button></div>
-    <p class="muted">Sites added later are watched once the collector is reinstalled (<code>sudo heimdall-collect upgrade vX.Y.Z</code>, with the version it runs). Servers without systemd report deploys hourly: see <a href="https://github.com/realmwatch/heimdall/blob/main/docs/collector.md#reporting-after-deploys">Reporting after deploys</a>.</p>
+    <p class="muted">Sites added later are watched after the next <code>sudo heimdall-collect upgrade</code>. Servers without systemd report deploys hourly: see <a href="https://github.com/realmwatch/heimdall/blob/main/docs/collector.md#reporting-after-deploys">Reporting after deploys</a>.</p>
   </details>
   <div class="actions start">
     {{if .Host.AutoName}}<a class="button" href="/hosts">Go to Hosts</a>{{else}}<a class="button" href="{{hostURL .Host.OrgSlug .Host.Name}}">Open {{.Host.Name}}</a>{{end}}
