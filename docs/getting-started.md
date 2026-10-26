@@ -72,7 +72,7 @@ heimdall serve                                 # UI on 127.0.0.1:8080, ingest on
 - **Over your tailnet:** run `tailscale serve --bg 8080` on the hub and set `ui.base_url` to the `https://…ts.net` address it prints. Caddy works the same way.
 - **Plain http is refused off loopback**, because session cookies must never cross the network unencrypted.
 - **Sign-in needs** email, password and the current 6-digit code. Each code works only once.
-- **Accounts:** `user list`, `user disable|enable`, `user passwd` and `user reset-totp`. All four end the user's active sessions.
+- **Accounts:** `user list`, `user disable|enable`, `user passwd` and `user reset-totp`. All four end the user's active sessions. `user delete --yes <email|#id>` removes an account for good, with its roles, sessions and tokens (the audit log keeps its entries); it won't delete the last active admin.
 
 ## Things you need to know
 

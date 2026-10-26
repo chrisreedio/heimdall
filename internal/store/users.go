@@ -59,6 +59,13 @@ func scanUser(row interface{ Scan(...any) error }) (User, error) {
 	return u, nil
 }
 
+// newUserID is the next user ID, never one a deleted user had: the audit
+// log and sign-in history name users by ID ("user:<id>"), and SQLite reuses
+// the highest rowid once that row is gone, which would hand a deleted
+// user's history to the next account. DeleteUser records the ID it frees.
+const newUserID = `(SELECT max(coalesce((SELECT max(id) FROM users), 0),
+	coalesce((SELECT max(json_extract(detail, '$.id')) FROM audit_log WHERE action = 'user.delete'), 0)) + 1)`
+
 // CreateLocalUser adds a password + TOTP account.
 func (s *Store) CreateLocalUser(ctx context.Context, actor, email, displayName string, isAdmin bool, passwordHash string, totpSecret []byte) (int64, error) {
 	email, err := NormalizeEmail(email)
@@ -76,8 +83,8 @@ func (s *Store) CreateLocalUser(ctx context.Context, actor, email, displayName s
 	var id int64
 	err = s.tx(ctx, func(tx *sql.Tx) error {
 		err := tx.QueryRowContext(ctx, `
-			INSERT INTO users (kind, email, display_name, is_admin, password_hash, totp_secret)
-			VALUES ('local', ?, ?, ?, ?, ?) RETURNING id`,
+			INSERT INTO users (id, kind, email, display_name, is_admin, password_hash, totp_secret)
+			VALUES (`+newUserID+`, 'local', ?, ?, ?, ?, ?) RETURNING id`,
 			email, displayName, boolInt(isAdmin), passwordHash, totpSecret).Scan(&id)
 		if isUnique(err) {
 			return fmt.Errorf("user %s: %w", email, ErrExists)
@@ -168,6 +175,51 @@ func (s *Store) SetUserDisabled(ctx context.Context, actor, email string, disabl
 			return err
 		}
 		return audit(ctx, tx, AuditEntry{Actor: actor, Action: action, Target: email})
+	})
+}
+
+// SignInMethods says which ways into the web UI are switched on, so the last-admin
+// guard counts only admins who can actually sign in.
+type SignInMethods struct{ Local, Entra bool }
+
+func (si SignInMethods) allows(kind string) bool {
+	return kind == "local" && si.Local || kind == "entra" && si.Entra
+}
+
+// DeleteUser removes a user for good. Their memberships, sessions and MCP
+// tokens go with them (ON DELETE CASCADE); plans and acknowledgements they
+// made keep their rows with no author; the audit log keeps its entries.
+// actor "user:<id>" can't delete themselves, and nobody can delete the
+// last active global admin who can sign in with the methods in si.
+func (s *Store) DeleteUser(ctx context.Context, actor string, id int64, si SignInMethods) error {
+	if actor == fmt.Sprintf("user:%d", id) {
+		return errors.New("you can't delete the account you're signed in with")
+	}
+	return s.tx(ctx, func(tx *sql.Tx) error {
+		u, err := scanUser(tx.QueryRowContext(ctx, `SELECT `+userColumns+` FROM users WHERE id = ?`, id))
+		if errors.Is(err, ErrNotFound) {
+			return fmt.Errorf("user %s: %w", UserRef(id), ErrNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		if u.IsAdmin && !u.Disabled && si.allows(u.Kind) {
+			var others int
+			if err := tx.QueryRowContext(ctx, `
+				SELECT count(*) FROM users WHERE is_admin = 1 AND disabled_at IS NULL AND id != ?
+					AND ((kind = 'local' AND ?) OR (kind = 'entra' AND ?))`,
+				id, si.Local, si.Entra).Scan(&others); err != nil {
+				return err
+			}
+			if others == 0 {
+				return errors.New("you can't delete the last active admin who can sign in; make another admin first")
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM users WHERE id = ?`, id); err != nil {
+			return err
+		}
+		return audit(ctx, tx, AuditEntry{Actor: actor, Action: "user.delete", Target: firstNonEmpty(u.Email, UserRef(id)),
+			Detail: map[string]any{"id": id, "kind": u.Kind, "email": u.Email, "admin": u.IsAdmin}})
 	})
 }
 

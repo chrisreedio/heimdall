@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/realmwatch/heimdall/internal/auth"
@@ -38,6 +39,7 @@ var adminNotices = map[string]string{
 	"revoked":  "Role revoked.",
 	"disabled": "User disabled; their sessions have ended.",
 	"enabled":  "User enabled.",
+	"deleted":  "User deleted, with their roles, sessions and tokens. The audit log keeps their entries.",
 
 	"token-revoked": "MCP token revoked.",
 }
@@ -115,6 +117,26 @@ func (s *server) adminAction(w http.ResponseWriter, r *http.Request, v *auth.Vie
 		}
 		err = s.st.SetUserDisabled(ctx, actor, f("email"), disable)
 		ok = map[bool]string{true: "disabled", false: "enabled"}[disable]
+	case "delete":
+		// Only disabled users: disabling is the reversible step that ends
+		// their sessions, and it keeps a mis-click from deleting someone
+		// who's working. The checkbox is the confirmation.
+		var id int64
+		var u store.User
+		if id, err = strconv.ParseInt(f("user"), 10, 64); err != nil || id <= 0 {
+			err = &store.ValidationError{Field: "user", Msg: "missing or bad user ID"}
+		} else if id == v.UserID {
+			err = errors.New("you can't delete the account you're signed in with")
+		} else if f("confirm") != "yes" {
+			err = errors.New("you can't delete a user without ticking the box to confirm")
+		} else if u, err = s.st.UserByID(ctx, id); errors.Is(err, store.ErrNotFound) {
+			err = fmt.Errorf("user %s: %w", store.UserRef(id), store.ErrNotFound)
+		} else if err == nil && !u.Disabled {
+			err = errors.New("you can't delete an active user; disable them first")
+		} else if err == nil {
+			err = s.st.DeleteUser(ctx, actor, id, store.SignInMethods{Local: s.cfg.LocalLogin, Entra: s.cfg.SSO != nil})
+		}
+		ok = "deleted"
 	default:
 		s.notFound(w, r, v)
 		return

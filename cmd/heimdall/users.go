@@ -9,10 +9,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/config"
 	"github.com/realmwatch/heimdall/internal/store"
 )
 
@@ -249,6 +251,93 @@ func setDisabled(a *app, args []string, disabled bool) error {
 
 func cmdUserDisable(a *app, args []string) error { return setDisabled(a, args, true) }
 func cmdUserEnable(a *app, args []string) error  { return setDisabled(a, args, false) }
+
+func cmdUserDelete(a *app, args []string) error {
+	fs := a.flags("user delete", "--yes <email|#id>")
+	yes := fs.Bool("yes", false, "confirm: deletes the user with their roles, sessions and MCP tokens")
+	pos, err := parse(fs, args, 1)
+	if err != nil {
+		return err
+	}
+	cfg, err := config.Load(a.configPath)
+	if err != nil {
+		return err
+	}
+	s, err := a.openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+	u, err := userByRef(a, s, pos[0])
+	if err != nil {
+		return err
+	}
+	if !*yes {
+		return fmt.Errorf("this permanently deletes %s with their roles, sessions and MCP tokens; re-run with --yes", describeUser(u))
+	}
+	si := store.SignInMethods{Local: cfg.Auth.LocalLogin, Entra: cfg.Auth.Entra.Enabled}
+	if err := s.DeleteUser(a.ctx, actor(), u.ID, si); err != nil {
+		return err
+	}
+	fmt.Fprintf(a.stderr, "Deleted %s. The audit log keeps their entries.\n", describeUser(u))
+	return nil
+}
+
+// userByRef finds one user by "#<id>" or email. An email several users
+// share is an error that lists them, so the caller can pass an ID.
+func userByRef(a *app, s *store.Store, ref string) (store.User, error) {
+	ref = strings.TrimSpace(ref)
+	if n, ok := strings.CutPrefix(ref, "#"); ok {
+		id, err := strconv.ParseInt(n, 10, 64)
+		if err != nil || id <= 0 {
+			return store.User{}, fmt.Errorf("%q: give an email or #<id>", ref)
+		}
+		u, err := s.UserByID(a.ctx, id)
+		if err != nil {
+			return store.User{}, fmt.Errorf("user %s: %w", ref, err)
+		}
+		return u, nil
+	}
+	email, err := store.NormalizeEmail(ref)
+	if err != nil {
+		return store.User{}, err
+	}
+	users, err := s.ListUsers(a.ctx)
+	if err != nil {
+		return store.User{}, err
+	}
+	var match []store.User
+	for _, u := range users {
+		if u.Email == email {
+			match = append(match, u)
+		}
+	}
+	switch len(match) {
+	case 0:
+		return store.User{}, fmt.Errorf("user %s: %w", email, store.ErrNotFound)
+	case 1:
+		return match[0], nil
+	}
+	list := make([]string, len(match))
+	for i, u := range match {
+		list[i] = describeUser(u)
+	}
+	return store.User{}, fmt.Errorf("several users use %s: %s; pass one by ID, quoted, e.g. '%s'",
+		email, strings.Join(list, ", "), store.UserRef(match[0].ID))
+}
+
+// describeUser names a user for CLI messages: "alice@example.com (#3, entra, disabled)".
+func describeUser(u store.User) string {
+	state := "active"
+	if u.Disabled {
+		state = "disabled"
+	}
+	name := u.Email
+	if name == "" {
+		name = "(no email)"
+	}
+	return fmt.Sprintf("%s (%s, %s, %s)", name, store.UserRef(u.ID), u.Kind, state)
+}
 
 func cmdUserResetTOTP(a *app, args []string) error {
 	fs := a.flags("user reset-totp", "[--password-stdin] <email>")

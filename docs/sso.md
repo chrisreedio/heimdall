@@ -83,7 +83,7 @@ Assign an app role **to a group** (step 2, pick the group). Everyone in it gets 
    ```sh
    heimdall user create --entra --tenant <tenant-id> alice@example.com
    ```
-   Their email binds to their Entra object ID on first sign-in (or pass `--oid`). Anyone else is turned away, and the attempt is in the audit log as `login.failure` with `not_provisioned`, even if Entra gave them a role. An app role never creates a user.
+   Their email binds to their Entra object ID on first sign-in (or pass `--oid`). Anyone else is turned away, and the attempt is in the audit log as `login.failure` with `not_provisioned`, even if Entra gave them a role. An app role never creates a user. One Entra user per person per tenant: provisioning an email or object ID that a user in that tenant already has is refused (see [Duplicate users](#duplicate-users)).
 2. **Roles are replaced from the token.** Every role that came from app roles last time is removed, then the token's roles are added. A person whose role was removed in Entra loses it here.
 3. **Manual grants are kept**, and for the same org a manual grant **wins**, even if it's lower: a manual `viewer` in `acme` stays `viewer` though the token says `Heimdall.Org.acme.Admin`. Revoke the manual grant to let the app role apply. Granting a role manually on an org where the person has an app role turns it into a manual grant.
 4. **The global admin flag follows `Heimdall.Admin`**, on every sign-in: present makes the person a global admin, absent removes it. **This includes an admin flag set with `user create --entra --admin`**, which lasts only until the person's first sign-in unless their token has `Heimdall.Admin`. With app-role mapping on, give admins `Heimdall.Admin` in Entra. Local (break-glass) accounts aren't affected.
@@ -116,11 +116,31 @@ Then roles come only from Heimdall, and the `roles` claim is ignored. Roles sync
 
 ## Troubleshooting
 
-- **"Your account hasn't been set up in Heimdall"**: not provisioned (step 1), or disabled. Check `heimdall user list` and the audit log's `login.failure` reason.
+- **"Your account hasn't been set up in Heimdall"**: not provisioned (step 1), or disabled. Check `heimdall user list` and the audit log's `login.failure` reason. If the list shows their email twice, see [Duplicate users](#duplicate-users).
 - **Signed in, but sees nothing**: provisioned with no role. Assign an app role in Entra (then sign in again) or grant one in Heimdall.
 - **An app role doesn't show up**: check the role's **value** (not its display name) matches the table, that it's assigned in **Enterprise applications** (not just defined in the registration), and that the person signed in again after the change. The token's roles are in the `login.success` audit entry.
 - **An admin lost admin after signing in**: the token had no `Heimdall.Admin` (step 4). Assign it in Entra.
 - **A per-org role doesn't apply**: the slug in the value must match the org's slug (`heimdall org list`).
+
+### Duplicate users
+
+Sign-in looks a person up by tenant and object ID first, and only then by a pending (not yet signed in) email. So if a second Entra user with the same email was added after the first had signed in, the second could never bind: the person always landed on the first. Disable the first and they were locked out with "not provisioned", though a user with their email was right there.
+
+Heimdall now refuses that second user, on the Users page and from `heimdall user create --entra`, and says which user is in the way:
+
+```
+an Entra user with that email already exists (#3, disabled): enable it or delete it first
+```
+
+Enable that user (`heimdall user enable '#3'`), or delete it and provision again.
+
+A hub that already has duplicates keeps working as before. To clean up:
+
+1. `heimdall user list` and find the rows with the same email and **KIND** `entra`. The one that has signed in (it has a **LAST LOGIN**) is bound to the person's object ID; the other never will be.
+2. Keep the bound one: `heimdall user enable '#3'` if it's disabled, and grant it any roles the duplicate had.
+3. Delete the duplicate: `heimdall user delete --yes '#7'`. Quote the `#`, or the shell treats it as a comment.
+
+Deleting a user removes their roles, sessions and MCP tokens with them. Patch plans and acknowledgements they made stay, without an author, and the audit log keeps every entry, including a `user.delete` entry with the email, kind and admin flag. Deleted users' IDs aren't reused. You can't delete yourself, or the last active global admin who can sign in: with `local_login = false`, local admins don't count, since they can't sign in to the web UI. On the Users page, **delete** appears only for disabled users, behind a confirmation box: disable first (that ends their sessions and can be undone), then delete.
 
 ### "Sign-in failed" right after Microsoft's sign-in page
 

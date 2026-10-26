@@ -57,6 +57,8 @@ Commands:
   enroll pending|approve       Hosts enrolled with a key, waiting for an admin's approval
   user create|list|disable|enable|reset-totp|passwd
                                Manage web UI accounts (password + TOTP, or --entra)
+  user delete --yes <email|#id>
+                               Delete an account with its roles, sessions and tokens
   user grant|revoke            Give or remove a role (viewer, operator, admin) in an org
   user mcp-token create|list|revoke
                                Tokens for AI assistants on the read-only MCP endpoint,
@@ -135,7 +137,7 @@ var commands = map[string]command{
 		"rm": cmdPlanRm, "done": cmdPlanDone, "undo": cmdPlanUndo, "close": cmdPlanClose,
 	}),
 	"user": group("user", map[string]command{
-		"create": cmdUserCreate, "list": cmdUserList, "disable": cmdUserDisable, "enable": cmdUserEnable,
+		"create": cmdUserCreate, "list": cmdUserList, "disable": cmdUserDisable, "enable": cmdUserEnable, "delete": cmdUserDelete,
 		"reset-totp": cmdUserResetTOTP, "passwd": cmdUserPasswd, "grant": cmdUserGrant, "revoke": cmdUserRevoke,
 		"mcp-token": group("user mcp-token", map[string]command{"create": cmdMCPTokenCreate, "list": cmdMCPTokenList, "revoke": cmdMCPTokenRevoke}),
 	}),

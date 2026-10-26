@@ -5,6 +5,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -166,8 +167,80 @@ func TestAdminAddEntraUser(t *testing.T) {
 		t.Errorf("unconfigured tenant: %d", w.Code)
 	}
 	if w := e.adminPost("entra", url.Values{"tenant": {testTenant}, "email": {"Carol@Example.com"}}); w.Code != http.StatusBadRequest ||
-		!strings.Contains(w.Body.String(), "already exists") {
+		!strings.Contains(w.Body.String(), "an Entra user with that email already exists (#3, pending first sign-in): use it, or delete it first") {
 		t.Errorf("duplicate: %d", w.Code)
+	}
+}
+
+func TestAdminDeleteUser(t *testing.T) {
+	e := adminEnv(t)
+	ctx := t.Context()
+	del := func(id string, confirm bool) *httptest.ResponseRecorder {
+		form := url.Values{"user": {id}}
+		if confirm {
+			form.Set("confirm", "yes")
+		}
+		return e.adminPost("delete", form)
+	}
+	page := func() string { return e.get("/admin/users", signedIn(e)).Body.String() }
+
+	// Active users must be disabled first, and get no delete control.
+	if w := del("2", true); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "disable them first") {
+		t.Errorf("active user: %d", w.Code)
+	}
+	if strings.Contains(page(), `action="/admin/users/delete"`) {
+		t.Error("delete offered for an active user")
+	}
+	if err := e.st.SetUserDisabled(ctx, "test", "#2", true); err != nil {
+		t.Fatal(err)
+	}
+	if body := page(); strings.Count(body, `action="/admin/users/delete"`) != 1 || !strings.Contains(body, `name="user" value="2"`) ||
+		!strings.Contains(body, `name="confirm" value="yes" required`) {
+		t.Errorf("delete form for the disabled user missing")
+	}
+
+	// Without the confirm box, or without CSRF, nothing happens.
+	if w := del("2", false); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "ticking the box") {
+		t.Errorf("no confirm: %d", w.Code)
+	}
+	if w := e.post("/admin/users/delete", url.Values{"user": {"2"}, "confirm": {"yes"}}, signedIn(e), origin("http://127.0.0.1:8080")); w.Code != http.StatusForbidden {
+		t.Errorf("no CSRF: %d", w.Code)
+	}
+	if _, err := e.st.UserByID(ctx, 2); err != nil {
+		t.Fatalf("refused deletes removed bob: %v", err)
+	}
+	for _, bad := range []string{"", "x", "-1"} {
+		if w := del(bad, true); w.Code != http.StatusBadRequest {
+			t.Errorf("user %q: %d", bad, w.Code)
+		}
+	}
+	if w := del("99", true); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "#99: not found") {
+		t.Errorf("unknown user: %d", w.Code)
+	}
+	if w := del("1", true); w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "can&#39;t delete the account you&#39;re signed in with") {
+		t.Errorf("self: %d", w.Code)
+	}
+
+	w := del("2", true)
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/admin/users?ok=deleted" {
+		t.Fatalf("delete: %d %s", w.Code, w.Body.String())
+	}
+	if _, err := e.st.UserByID(ctx, 2); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("bob still there: %v", err)
+	}
+	if body := e.get("/admin/users?ok=deleted", signedIn(e)).Body.String(); !strings.Contains(body, "User deleted") || strings.Contains(body, "bob@example.com") {
+		t.Error("page after delete")
+	}
+
+	// Only global admins.
+	e.st.CreateLocalUser(ctx, "test", "carol@example.com", "", false, "$argon2id$x", []byte("0123456789abcdefghij"))
+	e.st.SetUserDisabled(ctx, "test", "carol@example.com", true)
+	e.auth.viewer = &auth.Viewer{UserID: 1, Email: "admin@example.com", Scope: store.Scope{Orgs: map[int64]store.Role{1: store.RoleAdmin}}, SessionToken: goodToken}
+	if w := del("3", true); w.Code != http.StatusNotFound {
+		t.Errorf("org admin: %d", w.Code)
+	}
+	if _, err := e.st.UserByID(ctx, 3); err != nil {
+		t.Errorf("org admin deleted carol: %v", err)
 	}
 }
 

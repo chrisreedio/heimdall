@@ -418,7 +418,8 @@ heimdall org   create|list|delete
 heimdall env   create|list    --org
 heimdall host  add|list|rm    --org --env
 heimdall host  token --rotate <host>
-heimdall user  create|list|grant|revoke|reset-totp
+heimdall user  create|list|grant|revoke|reset-totp|disable|enable
+heimdall user  delete --yes <email|#id>   Delete an account with its roles, sessions and tokens
 heimdall user  create --entra --tenant <tid> (--oid <oid> | --email <addr>)
 
 heimdall import <file.json> --host     Ingest a manually collected snapshot
