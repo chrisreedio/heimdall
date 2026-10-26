@@ -45,6 +45,9 @@ section_set() {
 step "An unsigned build is refused"
 # make dist doesn't sign; only the release workflow does.
 refuse 'SHA256SUMS.sigstore.json' sudo sh "$dist/install-hub.sh" --from-dir "$dist" --org acme --no-tailscale
+# --ui-url/--ingest-url need https names, with --no-tailscale only.
+refuse 'https://name' sudo sh "$dist/install-hub.sh" --from-dir "$dist" --org acme --no-tailscale --ui-url http://heimdall.example.com --ingest-url https://bifrost.example.com
+refuse 'go with --no-tailscale' sudo sh "$dist/install-hub.sh" --from-dir "$dist" --org acme --ingest-host ingest.example.com --ui-url https://heimdall.example.com --ingest-url https://bifrost.example.com
 [ ! -e /usr/local/bin/heimdall ] || fail "refused, but installed anyway"
 
 # A real, signed release: the new code checks its signature with the
@@ -150,9 +153,17 @@ done
 [ "$(stat -c '%U %a' /var/lib/heimdall-collect/deployed)" = "root 666" ] || fail "deploy trigger is $(stat -c '%U %a' /var/lib/heimdall-collect/deployed)"
 systemctl is-active --quiet heimdall-collect-changes.path || fail "the path unit isn't running"
 
+# The installed countdown is 60s; this test shortens it to $debounce with a
+# drop-in (removed below), so three deploys don't cost three minutes.
+grep -qx 'OnActiveSec=60s' /etc/systemd/system/heimdall-collect-soon.timer || fail "the soon timer isn't 60s"
+debounce=5
+sudo mkdir -p /etc/systemd/system/heimdall-collect-soon.timer.d
+printf '[Timer]\nOnActiveSec=\nOnActiveSec=%ss\n' "$debounce" | sudo tee /etc/systemd/system/heimdall-collect-soon.timer.d/test.conf >/dev/null
+sudo systemctl daemon-reload
+
 # reported_after LABEL CMD...: run CMD (a deploy), then wait for the debounced
-# report: heimdall-collect.service must start again, about 60s after CMD,
-# and succeed (a 2xx from the hub).
+# report: heimdall-collect.service must start again, about $debounce seconds
+# after CMD, and succeed (a 2xx from the hub).
 idle() { # no report running (a oneshot is "activating" while it runs)
 	case $(systemctl show -P ActiveState heimdall-collect.service) in inactive | failed) ;; *) return 1 ;; esac
 }
@@ -173,12 +184,12 @@ reported_after() {
 	while :; do
 		now=$(systemctl show -P InvocationID heimdall-collect.service)
 		if [ "$now" != "$before" ] && idle; then break; fi
-		[ $(($(date +%s) - t0)) -lt 100 ] || fail "$label: no report within 100s"
+		[ $(($(date +%s) - t0)) -lt $((debounce + 45)) ] || fail "$label: no report within $((debounce + 45))s"
 		sleep 1
 	done
 	took=$(($(date +%s) - t0))
 	[ "$(systemctl show -P Result heimdall-collect.service)" = success ] || fail "$label: the report failed"
-	[ "$took" -ge 55 ] || fail "$label: reported after ${took}s, before the 60s debounce"
+	[ "$took" -ge $((debounce - 1)) ] || fail "$label: reported after ${took}s, before the ${debounce}s debounce"
 	printf '%s: reported after %ss\n' "$label" "$took"
 }
 zdt_deploy() { # a new release, then swap the symlink (rename over it)
@@ -199,6 +210,8 @@ sudo -u heimdall sh -c 'set -a; . /etc/heimdall-collect/collect.env; exec heimda
 	grep -q '"framework_version": "11.0.1"' || fail "the snapshot doesn't have the new release's packages"
 reported_after "in-place deploy" inplace_deploy
 reported_after "heimdall-collect deployed" announced
+sudo rm -r /etc/systemd/system/heimdall-collect-soon.timer.d
+sudo systemctl daemon-reload
 
 step "Event reports are capped at 12 an hour; past it, one line and no report"
 before=$(systemctl show -P InvocationID heimdall-collect.service)

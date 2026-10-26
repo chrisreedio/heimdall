@@ -16,6 +16,11 @@ session_max  = "12h"
 # the client address (and tailnet user) from tailscale serve's headers, on
 # requests from loopback only. Leave false behind anything else.
 behind_tailscale_serve = false
+# Behind another proxy on this box (cloudflared for Cloudflare Tunnel and
+# Access, Caddy, nginx), the same: true takes the client address from the
+# last X-Forwarded-For hop, or Cloudflare's CF-Connecting-IP when that hop
+# is Cloudflare's edge, on requests from loopback only.
+behind_proxy = false # the UI's (ingest has its own)
 
 [auth]
 # Break-glass local accounts (password + TOTP). Set false once SSO works.

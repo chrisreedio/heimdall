@@ -15,6 +15,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"path"
 	"regexp"
@@ -88,6 +89,11 @@ type Config struct {
 	// BehindTailscaleServe trusts tailscale serve's client address and
 	// identity headers on requests from loopback (tsproxy.go).
 	BehindTailscaleServe bool
+	// BehindProxy trusts another local proxy's client address the same way
+	// (tsproxy.go); TrustedEdge says which hops are Cloudflare's edge, whose
+	// CF-Connecting-IP is then taken instead (nil: never).
+	BehindProxy bool
+	TrustedEdge func(netip.Addr) bool
 
 	// Bans: [bans] (internal/bans); nil when it isn't set up.
 	Bans *bans.Service
@@ -225,7 +231,7 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("/", s.requireAuth(func(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
 		s.notFound(w, r, v)
 	}))
-	return s.headers(s.fromTailscaleServe(mux)), nil
+	return s.headers(s.fromProxy(mux)), nil
 }
 
 func (s *server) headers(next http.Handler) http.Handler {
