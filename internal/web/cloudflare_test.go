@@ -49,7 +49,7 @@ func (e *env) seedCloudflare() (acme, other int64) {
 			rec("www.example.com", "A", "203.0.113.10", false),
 			rec("origin.example.com", "A", "203.0.113.10", false),
 			rec("other.example.com", "A", "203.0.113.20", false),
-			rec("old.example.com", "A", "192.0.2.99", true),
+			rec("old.example.com", "A", "203.0.113.199", true),
 		},
 		cfZone2: {rec("app.example.net", "A", "203.0.113.10", true)},
 	}, testNow)

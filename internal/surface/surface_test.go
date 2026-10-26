@@ -5,6 +5,7 @@ package surface
 import (
 	"net/netip"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -40,15 +41,19 @@ func fixture() Input {
 			rec(zA, "*.example.com", "A", "203.0.113.11", true),
 			rec(zA, "alias.example.com", "CNAME", "gone.example.com", false),
 			rec(zA, "partner.example.com", "A", "203.0.113.20", false),
-			rec(zB, "old.example.net", "A", "192.0.2.99", false),
+			rec(zB, "old.example.net", "A", "203.0.113.199", false),
+			rec(zB, "k1._domainkey.example.net", "CNAME", "k1.dkim.mailer.example.org", false), // gone, its domain held
+			rec(zB, "promo.example.net", "CNAME", "promo.lapsed-example.com", false),           // gone with its domain
 		},
 		Settings: map[string]store.SurfaceSettings{
 			zA: {State: store.SurfaceOK, SSL: "flexible", AlwaysHTTPS: "off", MinTLS: "1.0", CertExpires: now.Add(5 * 24 * time.Hour)},
 			zB: {State: store.SurfacePermission},
 		},
 		CNAMEs: map[string]store.CNAMECheck{
-			"acme.herokuapp.com": {Target: "acme.herokuapp.com", Status: store.CNAMENXDomain},
-			"acme.github.io":     {Target: "acme.github.io", Status: store.CNAMEOK},
+			"acme.herokuapp.com":         {Target: "acme.herokuapp.com", Status: store.CNAMENXDomain},
+			"acme.github.io":             {Target: "acme.github.io", Status: store.CNAMEOK},
+			"k1.dkim.mailer.example.org": {Target: "k1.dkim.mailer.example.org", Status: store.CNAMENXDomain},
+			"promo.lapsed-example.com":   {Target: "promo.lapsed-example.com", Status: store.CNAMEUnregistered, Note: "lapsed-example.com isn't registered"},
 		},
 		Addrs: []store.ReportAddr{
 			{OrgID: 1, Org: "acme", Host: "web-01", Addr: netip.MustParseAddr("203.0.113.10")},
@@ -133,6 +138,12 @@ func TestRiskyRecords(t *testing.T) {
 	blog := rows["blog.example.com"]
 	if !hasFlag(blog, "third-party") || !hasFlag(blog, "takeover") || !blog.HighFlag() {
 		t.Errorf("blog: %+v", blog.Flags)
+	}
+	if k := rows["k1._domainkey.example.net"]; !hasFlag(k, "dead-cname") || hasFlag(k, "takeover") || k.HighFlag() {
+		t.Errorf("dead CNAME on a held domain: %+v", k.Flags)
+	}
+	if p := rows["promo.example.net"]; !hasFlag(p, "takeover") || !p.HighFlag() || !strings.Contains(p.Flags[0].Note, "lapsed-example.com isn't registered") {
+		t.Errorf("CNAME to an unregistered domain: %+v", p.Flags)
 	}
 	docs := rows["docs.example.com"]
 	if !hasFlag(docs, "third-party") || hasFlag(docs, "takeover") {

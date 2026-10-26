@@ -19,7 +19,9 @@ func TestBuild(t *testing.T) {
 		rec(zoneA, "origin.example.com", "A", "203.0.113.10", false),        // exposed
 		rec(zoneA, "www.example.com", "CNAME", "origin.example.com", false), // exposed via CNAME
 		rec(zoneA, "cdn.example.com", "CNAME", "example.com", false),        // CNAME to a proxied name: not exposed
-		rec(zoneA, "old.example.com", "A", "192.0.2.99", true),              // dangling
+		rec(zoneA, "old.example.com", "A", "203.0.113.199", true),           // dangling
+		rec(zoneA, "redirect.example.com", "A", "192.0.2.1", true),          // Cloudflare's no-origin placeholder
+		rec(zoneA, "worker.example.com", "AAAA", "100::", true),             // ...and its IPv6 one
 		rec(zoneA, "office.example.com", "A", "198.51.100.5", false),        // labelled
 		rec(zoneA, "edge.example.com", "A", "104.16.0.1", false),            // Cloudflare's own
 		rec(zoneA, "lan.example.com", "A", "10.0.0.5", false),               // private
@@ -52,7 +54,7 @@ func TestBuild(t *testing.T) {
 		"example.com": {false, false, 1}, "origin.example.com": {true, false, 1}, "www.example.com": {true, false, 1},
 		"cdn.example.com": {false, false, 1}, "old.example.com": {false, true, 0}, "office.example.com": {false, false, 0},
 		"edge.example.com": {false, false, 0}, "lan.example.com": {false, false, 0}, "shop.example.com": {true, false, 1},
-		"loop.example.com": {false, false, 0},
+		"loop.example.com": {false, false, 0}, "redirect.example.com": {false, false, 0}, "worker.example.com": {false, false, 0},
 	} {
 		got := byName[name]
 		if got.Exposed != want.exposed || got.Dangling != want.dangling || len(got.Hosts) != want.hosts {

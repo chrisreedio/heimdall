@@ -92,14 +92,15 @@ func TestSurfaceAlerts(t *testing.T) {
 	if err := e.Store.ReplaceCloudflareZones(ctx, []store.CloudflareZone{{ID: zone, Name: "example.com", Status: "active"}},
 		map[string][]store.CloudflareRecord{zone: {
 			rec("www.example.com", "A", "203.0.113.10", false),
-			rec("elsewhere.example.com", "A", "192.0.2.99", false),
-			// A name that leads to web-01 and also CNAMEs to a target that's gone.
+			rec("elsewhere.example.com", "A", "203.0.113.199", false),
+			// A name that leads to web-01 and also CNAMEs to a target that's
+			// gone, on a domain nobody holds now.
 			rec("shop.example.com", "A", "203.0.113.10", true),
 			rec("shop.example.com", "CNAME", "gone.example.org", true),
 		}}, *now); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.Store.PutCNAMEChecks(ctx, []store.CNAMECheck{{Target: "gone.example.org", Status: store.CNAMENXDomain}}, *now); err != nil {
+	if err := e.Store.PutCNAMEChecks(ctx, []store.CNAMECheck{{Target: "gone.example.org", Status: store.CNAMEUnregistered, Note: "example.org isn't registered"}}, *now); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.Store.AddSurfaceChanges(ctx, []store.SurfaceChange{
