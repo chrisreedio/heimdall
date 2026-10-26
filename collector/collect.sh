@@ -1210,7 +1210,7 @@ EOF
 	429) die "rate limited by the hub (HTTP 429); try again later" ;;
 	*)
 		# The first line of the hub's reply says why, e.g. a 400.
-		reply=$(head -c 200 "$tmp/reply" 2>/dev/null | tr -d '\r' | head -n 1 | tr -cd '[:print:]')
+		reply=$(head -c 200 "$tmp/reply" 2>/dev/null | tr -d '\r' | head -n 1 | tr -cd ' -~')
 		die "hub returned HTTP $status${reply:+: $reply}"
 		;;
 	esac
