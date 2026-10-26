@@ -202,3 +202,36 @@
     <label>Org <select name="org">{{range .Admin}}<option value="{{.Slug}}">{{.Name}}</option>{{end}}{{if .AllOrgs}}<option value="">All orgs</option>{{end}}</select></label>
     <button type="submit">Add label</button>
   </form>{{end}}
+
+{{/* installcmd: a Linux install command whose collector flags app.js
+     rewrites in place when an option checkbox changes (collectoropts.go).
+     Keep it on one line: it renders inside a <pre>. */}}
+{{define "installcmd"}}{{.Pre}}<span data-collector-flags>{{.Flags}}</span>{{.Post}}{{end}}
+
+{{/* collectorhelp: what the two collector options are, with their flags. */}}
+{{define "collectorhelp"}}<p class="hint">These are install.sh's <code>--watch-privilege-users</code> (implies <code>--watch-privilege</code>) and <code>--watch-logins</code>; failed-login counts are per source address, never usernames. Change them on a server later with <code>sudo heimdall-collect upgrade</code> and the same flags, or <code>--no-watch-privilege</code> and <code>--no-watch-logins</code>. See <a href="https://github.com/realmwatch/heimdall/blob/main/docs/collector.md#privilege-watch">Privilege watch</a> and <a href="https://github.com/realmwatch/heimdall/blob/main/docs/failed-logins.md">Failed logins</a>.</p>{{end}}
+
+{{/* collectorfields: the collector options on the Add host and Add
+     servers forms, starting from the org's default (.Opts). opts=1 tells
+     the server the checkboxes were there, since an unchecked box sends
+     nothing. app.js resets them to the chosen org's default when the
+     environment picker moves to another org (its options carry data-opts). */}}
+{{define "collectorfields"}}<fieldset class="field collector-opts" data-collector-defaults="env">
+    <legend>Collector options <span class="optional">Linux</span></legend>
+    <input type="hidden" name="opts" value="1">
+    <label class="check"><input type="checkbox" name="watch_privilege_users" value="1"{{if .Opts.WatchPrivilegeUsers}} checked{{end}}> Record who and from where for sudo, su and root SSH</label>
+    <label class="check"><input type="checkbox" name="watch_logins" value="1"{{if .Opts.WatchLogins}} checked{{end}}> Count failed SSH logins</label>
+    {{template "collectorhelp"}}
+    <label class="check remember"><input type="checkbox" name="remember_opts" value="1"{{if .Remember}} checked{{end}}> Remember as this org's default</label>
+  </fieldset>{{end}}
+
+{{/* collectortoggle: the same options beside the install commands. They
+     only change the commands' text in place (app.js): the token or key
+     above is shown once and is never reissued. Hidden without JavaScript,
+     where the commands keep the options chosen on the form. */}}
+{{define "collectortoggle"}}<fieldset class="collector-opts" data-collector-opts hidden>
+    <legend>Collector options <span class="optional">Linux and cloud-init</span></legend>
+    <label class="check"><input type="checkbox" data-collector-flag="--watch-privilege-users"{{if .WatchPrivilegeUsers}} checked{{end}}> Record who and from where for sudo, su and root SSH</label>
+    <label class="check"><input type="checkbox" data-collector-flag="--watch-logins"{{if .WatchLogins}} checked{{end}}> Count failed SSH logins</label>
+    <p class="hint">Changes the commands below; nothing is reissued. These are install.sh's <code>--watch-privilege-users</code> and <code>--watch-logins</code>.</p>
+  </fieldset>{{end}}

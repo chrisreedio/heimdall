@@ -76,7 +76,7 @@ func TestAddHostFormDetails(t *testing.T) {
 	// A rejected submit keeps what was typed.
 	f = url.Values{"csrf": {auth.CSRFToken(goodToken)}, "env": {"acme/prod"}, "name": {"Bad Name!"}, "tags": {"web, role:lb"}}
 	w := e.post("/hosts/new", f, signedIn(e), origin(e.baseURL))
-	if body := w.Body.String(); w.Code != http.StatusBadRequest || !strings.Contains(body, `value="Bad Name!"`) || !strings.Contains(body, `value="web, role:lb"`) || !strings.Contains(body, `value="acme/prod" selected`) {
+	if body := w.Body.String(); w.Code != http.StatusBadRequest || !strings.Contains(body, `value="Bad Name!"`) || !strings.Contains(body, `value="web, role:lb"`) || !strings.Contains(body, `value="acme/prod" data-opts=" --watch-privilege-users --watch-logins" selected`) {
 		t.Errorf("rejected submit should keep its values: %d", w.Code)
 	}
 }

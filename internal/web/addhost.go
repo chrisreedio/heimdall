@@ -23,16 +23,24 @@ type addHostBody struct {
 	Envs      map[string][]store.Env // org slug → envs
 	Error     string
 	IngestURL string
-	Form      struct{ Name, Tags, Env, NewEnv string } // kept when the form is shown again
+	Form      struct { // kept when the form is shown again
+		Name, Tags, Env, NewEnv string
+		Opts                    store.CollectorDefaults
+		OptsSet                 bool // Opts came from the form, not the org's default
+		Remember                bool
+	}
 	// After a successful add:
-	Added    bool
-	Host     store.Host
-	Token    string
-	Version  string // release tag the commands install
-	Unpinned bool   // this build has no release tag; edit the version in the commands
-	Linux    string
-	Cloud    string
-	Windows  string
+	Added     bool
+	Host      store.Host
+	Token     string
+	Version   string // release tag the commands install
+	Unpinned  bool   // this build has no release tag; edit the version in the commands
+	Opts      store.CollectorDefaults
+	OptsSaved bool   // Opts were saved as the org's default
+	OptsError string // saving them failed
+	Linux     installCmd
+	Cloud     installCmd
+	Windows   string
 }
 
 // installURLs returns where install commands download the release from,
@@ -86,6 +94,9 @@ func (s *server) renderAddHost(w http.ResponseWriter, r *http.Request, v *auth.V
 		return
 	}
 	body.Orgs, body.Envs, body.IngestURL = orgs, envs, s.cfg.IngestURL
+	if !body.Form.OptsSet {
+		body.Form.Opts = formOrgDefaults(orgs, body.Form.Env)
+	}
 	s.render(w, r, status, "addhost", v, "Add a host", "hosts", body)
 }
 
@@ -96,22 +107,26 @@ func (s *server) addHostSubmit(w http.ResponseWriter, r *http.Request, v *auth.V
 	if o, e, ok := strings.Cut(env, "/"); ok {
 		org, env = o, e
 	}
-	if o, err := s.orgBySlug(r, org); err != nil || !v.Scope.CanAdmin(o.ID) {
+	o, err := s.orgBySlug(r, org)
+	if err != nil || !v.Scope.CanAdmin(o.ID) {
 		s.notFound(w, r, v)
 		return
 	}
+	opts, remember := collectorForm(r, o.Collector)
+	again := func(msg, env, newEnv string) { // the form again, as it was sent
+		body := addHostBody{Error: msg}
+		body.Form.Name, body.Form.Tags, body.Form.Env, body.Form.NewEnv = f("name"), f("tags"), env, newEnv
+		body.Form.Opts, body.Form.OptsSet, body.Form.Remember = opts, true, remember
+		s.renderAddHost(w, r, v, http.StatusBadRequest, body)
+	}
 	// "New environment..." creates one in the selected org.
 	if env == "__new__" && f("new_env") == "" {
-		body := addHostBody{Error: "Type a name for the new environment."}
-		body.Form.Name, body.Form.Tags = f("name"), f("tags")
-		s.renderAddHost(w, r, v, http.StatusBadRequest, body)
+		again("Type a name for the new environment.", "", "")
 		return
 	}
 	if n := strings.ToLower(f("new_env")); n != "" {
 		if err := s.ensureEnv(r, v, org, n); err != nil {
-			body := addHostBody{Error: userError(err)}
-			body.Form.Name, body.Form.Tags, body.Form.Env, body.Form.NewEnv = f("name"), f("tags"), org+"/"+env, n
-			s.renderAddHost(w, r, v, http.StatusBadRequest, body)
+			again(userError(err), org+"/"+env, n)
 			return
 		}
 		env = n
@@ -124,16 +139,16 @@ func (s *server) addHostSubmit(w http.ResponseWriter, r *http.Request, v *auth.V
 	}
 	host, token, err := s.st.AddHost(r.Context(), actorOf(v), org, env, f("name"), tags)
 	if err != nil {
-		body := addHostBody{Error: userError(err)}
-		body.Form.Name, body.Form.Tags, body.Form.Env = f("name"), f("tags"), org+"/"+env
-		s.renderAddHost(w, r, v, http.StatusBadRequest, body)
+		again(userError(err), org+"/"+env, "")
 		return
 	}
-	body := addHostBody{Added: true, Host: host, Token: token}
+	body := addHostBody{Added: true, Host: host, Token: token, Opts: opts}
+	body.OptsSaved, body.OptsError = s.rememberCollector(r, v, o, opts, remember)
 	base, hub := s.installURLs(&body.Version, &body.Unpinned)
-	body.Linux = fmt.Sprintf("curl -fsSLO %s/install.sh && sudo sh install.sh --hub %s", base, hub)
-	body.Cloud = fmt.Sprintf("#cloud-config\nruncmd:\n  - [sh, -c, \"cd /root && curl -fsSLO %s/install.sh && printf '%%s\\\\n' '%s' | sh install.sh --hub %s --token-stdin\"]",
-		base, token, hub)
+	flags := collectorFlags(opts)
+	body.Linux = installCmd{fmt.Sprintf("curl -fsSLO %s/install.sh && sudo sh install.sh --hub %s", base, hub), flags, ""}
+	body.Cloud = installCmd{fmt.Sprintf("#cloud-config\nruncmd:\n  - [sh, -c, \"cd /root && curl -fsSLO %s/install.sh && printf '%%s\\\\n' '%s' | sh install.sh --hub %s --token-stdin", base, token, hub),
+		flags, `"]`}
 	body.Windows = fmt.Sprintf("foreach ($f in 'install-windows.ps1','collect.ps1','SHA256SUMS') { Invoke-WebRequest -UseBasicParsing %s/$f -OutFile $f }\n.\\install-windows.ps1 -HubUrl %s",
 		base, hub)
 	s.renderAddHost(w, r, v, http.StatusOK, body)

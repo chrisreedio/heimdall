@@ -187,3 +187,41 @@ document.addEventListener("DOMContentLoaded", function () {
     show();
   });
 });
+
+// Collector options on Add host and Add servers. Beside the install
+// commands, the checkboxes rewrite the flags in each command in place
+// (<span data-collector-flags>), so the token or key shown once is never
+// reissued, and the copy buttons copy the text as it now stands. Without
+// JavaScript they stay hidden and the commands keep the form's choice.
+// On the forms, picking an environment in another org resets the
+// checkboxes to that org's default (each option's data-opts).
+document.addEventListener("DOMContentLoaded", function () {
+  function has(flags, f) { return (" " + flags + " ").indexOf(" " + f + " ") >= 0; }
+  document.querySelectorAll("fieldset[data-collector-opts]").forEach(function (box) {
+    var checks = box.querySelectorAll("input[data-collector-flag]");
+    function sync() {
+      var flags = "";
+      checks.forEach(function (c) { if (c.checked) flags += " " + c.getAttribute("data-collector-flag"); });
+      document.querySelectorAll("[data-collector-flags]").forEach(function (s) { s.textContent = flags; });
+    }
+    checks.forEach(function (c) { c.addEventListener("change", sync); });
+    box.hidden = false;
+    sync(); // a restored page may bring back other checkbox states
+  });
+  document.querySelectorAll("fieldset[data-collector-defaults]").forEach(function (box) {
+    var select = document.getElementById(box.getAttribute("data-collector-defaults"));
+    if (!select) return;
+    function org() { return select.value.split("/")[0]; }
+    var last = org();
+    select.addEventListener("change", function () {
+      if (org() === last) return;
+      last = org();
+      var opt = select.options[select.selectedIndex];
+      var d = opt ? opt.getAttribute("data-opts") : null;
+      if (d === null) return;
+      box.querySelectorAll("input[type=checkbox][name^=watch_]").forEach(function (c) {
+        c.checked = has(d, "--" + c.name.replace(/_/g, "-"));
+      });
+    });
+  });
+});

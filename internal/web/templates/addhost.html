@@ -16,32 +16,38 @@
   <div><h2>{{if .Host.AutoName}}New host registered{{else}}{{.Host.Name}} is registered{{end}}</h2><p class="muted">{{.Host.OrgSlug}} / {{.Host.EnvSlug}}{{if .Host.Tags}} · {{range $i, $t := .Host.Tags}}{{if $i}}, {{end}}{{$t}}{{end}}{{end}}{{if .Host.AutoName}} · named after the server's hostname on its first report{{end}}</p></div>
 </section>
 
-<section class="card step">
-  <h2>Copy the ingest token</h2>
-  <p class="muted">The installer asks for it. <strong>It's shown only this once</strong>; Heimdall keeps just a hash. If it's lost, issue a new one with <code>sudo heimdall host token {{if .Host.AutoName}}&lt;name&gt;{{else}}{{.Host.Name}}{{end}}</code>.</p>
-  <div class="codebox"><code id="token">{{.Token}}</code><button type="button" class="copy" data-copy="token" hidden>Copy</button></div>
-</section>
+<p class="shown-once" role="note"><strong>The ingest token in step 2 is shown only this once.</strong> Keep this page open until the installer has it.</p>
+{{if .OptsSaved}}<p class="notice" role="status">Saved as {{.Host.OrgSlug}}'s default collector options.</p>{{end}}
+{{if .OptsError}}<p class="alert" role="alert">{{.OptsError}}</p>{{end}}
 
 <section class="card step">
-  <h2>Run the installer on the server</h2>
+  <h2>Run this on the server</h2>
   {{if .Unpinned}}<p class="alert">This hub isn't a tagged release build, so replace <code>vX.Y.Z</code> below with the release you're using.</p>{{end}}
+  {{template "collectortoggle" .Opts}}
   <div class="tabs">
     <input type="radio" name="os" id="os-linux" checked><label for="os-linux">Linux</label>
     <input type="radio" name="os" id="os-windows"><label for="os-windows">Windows</label>
     <input type="radio" name="os" id="os-cloud"><label for="os-cloud">New VM (cloud-init)</label>
     <div class="panel" id="panel-linux">
       <p class="muted">As a user with sudo. It downloads the collector from the signed GitHub release (never from this hub), checks it, installs it to run as an unprivileged user, and sends a first report.</p>
-      <div class="codebox"><pre id="cmd-linux">{{.Linux}}</pre><button type="button" class="copy" data-copy="cmd-linux" hidden>Copy</button></div>
+      <div class="codebox"><pre id="cmd-linux">{{template "installcmd" .Linux}}</pre><button type="button" class="copy" data-copy="cmd-linux" hidden>Copy</button></div>
     </div>
     <div class="panel" id="panel-windows">
       <p class="muted">In an elevated PowerShell. It runs as the built-in LocalService account and reports hourly, after boot and after software changes.</p>
       <div class="codebox"><pre id="cmd-win">{{.Windows}}</pre><button type="button" class="copy" data-copy="cmd-win" hidden>Copy</button></div>
+      <p class="hint">The collector options above are Linux-only; this command doesn't change with them.</p>
     </div>
     <div class="panel" id="panel-cloud">
-      <p class="muted">Paste as a new VM's user data. It contains the token, and cloud metadata is readable on that VM, so use it only for VMs you're creating fresh.</p>
-      <div class="codebox"><pre id="cmd-cloud">{{.Cloud}}</pre><button type="button" class="copy" data-copy="cmd-cloud" hidden>Copy</button></div>
+      <p class="muted">Paste as a new VM's user data. It contains the token, and cloud metadata is readable on that VM, so use it only for VMs you're creating fresh. There's no step 2: the token is already in it.</p>
+      <div class="codebox"><pre id="cmd-cloud">{{template "installcmd" .Cloud}}</pre><button type="button" class="copy" data-copy="cmd-cloud" hidden>Copy</button></div>
     </div>
   </div>
+</section>
+
+<section class="card step token-new">
+  <h2>Paste this when the installer asks</h2>
+  <p><strong>Shown once.</strong> Heimdall keeps just a hash. If it's lost, issue a new one with <code>sudo heimdall host token {{if .Host.AutoName}}&lt;name&gt;{{else}}{{.Host.Name}}{{end}}</code>.</p>
+  <div class="codebox"><code id="token">{{.Token}}</code><button type="button" class="copy" data-copy="token" hidden>Copy</button></div>
 </section>
 
 <section class="card step">
@@ -72,9 +78,9 @@
     <label for="env">Environment</label>
     <select id="env" name="env" required>
       {{$envs := .Envs}}{{$sel := .Form.Env}}{{$single := eq (len .Orgs) 1}}
-      {{range .Orgs}}{{$org := .Slug}}
+      {{range .Orgs}}{{$org := .Slug}}{{$c := .Collector}}
       {{if not $single}}<optgroup label="{{.Name}}">{{end}}
-      {{range index $envs $org}}<option value="{{$org}}/{{.Slug}}"{{if eq $sel (print $org "/" .Slug)}} selected{{end}}>{{.Slug}}</option>{{end}}
+      {{range index $envs $org}}<option value="{{$org}}/{{.Slug}}" data-opts="{{collectorFlags $c}}"{{if eq $sel (print $org "/" .Slug)}} selected{{end}}>{{.Slug}}</option>{{end}}
       {{if not $single}}</optgroup>{{end}}
       {{end}}
     </select>
@@ -89,6 +95,7 @@
     <input id="tags" name="tags" maxlength="300" placeholder="web, role:lb" autocomplete="off" autocapitalize="none" spellcheck="false" value="{{.Form.Tags}}" data-tags>
     <p class="hint">Press Enter or comma after each tag. Drift compares servers that share a tag.</p>
   </div>
+  {{template "collectorfields" .Form}}
   <div class="actions">
     <a class="button secondary" href="/hosts">Cancel</a>
     <button type="submit">Register host</button>

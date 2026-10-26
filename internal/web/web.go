@@ -611,7 +611,8 @@ var funcs = template.FuncMap{
 		}
 		return "unknown"
 	},
-	"join": strings.Join,
+	"join":           strings.Join,
+	"collectorFlags": collectorFlags,
 	// findings passes a findings list to the findingsSplit partial along
 	// with whether to show it all, and the URL that shows it all.
 	"findings": func(list []report.Finding, all bool, allURL string) map[string]any {

@@ -13,7 +13,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -58,6 +57,7 @@ type fakeIdP struct {
 	challenge string                     // from the authorize URL
 	idToken   string                     // returned by the token endpoint
 	tokenErr  int                        // HTTP status to fail with
+	tokenBody string                     // its body (default {"error":"invalid_grant"})
 
 	jwksFetches atomic.Int32
 }
@@ -93,7 +93,13 @@ func newIdP(t *testing.T) *fakeIdP {
 		defer f.mu.Unlock()
 		r.ParseForm()
 		if f.tokenErr != 0 {
-			http.Error(w, `{"error":"invalid_grant"}`, f.tokenErr)
+			body := f.tokenBody
+			if body == "" {
+				body = `{"error":"invalid_grant"}`
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(f.tokenErr)
+			w.Write([]byte(body))
 			return
 		}
 		sum := sha256.Sum256([]byte(r.PostForm.Get("code_verifier")))
@@ -128,18 +134,7 @@ func (h testHTTP) GetJSON(ctx context.Context, u string, max int64, out any) err
 }
 
 func (h testHTTP) PostForm(ctx context.Context, u string, form url.Values, max int64, out any) error {
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	resp, err := h.hc.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return &netx.StatusError{URL: u, Status: resp.StatusCode}
-	}
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, max))
-	return json.Unmarshal(b, out)
+	return h.nx.PostForm(ctx, u, form, max, out)
 }
 
 type env struct {

@@ -121,3 +121,16 @@ Then roles come only from Heimdall, and the `roles` claim is ignored. Roles sync
 - **An app role doesn't show up**: check the role's **value** (not its display name) matches the table, that it's assigned in **Enterprise applications** (not just defined in the registration), and that the person signed in again after the change. The token's roles are in the `login.success` audit entry.
 - **An admin lost admin after signing in**: the token had no `Heimdall.Admin` (step 4). Assign it in Entra.
 - **A per-org role doesn't apply**: the slug in the value must match the org's slug (`heimdall org list`).
+
+### "Sign-in failed" right after Microsoft's sign-in page
+
+The person signing in sees only "Sign-in failed"; the reason is in the hub's log (`journalctl -u heimdall`), as `sso: sign-in rejected: token exchange failed` with Microsoft's `error`, `error_codes` (the AADSTS numbers), the first sentence of its description and a `hint`. The client secret, the authorization code and tokens are never logged. The usual causes, all in the app registration:
+
+| Code | What it means | Fix |
+|---|---|---|
+| `AADSTS7000215` | Invalid client secret | You stored the secret's **ID**. Store its **Value** (shown only when the secret is created; make a new one if you didn't copy it) with `sudo heimdall sso set-secret`, then `sudo heimdall restart`. |
+| `AADSTS7000222` | The client secret has expired | Create a new secret under **Certificates & secrets** and store its Value. |
+| `AADSTS700025` | "Client is public" | The redirect URI is under **Mobile and desktop applications**. Remove it there and add it under **Authentication → Add a platform → Web**. |
+| `AADSTS9002327` | Registered as a single-page application | The redirect URI is under **Single-page application**. Add it under **Web** instead. |
+| `AADSTS50011` | Redirect URI mismatch | The **Web** redirect URIs must contain Heimdall's callback exactly: `ui.base_url` + `/auth/callback`, same scheme, host and path. |
+| `AADSTS700016` | Application not found in the tenant | `client_id` is wrong, or `tenant` names another directory. Check both against the registration's **Overview**. |

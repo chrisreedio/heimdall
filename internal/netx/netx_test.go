@@ -32,6 +32,9 @@ func TestSizeLimitAndStatus(t *testing.T) {
 			w.Write([]byte(strings.Repeat("x", 2048)))
 		case "/missing":
 			http.NotFound(w, r)
+		case "/token":
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"invalid_client"}` + strings.Repeat(" ", 2*MaxErrorBody)))
 		default:
 			w.Write([]byte(`{"ok":true}`))
 		}
@@ -45,6 +48,12 @@ func TestSizeLimitAndStatus(t *testing.T) {
 	var se *StatusError
 	if _, _, err := c.Get(t.Context(), srv.URL+"/missing", 1024, nil); !errors.As(err, &se) || se.Status != 404 {
 		t.Errorf("missing: %v", err)
+	}
+	// An error status keeps the start of its body (bounded), out of Error().
+	err := c.PostForm(t.Context(), srv.URL+"/token", nil, 1024, &struct{}{})
+	if !errors.As(err, &se) || se.Status != 401 || len(se.Body) != MaxErrorBody ||
+		!strings.HasPrefix(string(se.Body), `{"error":"invalid_client"}`) || strings.Contains(err.Error(), "invalid_client") {
+		t.Errorf("token: %v (%d bytes)", err, len(se.Body))
 	}
 	var out struct{ OK bool }
 	if err := c.GetJSON(t.Context(), srv.URL+"/", 1024, &out); err != nil || !out.OK {

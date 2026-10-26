@@ -7,17 +7,14 @@
 {{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
 
 {{if .Created}}
-<section class="card token-new" aria-labelledby="key-h">
-  <h2 id="key-h">Copy the enrollment key</h2>
-  <p><strong>It's shown only this once</strong>: Heimdall keeps just a hash. The installer asks for it on each server.</p>
-  <div class="codebox"><code id="enroll-key">{{.Secret}}</code><button type="button" class="copy" data-copy="enroll-key" hidden>Copy</button></div>
-  <p class="hint">Adds {{if .Key.MaxUses}}up to {{.Key.MaxUses}} server{{if ne .Key.MaxUses 1}}s{{end}}{{else}}any number of servers{{end}} to {{.Key.OrgSlug}} / {{.Key.EnvSlug}}{{if .Key.Tags}}, tagged {{join .Key.Tags ", "}}{{end}}. Expires {{.Key.Expires}} ({{time .Key.ExpiresAt}}).
-  {{if .Key.Approval}}Each server waits for your approval below before its reports count.{{else}}Servers report at once, without approval.{{end}}</p>
-</section>
+<p class="shown-once" role="note"><strong>The enrollment key in step 2 is shown only this once.</strong> Keep this page open until every server has it.</p>
+{{if .OptsSaved}}<p class="notice" role="status">Saved as {{.Key.OrgSlug}}'s default collector options.</p>{{end}}
+{{if .OptsError}}<p class="alert" role="alert">{{.OptsError}}</p>{{end}}
 
-<section class="card">
-  <h2>Run the installer</h2>
+<section class="card step">
+  <h2>Run this on the server</h2>
   {{if .Unpinned}}<p class="alert">This hub isn't a tagged release build, so replace <code>vX.Y.Z</code> below with the release you're using.</p>{{end}}
+  {{template "collectortoggle" .Opts}}
   <div class="tabs">
     <input type="radio" name="how" id="en-each" checked><label for="en-each">Each server</label>
     <input type="radio" name="how" id="en-many"><label for="en-many">Many servers from your machine</label>
@@ -25,22 +22,31 @@
     <input type="radio" name="how" id="en-win"><label for="en-win">Windows</label>
     <div class="panel" id="panel-each">
       <p class="muted">On each server, as a user with sudo, then paste the key when asked. It isn't shown, and it never lands in a command line or shell history.</p>
-      <div class="codebox"><pre id="cmd-each">{{.Linux}}</pre><button type="button" class="copy" data-copy="cmd-each" hidden>Copy</button></div>
+      <div class="codebox"><pre id="cmd-each">{{template "installcmd" .Linux}}</pre><button type="button" class="copy" data-copy="cmd-each" hidden>Copy</button></div>
     </div>
     <div class="panel" id="panel-many">
       <p class="muted">From your own machine, with your server names in place of <code>web-01 web-02 web-03</code>. You type the key once; each server reads it from ssh's stdin. Needs ssh access with passwordless sudo on each server (or root login).</p>
-      <div class="codebox"><pre id="cmd-many">{{.Many}}</pre><button type="button" class="copy" data-copy="cmd-many" hidden>Copy</button></div>
+      <div class="codebox"><pre id="cmd-many">{{template "installcmd" .Many}}</pre><button type="button" class="copy" data-copy="cmd-many" hidden>Copy</button></div>
       <p class="hint">Safe to run over servers that already report: they keep their token and are only upgraded.</p>
     </div>
     <div class="panel" id="panel-cloud">
       <p class="muted">Paste as new VMs' user data. <strong>It contains the key</strong>, and cloud metadata is readable on those VMs, so use a short expiry and a server limit.</p>
-      <div class="codebox"><pre id="cmd-cloud">{{.Cloud}}</pre><button type="button" class="copy" data-copy="cmd-cloud" hidden>Copy</button></div>
+      <div class="codebox"><pre id="cmd-cloud">{{template "installcmd" .Cloud}}</pre><button type="button" class="copy" data-copy="cmd-cloud" hidden>Copy</button></div>
     </div>
     <div class="panel" id="panel-win">
       <p class="muted">In an elevated PowerShell, then paste the key when asked. Check the downloads against <code>SHA256SUMS</code> first.</p>
       <div class="codebox"><pre id="cmd-win">{{.Windows}}</pre><button type="button" class="copy" data-copy="cmd-win" hidden>Copy</button></div>
+      <p class="hint">The collector options above are Linux-only; this command doesn't change with them.</p>
     </div>
   </div>
+</section>
+
+<section class="card step token-new" aria-labelledby="key-h">
+  <h2 id="key-h">Paste this when the installer asks</h2>
+  <p><strong>Shown once.</strong> Heimdall keeps just a hash. The installer asks for it on each server (cloud-init user data already has it).</p>
+  <div class="codebox"><code id="enroll-key">{{.Secret}}</code><button type="button" class="copy" data-copy="enroll-key" hidden>Copy</button></div>
+  <p class="hint">Adds {{if .Key.MaxUses}}up to {{.Key.MaxUses}} server{{if ne .Key.MaxUses 1}}s{{end}}{{else}}any number of servers{{end}} to {{.Key.OrgSlug}} / {{.Key.EnvSlug}}{{if .Key.Tags}}, tagged {{join .Key.Tags ", "}}{{end}}. Expires {{.Key.Expires}} ({{time .Key.ExpiresAt}}).
+  {{if .Key.Approval}}Each server waits for your approval below before its reports count.{{else}}Servers report at once, without approval.{{end}}</p>
   <div class="actions start">
     <a class="button" href="/hosts">Go to Hosts</a>
     <a class="button secondary" href="/hosts/enroll">Create another key</a>
@@ -56,9 +62,9 @@
     <label for="env">Environment</label>
     <select id="env" name="env" required>
       {{$envs := .Envs}}{{$sel := .Form.Env}}
-      {{range .Orgs}}{{$org := .Slug}}
+      {{range .Orgs}}{{$org := .Slug}}{{$c := .Collector}}
       {{if $multi}}<optgroup label="{{.Name}}">{{end}}
-      {{range index $envs $org}}<option value="{{$org}}/{{.Slug}}"{{if eq $sel (print $org "/" .Slug)}} selected{{end}}>{{.Slug}}</option>{{end}}
+      {{range index $envs $org}}<option value="{{$org}}/{{.Slug}}" data-opts="{{collectorFlags $c}}"{{if eq $sel (print $org "/" .Slug)}} selected{{end}}>{{.Slug}}</option>{{end}}
       {{if $multi}}</optgroup>{{end}}
       {{end}}
     </select>
@@ -89,6 +95,7 @@
     <label class="check"><input type="checkbox" name="approval" value="1"{{if .Form.Approval}} checked{{end}}> Require approval</label>
     <p class="hint">Each new server waits here until you approve it; until then its reports are discarded. Turn it off only for a key you'll keep to yourself.</p>
   </div>
+  {{template "collectorfields" .Form}}
   <div class="actions">
     <a class="button secondary" href="/hosts">Cancel</a>
     <button type="submit">Create key</button>

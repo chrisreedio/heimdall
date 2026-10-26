@@ -132,7 +132,7 @@ func TestEnrollForm(t *testing.T) {
 	f := url.Values{"csrf": {csrf}, "env": {"acme/prod"}, "expires": {"24h"}, "uses": {"many"}, "label": {"x"}}
 	w := e.post("/hosts/enroll", f, signedIn(e), origin(e.baseURL))
 	if body := w.Body.String(); w.Code != http.StatusBadRequest || !strings.Contains(body, "whole number") ||
-		strings.Contains(body, `value="1" checked`) || !strings.Contains(body, `value="many"`) {
+		strings.Contains(body, `name="approval" value="1" checked`) || !strings.Contains(body, `value="many"`) {
 		t.Errorf("bad uses: %d", w.Code)
 	}
 	f.Set("uses", "")

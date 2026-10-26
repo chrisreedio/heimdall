@@ -108,7 +108,14 @@ func (g guard) RoundTrip(r *http.Request) (*http.Response, error) {
 type StatusError struct {
 	URL    string
 	Status int
+	// Body is the start of the response body (at most MaxErrorBody bytes),
+	// for callers that parse an error document, such as an OAuth token
+	// endpoint's. It's never part of Error().
+	Body []byte
 }
+
+// MaxErrorBody bounds StatusError.Body.
+const MaxErrorBody = 8 << 10
 
 func (e *StatusError) Error() string { return fmt.Sprintf("GET %s: HTTP %d", e.URL, e.Status) }
 
@@ -181,8 +188,9 @@ func (c *Client) do(req *http.Request, maxBytes int64) ([]byte, http.Header, err
 		return nil, resp.Header, nil
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, MaxErrorBody))
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 64<<10))
-		return nil, nil, &StatusError{URL: req.URL.Redacted(), Status: resp.StatusCode}
+		return nil, nil, &StatusError{URL: req.URL.Redacted(), Status: resp.StatusCode, Body: body}
 	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
 	if err != nil {
