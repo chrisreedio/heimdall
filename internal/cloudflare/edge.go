@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // EdgeSource is the edge ranges' label source.

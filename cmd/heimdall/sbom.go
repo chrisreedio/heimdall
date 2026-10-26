@@ -5,7 +5,7 @@ package main
 import (
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/sbom"
+	"github.com/realmwatch/heimdall/internal/sbom"
 )
 
 func cmdSBOM(a *app, args []string) error {

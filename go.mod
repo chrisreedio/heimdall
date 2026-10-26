@@ -1,4 +1,4 @@
-module github.com/chrisreedio/heimdall
+module github.com/realmwatch/heimdall
 
 go 1.27.3
 

@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // newIPEnv is an env whose resolver uses its store, with the sign-in source.

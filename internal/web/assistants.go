@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/mcpb"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/mcpb"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // MCPSetup is what the UI needs to know about the [mcp] endpoint.

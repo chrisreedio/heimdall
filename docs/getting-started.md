@@ -126,4 +126,4 @@ make check        # everything CI runs: gofmt, vet, staticcheck, govulncheck, te
 make vendor       # after changing dependencies (review the vendor/ diff)
 ```
 
-The Go module path is `github.com/chrisreedio/heimdall`. Change it in `go.mod` and the imports if your repo lives elsewhere.
+The Go module path is `github.com/realmwatch/heimdall`. Change it in `go.mod` and the imports if your repo lives elsewhere.

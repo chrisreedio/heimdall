@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 func TestBuild(t *testing.T) {

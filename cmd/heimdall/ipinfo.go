@@ -5,9 +5,9 @@ package main
 import (
 	"log/slog"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // newIPResolver builds what the hub knows about IP addresses, and the

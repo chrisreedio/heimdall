@@ -7,10 +7,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/handoff"
-	"github.com/chrisreedio/heimdall/internal/netx"
-	"github.com/chrisreedio/heimdall/internal/notify"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/handoff"
+	"github.com/realmwatch/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/notify"
 )
 
 // handoffRetry keeps a hand-off quick: the operator is waiting on the

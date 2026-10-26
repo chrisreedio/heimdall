@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/feeds/osv"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/feeds/osv"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // tidyDatabase runs after `heimdall migrate` applies migrations: it slims

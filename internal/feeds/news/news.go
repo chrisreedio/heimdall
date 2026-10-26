@@ -20,7 +20,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/chrisreedio/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/netx"
 )
 
 // MaxBytes caps a download. pwn.watch's full list is about 1 MB.

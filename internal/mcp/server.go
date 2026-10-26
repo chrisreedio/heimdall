@@ -21,8 +21,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/secret"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/secret"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Path is the only route.

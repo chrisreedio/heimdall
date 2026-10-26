@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 func cmdAnomalyList(a *app, args []string) error {

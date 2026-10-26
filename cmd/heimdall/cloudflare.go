@@ -16,10 +16,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/cloudflare"
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/cloudflare"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // cloudflareCredential is the systemd credential name holding the token.

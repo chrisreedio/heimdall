@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/bans"
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/bans"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Bans (internal/bans, docs/bans.md): /bans is where operators approve,

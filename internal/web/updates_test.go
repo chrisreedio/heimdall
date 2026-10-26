@@ -6,16 +6,16 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/updates"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/updates"
 )
 
 func TestUpdateBannerForAdminsOnly(t *testing.T) {
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.Version = "v0.4.0"
 		c.Updates = func() (updates.Release, bool) {
-			return updates.Release{Version: "v0.5.0", URL: "https://github.com/chrisreedio/heimdall/releases/tag/v0.5.0"}, true
+			return updates.Release{Version: "v0.5.0", URL: "https://github.com/realmwatch/heimdall/releases/tag/v0.5.0"}, true
 		}
 	})
 	e.seed()

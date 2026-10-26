@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/feeds/eol"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/triggers"
-	"github.com/chrisreedio/heimdall/internal/updates"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/feeds/eol"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/triggers"
+	"github.com/realmwatch/heimdall/internal/updates"
 )
 
 // ── Fleet: one row per visible host, for the dashboard and host list ─────

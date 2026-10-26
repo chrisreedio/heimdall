@@ -11,14 +11,14 @@ import (
 	"slices"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/ecosystem"
-	"github.com/chrisreedio/heimdall/internal/feeds/eol"
-	"github.com/chrisreedio/heimdall/internal/feeds/epss"
-	"github.com/chrisreedio/heimdall/internal/feeds/kev"
-	"github.com/chrisreedio/heimdall/internal/netx"
-	"github.com/chrisreedio/heimdall/internal/snapshot"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/ecosystem"
+	"github.com/realmwatch/heimdall/internal/feeds/eol"
+	"github.com/realmwatch/heimdall/internal/feeds/epss"
+	"github.com/realmwatch/heimdall/internal/feeds/kev"
+	"github.com/realmwatch/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/snapshot"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Syncer refreshes every enabled feed and recomputes findings.

@@ -19,10 +19,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/notify"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/store/storetest"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/notify"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store/storetest"
 )
 
 const (

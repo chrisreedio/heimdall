@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/netx"
 )
 
 func TestNewer(t *testing.T) {
@@ -23,7 +23,7 @@ func TestNewer(t *testing.T) {
 }
 
 func TestCheck(t *testing.T) {
-	body := `{"tag_name":"v0.5.0","html_url":"https://github.com/chrisreedio/heimdall/releases/tag/v0.5.0"}`
+	body := `{"tag_name":"v0.5.0","html_url":"https://github.com/realmwatch/heimdall/releases/tag/v0.5.0"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 	defer srv.Close()
 	c := &Checker{HTTP: netx.NewForTest(srv.Client()), URL: srv.URL, Current: "v0.4.0"}

@@ -9,9 +9,9 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/logins"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/logins"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Failed logins (docs/failed-logins.md): what the opt-in login watch

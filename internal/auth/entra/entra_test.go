@@ -24,7 +24,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/netx"
 )
 
 const (

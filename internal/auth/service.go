@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Login throttling: failures allowed per window, per source IP and per

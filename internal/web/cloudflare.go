@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/cloudflare"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/cloudflare"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Cloudflare (internal/cloudflare): the /cloudflare overview and a card on

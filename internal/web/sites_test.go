@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/ingest"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/ingest"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 const siteRoot = "/home/forge/example.com"

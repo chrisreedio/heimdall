@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/history"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/history"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 func TestUptimeInconsistent(t *testing.T) {

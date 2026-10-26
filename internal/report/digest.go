@@ -5,7 +5,7 @@ package report
 import (
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/notify"
+	"github.com/realmwatch/heimdall/internal/notify"
 )
 
 // Digest summarizes a report as counts only (see internal/notify).

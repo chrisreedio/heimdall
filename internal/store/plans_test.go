@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/snapshot"
+	"github.com/realmwatch/heimdall/internal/snapshot"
 )
 
 // saveTestSnapshot stores a minimal snapshot with one package, optionally

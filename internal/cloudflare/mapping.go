@@ -7,8 +7,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Mapped is a DNS record joined to what Heimdall knows.

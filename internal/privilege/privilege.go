@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // KindLabel names a privilege event kind for people.

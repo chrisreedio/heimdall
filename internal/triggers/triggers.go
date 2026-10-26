@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // State is a collector's report on what makes it run, from the

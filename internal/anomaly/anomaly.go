@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/findings"
-	"github.com/chrisreedio/heimdall/internal/history"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/version"
+	"github.com/realmwatch/heimdall/internal/findings"
+	"github.com/realmwatch/heimdall/internal/history"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/version"
 )
 
 // LearningSnapshots: a host's first snapshots only set its baseline.

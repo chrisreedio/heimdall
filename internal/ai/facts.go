@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/findings"
-	"github.com/chrisreedio/heimdall/internal/kernel"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/version"
+	"github.com/realmwatch/heimdall/internal/findings"
+	"github.com/realmwatch/heimdall/internal/kernel"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/version"
 )
 
 // The facts are what leaves the hub: compact, pre-aggregated, and only

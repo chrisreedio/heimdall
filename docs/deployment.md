@@ -8,7 +8,7 @@
 
 **Hub** (fresh Debian/Ubuntu VM with Tailscale logged in):
 ```sh
-curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/v0.4.0/install-hub.sh
+curl -fsSLO https://github.com/realmwatch/heimdall/releases/download/v0.4.0/install-hub.sh
 sudo sh install-hub.sh --org acme --ingest-host ingest.acme.example.com --admin you@example.com --mcp
 #   or --tailnet-only instead of --ingest-host if every server is on your tailnet
 ```
@@ -18,7 +18,7 @@ It downloads the verified release, creates the `heimdall-hub` user, config and d
 
 **Each server:** in the UI go to **Hosts → Add a host**. Heimdall registers the server and shows the token once, plus a ready-to-paste command for Linux, cloud-init or Windows:
 ```sh
-curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/v0.4.0/install.sh && sudo sh install.sh --hub https://ingest.acme.example.com
+curl -fsSLO https://github.com/realmwatch/heimdall/releases/download/v0.4.0/install.sh && sudo sh install.sh --hub https://ingest.acme.example.com
 #   paste the token when asked (never echoed or put on a command line)
 ```
 **Many servers:** **Hosts → Add servers** creates an expiring enrollment key instead; run the same installer with `--enroll` on each server (or over ssh with `--enroll-stdin`) and each one gets its own token. See [Many servers](collector.md#many-servers-enrollment-keys).
@@ -97,7 +97,7 @@ sudo heimdall upgrade            # or: heimdall upgrade --check
 ```
 It finds the latest release (or `--version vX.Y.Z`), checks that release's `install-hub.sh` against its `SHA256SUMS`, and runs it. Flags after `--` go to the installer. Without Heimdall's command, the same thing by hand:
 ```sh
-curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/vX.Y.Z/install-hub.sh
+curl -fsSLO https://github.com/realmwatch/heimdall/releases/download/vX.Y.Z/install-hub.sh
 sudo sh install-hub.sh
 ```
 The installer verifies the release, then:

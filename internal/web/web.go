@@ -23,15 +23,15 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/auth/entra"
-	"github.com/chrisreedio/heimdall/internal/bans"
-	"github.com/chrisreedio/heimdall/internal/handoff"
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/search"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/updates"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/auth/entra"
+	"github.com/realmwatch/heimdall/internal/bans"
+	"github.com/realmwatch/heimdall/internal/handoff"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/search"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/updates"
 )
 
 // Authenticator signs users in and resolves session cookies.

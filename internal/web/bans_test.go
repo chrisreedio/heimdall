@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/bans"
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/logins"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/bans"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/logins"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // newBansEnv: Cloudflare on, [bans] in propose mode, the seeded zones.

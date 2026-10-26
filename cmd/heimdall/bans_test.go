@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 const bansTestToken = "cf-bans-test-token-0123456789abcdef"

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Syncer reads the token's zones, their A/AAAA/CNAME records and (if

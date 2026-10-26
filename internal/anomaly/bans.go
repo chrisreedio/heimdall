@@ -9,11 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/cloudflare"
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/logins"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/surface"
+	"github.com/realmwatch/heimdall/internal/cloudflare"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/logins"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/surface"
 )
 
 // Alerts from failed logins and the surface map (docs/bans.md#alerts):

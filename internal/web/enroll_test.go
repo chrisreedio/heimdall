@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/secret"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/secret"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 func TestEnrollPage(t *testing.T) {

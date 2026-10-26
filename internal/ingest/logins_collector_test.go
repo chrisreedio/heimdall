@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // The collector's login watch (collector/login-watch.sh) against sshd's

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 func TestFindingsView(t *testing.T) {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Summary is a zone's security events over a window: counts only, the top

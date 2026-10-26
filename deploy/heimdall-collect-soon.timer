@@ -4,7 +4,7 @@
 
 [Unit]
 Description=Heimdall report shortly after a package change
-Documentation=https://github.com/chrisreedio/heimdall/blob/main/docs/collector.md
+Documentation=https://github.com/realmwatch/heimdall/blob/main/docs/collector.md
 
 [Timer]
 OnActiveSec=60s

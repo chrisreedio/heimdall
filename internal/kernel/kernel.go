@@ -18,7 +18,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/version"
+	"github.com/realmwatch/heimdall/internal/version"
 )
 
 var (

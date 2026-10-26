@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"slices"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Internal reports whether an address is on the tailnet, a private network

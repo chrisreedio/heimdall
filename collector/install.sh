@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Install the Heimdall collector on a Linux server, in one step.
 #
-#   curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/vX.Y.Z/install.sh &&
+#   curl -fsSLO https://github.com/realmwatch/heimdall/releases/download/vX.Y.Z/install.sh &&
 #     sudo sh install.sh --hub https://ingest.example.com
 #   (then paste the token when asked; it's never echoed, logged or put on a
 #   command line). For many servers, use an enrollment key instead of a
@@ -26,7 +26,7 @@ export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 HEIMDALL_VERSION=dev # set by `make dist`
-RELEASES=${HEIMDALL_RELEASES:-https://github.com/chrisreedio/heimdall/releases/download}
+RELEASES=${HEIMDALL_RELEASES:-https://github.com/realmwatch/heimdall/releases/download}
 
 die() { printf 'heimdall install: %s\n' "$*" >&2; exit 1; }
 say() { printf '==> %s\n' "$*" >&2; }

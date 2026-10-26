@@ -9,10 +9,10 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/ai"
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/ai"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // AIService is the optional AI analysis (internal/ai.Service). nil = off.

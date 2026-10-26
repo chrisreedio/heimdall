@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/secret"
+	"github.com/realmwatch/heimdall/internal/secret"
 )
 
 func TestEnrollApprovalAndDedup(t *testing.T) {

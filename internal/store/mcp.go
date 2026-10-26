@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/secret"
+	"github.com/realmwatch/heimdall/internal/secret"
 )
 
 // MCPToken is a user's token for the MCP endpoint (never the secret).

@@ -8,8 +8,8 @@ import (
 	"slices"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/tailscale"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/tailscale"
 )
 
 // tailnetFresh is how recent the Tailscale sync must be for its devices'

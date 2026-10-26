@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/feeds/osv"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/feeds/osv"
 )
 
 // Golden check over every OSV fixture: what Heimdall derives from a record

@@ -10,7 +10,7 @@ import (
 	"maps"
 	"slices"
 
-	"github.com/chrisreedio/heimdall/internal/handoff"
+	"github.com/realmwatch/heimdall/internal/handoff"
 )
 
 // SiteRepo is a site's repository: as detected by the collector, and as

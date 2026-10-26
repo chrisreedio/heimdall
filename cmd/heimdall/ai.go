@@ -15,10 +15,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/ai"
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/netx"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/ai"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // aiCredential is the systemd credential name holding the AI API key.

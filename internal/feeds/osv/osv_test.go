@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/netx"
 )
 
 func fixture(t *testing.T, name string) []byte {

@@ -962,7 +962,7 @@ push() {
 
 # ── Upgrade ─────────────────────────────────────────────────────────────────
 
-RELEASES=${HEIMDALL_RELEASES:-https://github.com/chrisreedio/heimdall/releases/download}
+RELEASES=${HEIMDALL_RELEASES:-https://github.com/realmwatch/heimdall/releases/download}
 
 # newer A B: is version A (x.y.z) newer than B?
 newer() {

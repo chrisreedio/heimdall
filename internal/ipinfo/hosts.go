@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Hosts knows your own servers by the address their reports come from.

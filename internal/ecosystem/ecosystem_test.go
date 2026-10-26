@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/snapshot"
-	"github.com/chrisreedio/heimdall/internal/version"
+	"github.com/realmwatch/heimdall/internal/snapshot"
+	"github.com/realmwatch/heimdall/internal/version"
 )
 
 func TestResolve(t *testing.T) {

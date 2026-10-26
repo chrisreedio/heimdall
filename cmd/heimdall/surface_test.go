@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 func TestSurfaceCommand(t *testing.T) {

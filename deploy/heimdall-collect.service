@@ -3,7 +3,7 @@
 
 [Unit]
 Description=Heimdall collector (push inventory to the hub)
-Documentation=https://github.com/chrisreedio/heimdall/blob/main/docs/collector.md
+Documentation=https://github.com/realmwatch/heimdall/blob/main/docs/collector.md
 After=network-online.target
 Wants=network-online.target
 

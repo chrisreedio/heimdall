@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/config"
 )
 
 // report is the fixture as sent n minutes after it was first collected:

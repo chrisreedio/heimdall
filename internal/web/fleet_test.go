@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // fleetEnv: web-01 (acme/prod, tag web) with a known-exploited, fixable

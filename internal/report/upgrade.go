@@ -6,8 +6,8 @@ import (
 	"regexp"
 	"slices"
 
-	"github.com/chrisreedio/heimdall/internal/kernel"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/kernel"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Pkgs is a host's installed OS packages: name → whether the collector saw

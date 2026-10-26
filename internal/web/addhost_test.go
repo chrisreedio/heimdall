@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 func TestAddHost(t *testing.T) {
@@ -29,7 +29,7 @@ func TestAddHost(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(body, "hmd_ingest_") {
 		t.Fatalf("add: %d", w.Code)
 	}
-	want := "curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/v0.4.0/install.sh &amp;&amp; sudo sh install.sh --hub https://ingest.example.com"
+	want := "curl -fsSLO https://github.com/realmwatch/heimdall/releases/download/v0.4.0/install.sh &amp;&amp; sudo sh install.sh --hub https://ingest.example.com"
 	if !strings.Contains(body, want) {
 		t.Errorf("linux command missing:\n%s", body)
 	}

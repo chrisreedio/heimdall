@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/store/storetest"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store/storetest"
 )
 
 func TestRFC6238Vectors(t *testing.T) {

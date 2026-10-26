@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 func planID(s string) (int64, error) {

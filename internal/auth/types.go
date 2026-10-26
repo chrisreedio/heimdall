@@ -8,7 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Viewer is the signed-in user behind a request.

@@ -15,11 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/netx"
 )
 
 // LatestURL is GitHub's "latest release" API for this repository.
-const LatestURL = "https://api.github.com/repos/chrisreedio/heimdall/releases/latest"
+const LatestURL = "https://api.github.com/repos/realmwatch/heimdall/releases/latest"
 
 var tagRe = regexp.MustCompile(`^v(\d{1,4})\.(\d{1,4})\.(\d{1,4})$`)
 
@@ -80,7 +80,7 @@ func Latest(ctx context.Context, hc *netx.Client, url string) (Release, error) {
 		return Release{}, err
 	}
 	if r.Draft || r.Pre || !tagRe.MatchString(r.TagName) ||
-		!strings.HasPrefix(r.HTMLURL, "https://github.com/chrisreedio/heimdall/releases/") {
+		!strings.HasPrefix(r.HTMLURL, "https://github.com/realmwatch/heimdall/releases/") {
 		return Release{}, ErrNoRelease
 	}
 	return Release{Version: r.TagName, URL: r.HTMLURL}, nil

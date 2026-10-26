@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/secret"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/secret"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // MachineHeader carries a hash of the server's machine ID (hex SHA-256 of

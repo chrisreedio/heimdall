@@ -12,7 +12,7 @@
 
 [Unit]
 Description=Watch the package database for Heimdall reports
-Documentation=https://github.com/chrisreedio/heimdall/blob/main/docs/collector.md
+Documentation=https://github.com/realmwatch/heimdall/blob/main/docs/collector.md
 
 [Path]
 # dpkg (Debian, Ubuntu)

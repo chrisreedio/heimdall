@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/config"
 )
 
 // Seams for tests.

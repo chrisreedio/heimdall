@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/auth"
-	"github.com/chrisreedio/heimdall/internal/ingest"
-	"github.com/chrisreedio/heimdall/internal/search"
-	"github.com/chrisreedio/heimdall/internal/store"
-	"github.com/chrisreedio/heimdall/internal/store/storetest"
+	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/ingest"
+	"github.com/realmwatch/heimdall/internal/search"
+	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store/storetest"
 )
 
 const goodToken = "tok-valid"

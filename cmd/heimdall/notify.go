@@ -17,11 +17,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/config"
-	"github.com/chrisreedio/heimdall/internal/netx"
-	"github.com/chrisreedio/heimdall/internal/notify"
-	"github.com/chrisreedio/heimdall/internal/report"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/notify"
+	"github.com/realmwatch/heimdall/internal/report"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // credential reads a systemd credential (or HEIMDALL_<NAME>_FILE).

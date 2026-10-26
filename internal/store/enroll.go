@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/secret"
+	"github.com/realmwatch/heimdall/internal/secret"
 )
 
 // An enrollment key adds servers to one org and environment until it

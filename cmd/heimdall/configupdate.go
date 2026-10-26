@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/config"
 )
 
 // cmdConfigUpdate appends the config sections for features added since the

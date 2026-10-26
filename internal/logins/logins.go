@@ -20,9 +20,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/cloudflare"
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/cloudflare"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Address is failed logins from one address, summed over the hosts that

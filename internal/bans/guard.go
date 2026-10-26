@@ -7,9 +7,9 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/cloudflare"
-	"github.com/chrisreedio/heimdall/internal/ipinfo"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/cloudflare"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Guard is identify-friend-or-foe for a ban target. A ban is hub-wide at

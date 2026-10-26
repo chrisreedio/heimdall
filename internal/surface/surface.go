@@ -16,8 +16,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/cloudflare"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/cloudflare"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // Input is everything stored that the map joins. Zones and Records are

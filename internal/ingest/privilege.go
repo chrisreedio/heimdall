@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chrisreedio/heimdall/internal/privilege"
-	"github.com/chrisreedio/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/privilege"
+	"github.com/realmwatch/heimdall/internal/store"
 )
 
 // The opt-in privilege watch (install.sh --watch-privilege) reports in

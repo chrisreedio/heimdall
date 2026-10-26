@@ -21,4 +21,4 @@ packages: [curl, unattended-upgrades]
 runcmd:
   - [sh, -c, "curl -fsSL https://tailscale.com/install.sh | sh"]
   - [tailscale, up, --ssh, --authkey=TS_AUTHKEY, --hostname=heimdall-ORG]
-  - [sh, -c, "cd /root && curl -fsSLO https://github.com/chrisreedio/heimdall/releases/download/VERSION/install-hub.sh && sh install-hub.sh --org ORG --ingest-host INGEST_HOST --mcp"]
+  - [sh, -c, "cd /root && curl -fsSLO https://github.com/realmwatch/heimdall/releases/download/VERSION/install-hub.sh && sh install-hub.sh --org ORG --ingest-host INGEST_HOST --mcp"]

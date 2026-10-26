@@ -14,12 +14,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/chrisreedio/heimdall/internal/netx"
-	"github.com/chrisreedio/heimdall/internal/updates"
+	"github.com/realmwatch/heimdall/internal/netx"
+	"github.com/realmwatch/heimdall/internal/updates"
 )
 
 // releaseBase is where release assets are downloaded from.
-var releaseBase = "https://github.com/chrisreedio/heimdall/releases/download/"
+var releaseBase = "https://github.com/realmwatch/heimdall/releases/download/"
 
 // Seams for tests.
 var (
