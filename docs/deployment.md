@@ -51,7 +51,7 @@ Set `ui.base_url` to that `https://…ts.net` address. Only devices on your tail
 
 ## Where to host it
 
-See [hosting.md](hosting.md): a small VPS, a local box with Tailscale, AWS (Lightsail/EC2) or Azure (B-series VM), with step-by-step setup for each.
+See [hosting.md](hosting.md): a small VPS, a local box with Tailscale, AWS (Lightsail/EC2) or Azure (B-series v2 VM), with step-by-step setup for each.
 
 ## Install
 
