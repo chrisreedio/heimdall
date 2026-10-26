@@ -59,7 +59,8 @@ Commands:
                                Manage web UI accounts (password + TOTP, or --entra)
   user grant|revoke            Give or remove a role (viewer, operator, admin) in an org
   user mcp-token create|list|revoke
-                               Tokens for AI assistants on the read-only MCP endpoint
+                               Tokens for AI assistants on the read-only MCP endpoint,
+                               or (--purpose threats) for the threat list's REST API
   import                       Store (or --check) a snapshot file
   collector trust|list         Manage known-good collector checksums
   feeds sync|status            Refresh OSV, KEV and end-of-life data now

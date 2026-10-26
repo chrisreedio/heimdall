@@ -177,12 +177,32 @@ type WebOffender struct {
 // lead to the org's hosts or sites. Most events first. The network and
 // country are the latest day's.
 func (s *Store) WebOffenders(ctx context.Context, org string, since time.Time) ([]WebOffender, error) {
+	if org == "" {
+		return s.WebOffendersIn(ctx, nil, since)
+	}
+	return s.WebOffendersIn(ctx, []string{org}, since)
+}
+
+// WebOffendersIn is WebOffenders over the zones mapped to any of these
+// orgs (slugs; nil every zone, empty none). A zone mapped to two of them
+// counts once.
+func (s *Store) WebOffendersIn(ctx context.Context, orgs []string, since time.Time) ([]WebOffender, error) {
+	if orgs != nil && len(orgs) == 0 {
+		return []WebOffender{}, nil
+	}
+	zones, args := "", []any{since.Unix()}
+	if orgs != nil {
+		zones = ` AND w.zone_id IN (SELECT zo.zone_id FROM cloudflare_zone_orgs zo JOIN organizations o ON o.id = zo.org_id
+			WHERE o.slug IN (?` + strings.Repeat(", ?", len(orgs)-1) + `))`
+		for _, o := range orgs {
+			args = append(args, o)
+		}
+	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT w.ip, w.day, z.name, w.events, w.actions, w.first_at, w.last_at, w.asn, w.as_name, w.country
 		FROM cloudflare_web_offenders w JOIN cloudflare_zones z ON z.id = w.zone_id
-		WHERE w.last_at >= ? AND (? = '' OR w.zone_id IN (
-			SELECT zo.zone_id FROM cloudflare_zone_orgs zo JOIN organizations o ON o.id = zo.org_id WHERE o.slug = ?))
-		ORDER BY w.ip, w.day`, since.Unix(), org, org)
+		WHERE w.last_at >= ?`+zones+`
+		ORDER BY w.ip, w.day`, args...)
 	if err != nil {
 		return nil, err
 	}

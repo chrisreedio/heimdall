@@ -24,6 +24,9 @@ const EnrollPrefix = "hmd_enroll_"
 // MCPPrefix marks per-user MCP tokens.
 const MCPPrefix = "hmd_mcp_"
 
+// ThreatsPrefix marks per-user tokens for the threat list's REST API.
+const ThreatsPrefix = "hmd_threats_"
+
 // NewToken returns a random token with the given prefix and its hash.
 func NewToken(prefix string) (token string, hash [32]byte) {
 	b := make([]byte, 32)

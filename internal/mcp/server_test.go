@@ -98,7 +98,7 @@ func TestProtocol(t *testing.T) {
 		t.Errorf("notification: %d", w.Code)
 	}
 	tools := e.call("tools/list", nil)["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 7 {
+	if len(tools) != 9 {
 		t.Errorf("%d tools", len(tools))
 	}
 	if errObj, _ := e.call("nope", nil)["error"].(map[string]any); errObj["code"] != float64(-32601) {

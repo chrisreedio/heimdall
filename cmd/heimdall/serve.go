@@ -23,10 +23,12 @@ import (
 	"github.com/realmwatch/heimdall/internal/findings"
 	"github.com/realmwatch/heimdall/internal/ingest"
 	"github.com/realmwatch/heimdall/internal/ipinfo"
+	"github.com/realmwatch/heimdall/internal/logins"
 	"github.com/realmwatch/heimdall/internal/mcp"
 	"github.com/realmwatch/heimdall/internal/netx"
 	"github.com/realmwatch/heimdall/internal/search"
 	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/threats"
 	"github.com/realmwatch/heimdall/internal/updates"
 	"github.com/realmwatch/heimdall/internal/web"
 )
@@ -106,7 +108,12 @@ func cmdServe(a *app, args []string) error {
 	var mcpSrv *http.Server
 	var mcpLn net.Listener
 	if cfg.MCP.Enabled {
-		h, err := mcp.New(mcp.Config{BaseURL: cfg.MCP.BaseURL, Version: version}, s, log.With("component", "mcp"), time.Now)
+		// The threat list (docs/threats.md) knows friends as bans do, and
+		// scores with the same weights. Web rows are what the Cloudflare
+		// zone sync recorded (none without [cloudflare]).
+		tl := &threats.Lister{Store: s, Ranker: &logins.Ranker{Store: s, IPs: ips, Edge: cloudflareEdgeSet()},
+			Bans: cfg.Bans, Now: time.Now, Web: threats.StoreWeb(s)}
+		h, err := mcp.New(mcp.Config{BaseURL: cfg.MCP.BaseURL, Version: version, Threats: tl}, s, log.With("component", "mcp"), time.Now)
 		if err != nil {
 			return err
 		}

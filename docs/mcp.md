@@ -115,12 +115,16 @@ The Desktop extension and Claude Code run on your own machine, so they reach the
 | `anomalies` | Open tripwire alerts |
 | `changes` | What changed between a host's last two check-ins |
 | `drift` | Packages that differ across hosts sharing a tag |
+| `threats` | Attacker addresses: failed SSH logins (and Cloudflare web events) across visible hosts, with ban score, network and ban status. Filters: `since`, `org`, `min_score`, `min_hosts`, `source`, `limit`. See [Threat list](threats.md). |
+| `threat_networks` | The threat list rolled up per /24, /48 and ASN, with the same filters plus `kind` and `min_addresses` |
+
+The same threat list is also a REST API on this listener (`GET /api/v1/threats`), for firewalls and other services. It takes **threat-list tokens** only (`hmd_threats_…`, created with *For: Threat list* on the AI assistants page, or `--purpose threats` in the CLI). An MCP token gets `403` there, and a threat-list token gets `403` on `/mcp`. See [Threat list](threats.md#tokens).
 
 ## Tokens from the CLI
 
 | Command | |
 |---|---|
-| `hd user mcp-token create [--name …] <email>` | New token, shown once. Only its hash is stored. |
+| `hd user mcp-token create [--name …] [--purpose mcp\|threats] <email>` | New token, shown once. Only its hash is stored. `--purpose threats` makes a [threat-list](threats.md) token. |
 | `hd user mcp-token list <email>` | Tokens with their last use |
 | `hd user mcp-token revoke <email> <id>` | Stops working immediately |
 

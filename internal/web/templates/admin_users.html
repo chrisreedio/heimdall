@@ -20,7 +20,7 @@
     <td>{{time .LastLoginAt}}</td>
     {{if $.Body.MCP}}<td>{{$uid := .ID}}{{range .Tokens}}<form method="post" action="/admin/users/mcp-revoke" class="inline">
         <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="user" value="{{$uid}}"><input type="hidden" name="id" value="{{.ID}}">
-        <span class="badge" title="Last used: {{if .LastUsed}}{{dayAgo .LastUsed}}{{else}}never{{end}}">{{.Name}}</span>
+        <span class="badge" title="{{if .Threats}}Threat list. {{end}}Last used: {{if .LastUsed}}{{dayAgo .LastUsed}}{{else}}never{{end}}">{{.Name}}{{if .Threats}} (threat list){{end}}</span>
         <button type="submit" class="link" aria-label="Revoke token {{.Name}}">revoke</button>
       </form>{{else}}<span class="muted">none</span>{{end}}</td>{{end}}
     <td>{{if .Disabled}}disabled{{else}}active{{end}}

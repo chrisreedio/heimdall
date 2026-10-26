@@ -182,13 +182,7 @@ type Inputs struct {
 // first. Candidates under the threshold are kept, so shadow mode can show
 // how close they came.
 func Score(cfg config.Bans, in Inputs) []Candidate {
-	w := cfg.Weights
-	asnCount := map[int64]int{}
-	for _, a := range in.Offenders {
-		if r, ok := in.Radar[a.IP]; ok && r.ASN > 0 {
-			asnCount[r.ASN]++
-		}
-	}
+	asnCount := asnCounts(in)
 	window := windowText(in.Window)
 	var out []Candidate
 	type net struct {
@@ -197,29 +191,11 @@ func Score(cfg config.Bans, in Inputs) []Candidate {
 	nets := map[netip.Prefix]*net{}
 	var netOrder []netip.Prefix
 	for _, a := range in.Offenders {
-		addr, err := netip.ParseAddr(a.IP)
-		if err != nil {
+		c, addr, eligible, ok := addressCandidate(cfg, in, a, asnCount, window)
+		if !ok {
 			continue
 		}
-		addr = addr.Unmap()
-		r := in.Radar[a.IP]
-		peers := 0
-		if r.ASN > 0 {
-			peers = asnCount[r.ASN] - 1
-		}
-		fs := scoreAddress(w, a, in.Days[a.IP], peers)
-		c := Candidate{Target: addressTarget(addr), Kind: KindAddress, Factors: fs, Score: total(fs),
-			Evidence: evidence(a, in.Days[a.IP], r, window)}
-		c.Evidence.Prefix = networkOf(addr).String()
-		c.Orgs = orgsOf(c.Evidence.Hosts)
-		eligible := a.Failures >= cfg.MinFailures || len(a.Succeeded) > 0
-		c.Over = eligible && c.Score >= cfg.ProposeAt
-		c.Action, c.Evidence.Reason = actionFor(cfg, len(a.Hosts), len(a.Succeeded) > 0)
-		if c.Over {
-			if why, ok := in.Guard.Friendly(c.Target); ok {
-				c.Skip = why
-			}
-		} else if eligible || a.Failures > 0 {
+		if !c.Over && (eligible || a.Failures > 0) {
 			n := networkOf(addr)
 			if nets[n] == nil {
 				nets[n] = &net{}
@@ -243,6 +219,68 @@ func Score(cfg config.Bans, in Inputs) []Candidate {
 	})
 	return out
 }
+
+// AddressScores scores each offender alone, by address, with the points
+// Score gives it (no networks): what the threat list shows
+// (internal/threats), so its numbers match /bans.
+func AddressScores(cfg config.Bans, in Inputs) map[string]Candidate {
+	asnCount := asnCounts(in)
+	window := windowText(in.Window)
+	out := make(map[string]Candidate, len(in.Offenders))
+	for _, a := range in.Offenders {
+		if c, _, _, ok := addressCandidate(cfg, in, a, asnCount, window); ok {
+			out[a.IP] = c
+		}
+	}
+	return out
+}
+
+// asnCounts is how many offenders each cached ASN holds.
+func asnCounts(in Inputs) map[int64]int {
+	n := map[int64]int{}
+	for _, a := range in.Offenders {
+		if r, ok := in.Radar[a.IP]; ok && r.ASN > 0 {
+			n[r.ASN]++
+		}
+	}
+	return n
+}
+
+// addressCandidate scores one offender. ok is false for an address that
+// doesn't parse; eligible is whether it has enough failures to count.
+func addressCandidate(cfg config.Bans, in Inputs, a logins.Address, asnCount map[int64]int, window string) (c Candidate, addr netip.Addr, eligible, ok bool) {
+	addr, err := netip.ParseAddr(a.IP)
+	if err != nil {
+		return c, addr, false, false
+	}
+	addr = addr.Unmap()
+	r := in.Radar[a.IP]
+	peers := 0
+	if r.ASN > 0 {
+		peers = asnCount[r.ASN] - 1
+	}
+	fs := scoreAddress(cfg.Weights, a, in.Days[a.IP], peers)
+	c = Candidate{Target: addressTarget(addr), Kind: KindAddress, Factors: fs, Score: total(fs),
+		Evidence: evidence(a, in.Days[a.IP], r, window)}
+	c.Evidence.Prefix = networkOf(addr).String()
+	c.Orgs = orgsOf(c.Evidence.Hosts)
+	eligible = a.Failures >= cfg.MinFailures || len(a.Succeeded) > 0
+	c.Over = eligible && c.Score >= cfg.ProposeAt
+	c.Action, c.Evidence.Reason = actionFor(cfg, len(a.Hosts), len(a.Succeeded) > 0)
+	if c.Over {
+		if why, ok := in.Guard.Friendly(c.Target); ok {
+			c.Skip = why
+		}
+	}
+	return c, addr, eligible, true
+}
+
+// AddressTarget is what a ban on an address covers: the address for IPv4,
+// its /64 for IPv6.
+func AddressTarget(a netip.Addr) netip.Prefix { return addressTarget(a.Unmap()) }
+
+// NetworkOf is the grouping prefix: /24 for IPv4, /48 for IPv6.
+func NetworkOf(a netip.Addr) netip.Prefix { return networkOf(a.Unmap()) }
 
 func networkCandidate(cfg config.Bans, p netip.Prefix, under []Candidate, g *Guard, window string) Candidate {
 	sum := 0.0

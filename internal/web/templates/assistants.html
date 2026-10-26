@@ -27,7 +27,14 @@ sudo systemctl restart heimdall</pre><button type="button" class="copy" data-cop
   <h2 id="new-token-h">Your new token: {{.NewName}}</h2>
   <p><strong>Copy it now. You won't see it again</strong>: Heimdall keeps only a hash. If you lose it, revoke it and create another.</p>
   <div class="codebox"><code id="new-token">{{.NewToken}}</code><button type="button" class="copy" data-copy="new-token" hidden>Copy</button></div>
+  {{if .NewThreats}}
+  <p class="hint">Treat it like a password. It's a <strong>threat-list token</strong>: it reads only <code>{{.ThreatsURL}}</code>, over what you can see in Heimdall, and it can't be used with an AI assistant. It's never shown or logged anywhere else.</p>
+  <p class="muted">Pull the list with the token in a file, never on a command line:</p>
+  <div class="codebox"><pre id="threats-curl">{{.ThreatsCurl}}</pre><button type="button" class="copy" data-copy="threats-curl" hidden>Copy</button></div>
+  <p class="hint">Formats, filters and firewall recipes: <a href="https://github.com/realmwatch/heimdall/blob/main/docs/threats.md" rel="noopener">docs/threats.md</a>.</p>
+  {{else}}
   <p class="hint">Treat it like a password. It grants the same read access as your sign-in, and it's never shown or logged anywhere else.</p>
+  {{end}}
 </section>
 {{end}}
 
@@ -35,9 +42,10 @@ sudo systemctl restart heimdall</pre><button type="button" class="copy" data-cop
   <h2>Your tokens</h2>
   {{if .Tokens}}
   <div class="scroll"><table class="tokens">
-    <thead><tr><th>Name</th><th class="created">Created</th><th>Last used</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <thead><tr><th>Name</th><th>For</th><th class="created">Created</th><th>Last used</th><th><span class="sr-only">Actions</span></th></tr></thead>
     <tbody>{{range .Tokens}}<tr>
       <td class="token-name">{{.Name}}</td>
+      <td>{{if .Threats}}Threat list{{else}}AI assistant{{end}}</td>
       <td class="created" title="{{fullDate .Created}}">{{dayAgo .Created}}</td>
       <td>{{if .LastUsed}}<span title="{{fullDate .LastUsed}}">{{dayAgo .LastUsed}}</span>{{else}}<span class="muted">never</span>{{end}}</td>
       <td class="token-act"><form method="post" action="/account/assistants/revoke" class="inline">
@@ -53,8 +61,13 @@ sudo systemctl restart heimdall</pre><button type="button" class="copy" data-cop
   <form method="post" action="/account/assistants" class="row token-form">
     <input type="hidden" name="csrf" value="{{$csrf}}">
     <label>Name <input type="text" name="name" required maxlength="100" placeholder="MacBook Claude Desktop" autocomplete="off" value="{{if not .NewToken}}{{.NewName}}{{end}}"></label>
+    <label>For <select name="purpose">
+      <option value="mcp"{{if not .NewThreats}} selected{{end}}>AI assistant (MCP)</option>
+      <option value="threats"{{if and .NewThreats (not .NewToken)}} selected{{end}}>Threat list (firewalls, fail2ban)</option>
+    </select></label>
     <button type="submit">Create token</button>
   </form>
+  <p class="hint">An AI assistant token works only with <code>/mcp</code>. A threat-list token works only with <code>/api/v1/threats</code>, the list of attacker addresses other services can pull (<a href="https://github.com/realmwatch/heimdall/blob/main/docs/threats.md" rel="noopener">docs/threats.md</a>).</p>
   {{end}}
 </section>
 

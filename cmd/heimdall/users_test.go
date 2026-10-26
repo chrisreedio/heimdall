@@ -157,3 +157,23 @@ func TestSharedEmailPickedByKind(t *testing.T) {
 		t.Error("missing account accepted")
 	}
 }
+
+func TestTokenPurposeCLI(t *testing.T) {
+	c := newCLI(t)
+	c.ok("init")
+	c.ok("user", "create", "--entra", "--tenant", "11111111-1111-1111-1111-111111111111", "chris@example.com")
+	out, errOut, err := c.run("user", "mcp-token", "create", "--purpose", "threats", "--name", "edge firewall", "chris@example.com")
+	if err != nil || !strings.HasPrefix(out, "hmd_threats_") || !strings.Contains(errOut, "/api/v1/threats") || strings.Contains(errOut, "hmd_") {
+		t.Fatalf("threats token: %v %q %q", err, out, errOut)
+	}
+	if out := c.ok("user", "mcp-token", "create", "chris@example.com"); !strings.HasPrefix(out, "hmd_mcp_") {
+		t.Errorf("default purpose: %q", out)
+	}
+	if _, _, err := c.run("user", "mcp-token", "create", "--purpose", "admin", "chris@example.com"); err == nil {
+		t.Error("bad purpose accepted")
+	}
+	list := c.ok("user", "mcp-token", "list", "chris@example.com")
+	if !strings.Contains(list, "PURPOSE") || !strings.Contains(list, "edge firewall  threats") || !strings.Contains(list, "mcp ") {
+		t.Errorf("list:\n%s", list)
+	}
+}

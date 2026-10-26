@@ -132,6 +132,10 @@ Everything is scoped by org: a user sees failures only on hosts in orgs they can
 
 The login watch itself never bans anyone. [Bans](bans.md) (off by default) read this ranked list, which already excludes everything IP awareness vouches for, score each address, and propose (or, in shadow mode, only record) bans at Cloudflare's edge, approved on `/bans`. An address that failed and then logged in from nowhere known also raises the `login_then_succeeded` anomaly, whatever the ban mode.
 
+## Threat list
+
+Other services can pull the same offenders, scored like bans and with known addresses left out, as JSON, CSV or one address per line for a firewall: `GET /api/v1/threats` on the MCP listener, with a threat-list token, or the `threats` MCP tool. Being on the list never bans anything. See [Threat list](threats.md).
+
 ## Troubleshooting
 
 - **"Not counting: No sshd log found":** the server has no sshd entries in the journal and none of the log files. On a minimal image, sshd may log nowhere persistent; install rsyslog, or make the journal persistent.

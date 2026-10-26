@@ -17,7 +17,7 @@ It's meant for people who look after a handful to a few hundred servers spread a
 
 **Status:** pre-1.0. Milestones M0–M11 are implemented. The remaining steps before 1.0 are an independent security review and a run on real servers.
 
-**Guides:** [Getting started](docs/getting-started.md) · [Hosting](docs/hosting.md) · [Deployment](docs/deployment.md) · [MCP](docs/mcp.md) · [Collector](docs/collector.md) · [Snapshot format](docs/snapshot-format.md) · [Anomaly signals](docs/anomaly-signals.md)
+**Guides:** [Getting started](docs/getting-started.md) · [Hosting](docs/hosting.md) · [Deployment](docs/deployment.md) · [MCP](docs/mcp.md) · [Threat list](docs/threats.md) · [Collector](docs/collector.md) · [Snapshot format](docs/snapshot-format.md) · [Anomaly signals](docs/anomaly-signals.md)
 
 ---
 
@@ -135,6 +135,7 @@ Heimdall looks for patterns in the snapshots it already collects that are hard t
 - [IP awareness](docs/ip-awareness.md): who each privileged session's address belongs to (a person, a deploy service, your own servers, the tailnet), an alert for addresses nobody knows, and an optional "SSH only from the tailnet" policy per org
 - [Failed logins](docs/failed-logins.md) (opt-in, `--watch-logins`): failed SSH logins per source address across the fleet, ranked as repeat offenders (addresses IP awareness knows are never counted), with "then succeeded" flagged; counts only, never usernames
 - [Bans](docs/bans.md) (off by default): repeat offenders scored and, after an operator approves them on `/bans` (or within caps, in auto mode), challenged or blocked at Cloudflare's edge through an account-level IP list; a shadow mode records what it would ban first, and nothing IP awareness knows is ever banned
+- [Threat list](docs/threats.md): the attacker addresses and networks the hub has seen, scored like bans and with known addresses left out, for firewalls and other services to pull (`GET /api/v1/threats` as JSON, CSV or one address per line) or for an AI assistant to ask about; listing never bans anything
 
 See [docs/anomaly-signals.md](docs/anomaly-signals.md) for what each signal means, its innocent explanations, and what to do when one fires.
 
