@@ -49,10 +49,10 @@ func (a *app) ipOrg(s *store.Store, org string, all bool) (int64, string, error)
 }
 
 func cmdIPLabelAdd(a *app, args []string) error {
-	fs := a.flags("ip label add", "[--org <org> | --all-orgs] --kind staff --name \"Office\" [--person x] [--note x] <addr|cidr>")
+	fs := a.flags("ip label add", "[--org <org> | --all-orgs] --kind office --name \"Office\" [--person x] [--note x] <addr|cidr>")
 	org := fs.String("org", "", "organization slug (optional if there is only one)")
 	all := fs.Bool("all-orgs", false, "label it for every org")
-	kind := fs.String("kind", "", "staff, automation, infra, tailnet or private")
+	kind := fs.String("kind", "", "staff, office, automation, infra, tailnet or private")
 	name := fs.String("name", "", "what it is, e.g. Office VPN (required)")
 	person := fs.String("person", "", "whose it is, e.g. alice@example.com")
 	note := fs.String("note", "", "anything else worth knowing")
@@ -64,7 +64,7 @@ func cmdIPLabelAdd(a *app, args []string) error {
 		return err
 	}
 	if *kind == store.IPKindUnknown {
-		return fmt.Errorf("--kind: pick staff, automation, infra, tailnet or private")
+		return fmt.Errorf("--kind: pick staff, office, automation, infra, tailnet or private")
 	}
 	p, err := store.ParseIPPrefix(pos[0])
 	if err != nil {

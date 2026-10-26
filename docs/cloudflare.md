@@ -9,15 +9,16 @@ If your sites sit behind Cloudflare, Heimdall can read your zones with a **read-
 - **Sites not behind Cloudflare:** a site's server name that's in a zone but not proxied, has no record, or isn't in any zone the token can see.
 - **Security events:** for each zone, the last 24 hours of events by action (block, challenge, …), the top countries, networks (ASNs) and paths, and request totals, plus up to 30 days of daily counts.
 - **Web offenders:** the client addresses Cloudflare blocked or challenged, per zone and day, for the threat list. This stores client addresses; see [Web offenders](#web-offenders).
+- **IP labels from your IP lists:** the account-level IP lists you already keep (an "offices" list of `203.0.113.4`, "Alice Example - Developer") become IP labels, so privilege watch, anomalies and the IP addresses page know those addresses without anyone typing them in again. See [IP lists](#ip-lists).
 - **Who an unknown address belongs to:** Radar's network name for addresses nobody has labelled, e.g. "AS64500 Example ISP (US)", shown as context (still *unknown*) wherever addresses appear, such as privilege watch sessions.
 
 It also fixes the client address of ingest behind Cloudflare (see [CF-Connecting-IP](#the-real-client-address-behind-cloudflare)).
 
-Heimdall never writes anything to Cloudflare.
+Heimdall never writes anything to Cloudflare with this token (only [bans](bans.md) do, with a second token of their own).
 
 ## Set it up
 
-1. **Create a token.** The quick way: `heimdall cloudflare token-url` (also printed by `set-token`, and a button on the `/cloudflare` page for admins) prints a dashboard link with the read-only permissions below already filled in, on all zones. Add Radar by hand (it has no template key), check the list, and click Create. Or by hand: in the Cloudflare dashboard, **My Profile > API Tokens > Create Token > Create Custom Token**. Give it only these permissions:
+1. **Create a token.** The quick way: `heimdall cloudflare token-url` (also printed by `set-token`, and a button on the `/cloudflare` page for admins) prints a dashboard link with the read-only permissions below already filled in, on all zones. Add Radar and Account Filter Lists by hand (they have no template key), check the list, and click Create. Or by hand: in the Cloudflare dashboard, **My Profile > API Tokens > Create Token > Create Custom Token**. Give it only these permissions:
 
    | Permission | Needed for |
    |---|---|
@@ -27,6 +28,7 @@ Heimdall never writes anything to Cloudflare.
    | Account > Radar > Read | network names for unknown addresses (only with `radar = true`) |
    | Zone > Zone Settings > Read | optional: SSL/TLS mode, Always Use HTTPS and minimum TLS on the [attack surface](surface.md) |
    | Zone > SSL and Certificates > Read | optional: edge certificate expiry on the [attack surface](surface.md) |
+   | Account > Account Filter Lists > Read | optional: IP labels from your account's [IP lists](#ip-lists) |
 
    Under **Zone Resources**, pick *Include > All zones from an account*, or just the zones you want. Nothing else: no Edit permissions, no account settings. A client IP filter (your hub's address) and an expiry date are good ideas.
 
@@ -69,12 +71,37 @@ The overview is at **/cloudflare** (operators and admins), and each site page ge
 | Web offenders | GraphQL `firewallEventsAdaptiveGroups` (or `firewallEventsAdaptive`) | per client address, zone and day: blocked and challenged events by action, first and last seen, ASN, network name, country; 30 days |
 | Request totals | GraphQL `httpRequests1hGroups` | daily totals and a last-24-hours count |
 | Network names | `GET /radar/entities/asns/ip` | ASN, organization name and country per address, 7 days (misses 1 day) |
+| IP lists | `GET /accounts`, `GET /accounts/{id}/rules/lists` and, for mapped lists only, `.../lists/{id}/items` (500 a page), hourly | each IP list's ID, name, description and item count; a mapped list's addresses and comments as IP labels |
 
 **Never stored:** individual events, query strings, user agents, paths of web offenders' requests, and the address of any request Cloudflare let through. The security summaries hold no client address (their raw-events fallback doesn't even ask for one). Client addresses are stored only as [web offenders](#web-offenders): requests Cloudflare blocked or challenged, from addresses nobody knows. Paths in the summaries are clipped to 120 characters.
 
 Every request goes over HTTPS to `api.cloudflare.com` or `www.cloudflare.com` only (an in-process allowlist), with timeouts and response size caps. If Cloudflare is down or a request fails, the last good data stays: a failed zone list changes nothing, a zone whose records fail keeps its old ones, and the last sync's error is shown in `status` (and to admins on the overview).
 
 Radar is asked about at most 20 addresses a minute and 2,000 a day, one a second, in the background: a page never waits for Cloudflare. Only public IPv4 addresses that no label or host explains are looked up. A Radar label is a guess of kind *unknown*: it adds context ("AS64500 Example ISP (US)") but never makes an address look known. After a permission error, lookups pause for 6 hours.
+
+## IP lists
+
+Ops teams often keep account-level IP lists in Cloudflare (**Manage Account > Configurations > Lists**) for their WAF rules: an "offices" list whose items are `203.0.113.4` with the comment "Alice Example - Developer", a "vpn" list of exit ranges, a list of CI runners. Heimdall can read them (read-only, with **Account > Account Filter Lists > Read** on the same token) and turn their items into [IP labels](ip-awareness.md), so a privilege watch session from one of those addresses is known, not an alert.
+
+**Map each list.** Global admins see every IP list the token can read on **/cloudflare**, under **IP lists**, each with a kind:
+
+| Kind | Its items are | The item's comment becomes |
+|---|---|---|
+| ignore (the default) | not labels | |
+| `staff` | one person's address each | the person |
+| `office` | a trusted network: an office, a VPN exit, a home network, not one person | the person (whose, or what) |
+| `automation` | a deploy service or CI | the label's note |
+| `infra` | your own servers | the label's note |
+
+Every list starts ignored; nothing becomes a label until an admin picks a kind. Saving syncs at once (when there's a token), and the lists are read again every hour. ASN, hostname and redirect lists aren't offered, and neither are the lists [bans](bans.md) write.
+
+**Item to label.** Each item's `ip` (an address or a CIDR range) becomes a label named after the list (`offices`), for every org: Cloudflare is hub-wide, like its zones, so its labels are too, the same as the edge ranges and deploy services. Items without an address (ASNs, hostnames, redirects) and repeats are skipped. The label's source is `cloudflare:list:<list id>`. Badges and an address's labels show it as `<list> · <comment>`, e.g. "offices · Alice Example - Developer".
+
+**Read-only in Heimdall.** The **IP addresses** page lists the labels grouped by list, with the list's kind, item count, last sync and a link to it in the Cloudflare dashboard, and no remove button: change the list in Cloudflare. A list deleted at Cloudflare, or set back to ignore, loses its labels.
+
+**Lists and manual labels are independent.** A sync never edits or removes a manual label, and removing a manual label never touches a list's. Both are shown wherever an address's labels are. When both cover an address, the more specific range still wins (a manual `/32` beats a list's `/24`); at the **same** range size the list's label comes first, whatever the kinds, since the list is what the team keeps current.
+
+Each list's last sync (labels stored, error) is kept with the other synced sources (`ip_source_state`, source `cloudflare:list:<id>`), and the list read itself as `cloudflare:lists`. If the token lacks the permission, the sync records "the token can't read IP lists (add Account > Account Filter Lists > Read)", shown on the card and in `heimdall cloudflare status`; the rest of the Cloudflare sync carries on, and labels from the last good sync stay. `heimdall cloudflare sync` reads the lists too.
 
 ## Plans
 
@@ -159,7 +186,7 @@ Older days are never fetched, so there is no backfill: if the hub is down for mo
 
 Before anything is written, each address is checked against what Heimdall knows, the same checks as the [ban guard](bans.md):
 
-- a range labelled in **any** org, whatever its kind (staff, automation, infra, tailnet, private; manual or synced), except labels of kind *unknown*;
+- a range labelled in **any** org, whatever its kind (staff, office, automation, infra, tailnet, private; manual or synced), except labels of kind *unknown*;
 - the tailnet (`100.64.0.0/10`, `fd7a:115c:a1e0::/48`), private networks, loopback, link-local, unspecified and multicast space;
 - Cloudflare's published edge ranges;
 - any host's report address;
@@ -205,6 +232,7 @@ Zones aren't owned by an org, so the UI shows a record only to people who can se
 - **`events:no` / "not on this plan"**: the plan doesn't include the dataset in the API (common on Free); Heimdall uses sampled raw events if it can.
 - **"no permission" for security events**: add Zone > Analytics > Read.
 - **Radar: no permission**: add Account > Radar > Read (and, if that's not enough, User Details Read), or set `radar = false`.
+- **IP lists: "the token can't read IP lists"**: add Account > Account Filter Lists > Read to the read-only token (no Edit), then save the mapping or wait for the hourly sync.
 - **A record shows as dangling but it's yours**: label the address (it's then known), or check that the server reports from that address. A host that reports over IPv6 or through NAT has a different report address than its A record.
 - **Report addresses all show Cloudflare**: turn on `ingest.behind_proxy` and check `status` says "CF-Connecting-IP trusted only from Cloudflare's edge".
 
@@ -217,3 +245,4 @@ Built from Cloudflare's documentation (October 2026), without a live account:
 - The web offender fields `clientIP`, `clientAsn`, `clientCountryName`, `action` and `datetime` follow the tutorial above. `clientASNDescription` and the `datetimeHour` dimension come from the GraphQL schema, untested against a live zone. The action names are from the Logs [security fields reference](https://developers.cloudflare.com/logs/reference/security-fields/), and both spellings are accepted because GraphQL's style may differ.
 - Radar's ASN lookup is documented for IPv4; IPv6 addresses aren't looked up.
 - The `httpRequests1hGroups` request totals are assumed available on every plan; if not, the overview shows "—".
+- IP lists: a token without account permissions may still list its account under `GET /accounts`, or not; either way the sync says the list permission is missing. The dashboard link for a list (`dash.cloudflare.com/<account>/configurations/lists/<id>`) is assumed from the dashboard's layout.

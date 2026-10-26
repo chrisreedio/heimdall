@@ -80,6 +80,55 @@ func TestResolve(t *testing.T) {
 	}
 }
 
+// A Cloudflare IP list's label comes before a manual one for the same
+// range size, whatever their kinds; the most specific range still wins.
+func TestRankListOverManual(t *testing.T) {
+	st := storetest.New(t)
+	ctx := t.Context()
+	org, _ := st.CreateOrg(ctx, "test", "acme", "")
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	p := netip.MustParsePrefix
+	for _, l := range []store.IPLabel{
+		{OrgID: org.ID, Prefix: p("203.0.113.4/32"), Kind: store.IPKindStaff, Name: "Alice home", Person: "alice"},
+		{OrgID: org.ID, Prefix: p("198.51.100.9/32"), Kind: store.IPKindStaff, Name: "Bob home", Person: "bob"},
+		{Prefix: p("192.0.2.0/24"), Kind: store.IPKindStaff, Name: "Old office"},
+	} {
+		if _, err := st.AddIPLabel(ctx, "test", l); err != nil {
+			t.Fatal(err)
+		}
+	}
+	list := store.IPListSource("offices01")
+	if err := st.ReplaceIPLabels(ctx, 0, list, []store.IPLabel{
+		{Prefix: p("203.0.113.4/32"), Kind: store.IPKindOffice, Name: "offices", Person: "Alice Example - Developer"},
+		{Prefix: p("198.51.100.0/24"), Kind: store.IPKindOffice, Name: "offices", Person: "Branch office"},
+		{Prefix: p("192.0.2.0/24"), Kind: store.IPKindAutomation, Name: "offices", Note: "CI"},
+	}, now); err != nil {
+		t.Fatal(err)
+	}
+	r := &Resolver{Store: st}
+	for _, c := range []struct{ ip, source, name string }{
+		{"203.0.113.4", list, "offices"},                   // same /32: the list's office beats the manual staff
+		{"198.51.100.9", store.IPSourceManual, "Bob home"}, // a manual /32 beats the list's /24
+		{"192.0.2.7", list, "offices"},                     // same /24: the list's automation beats the manual staff
+	} {
+		v := r.Resolve(ctx, org.ID, c.ip, "", now)
+		if b := v.Best(); b.Source != c.source || b.Name != c.name || len(v.Labels) != 2 {
+			t.Errorf("%s: best %+v of %+v", c.ip, b, v.Labels)
+		}
+	}
+	// Among the rest, the kind order still holds.
+	ls := []Label{
+		{Kind: store.IPKindInfra, Source: "tailscale", Prefix: p("203.0.113.4/32")},
+		{Kind: store.IPKindOffice, Source: store.IPSourceManual, Prefix: p("203.0.113.4/32")},
+		{Kind: store.IPKindStaff, Source: store.IPSourceManual, Prefix: p("203.0.113.4/32")},
+		{Kind: store.IPKindInfra, Source: list, Prefix: p("203.0.113.4/32")},
+	}
+	rank(ls)
+	if ls[0].Source != list || ls[1].Kind != store.IPKindStaff || ls[2].Kind != store.IPKindOffice || ls[3].Kind != store.IPKindInfra {
+		t.Errorf("ranked %+v", ls)
+	}
+}
+
 func TestHostsSource(t *testing.T) {
 	st := storetest.New(t)
 	ctx := t.Context()

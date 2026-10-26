@@ -148,7 +148,7 @@ func TestCloudflareStatusAndSync(t *testing.T) {
 	defer s.Close()
 	defer func() { cloudflareEdge = nil }()
 	r, syncers := newIPResolver(cfg, s, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	// Cloudflare's own: edge, zones and radar syncers; the radar source.
+	// Cloudflare's own: edge, zones, IP lists and radar syncers; the radar source.
 	cf := func(name string) bool { return strings.HasPrefix(name, "cloudflare") }
 	var nSync, nSrc int
 	for _, x := range syncers {
@@ -161,7 +161,7 @@ func TestCloudflareStatusAndSync(t *testing.T) {
 			nSrc++
 		}
 	}
-	if nSync != 3 || nSrc != 1 {
+	if nSync != 4 || nSrc != 1 || cloudflareLists == nil {
 		t.Errorf("cloudflare syncers %d sources %d", nSync, nSrc)
 	}
 	if f := cloudflareTrustedEdge(); f == nil || !f(netip.MustParseAddr("104.16.0.1")) || f(netip.MustParseAddr("192.0.2.1")) {

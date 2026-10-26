@@ -29,6 +29,7 @@ type IPLabel struct {
 // IP label kinds, from most to least telling.
 const (
 	IPKindStaff      = "staff"      // a person on the team
+	IPKindOffice     = "office"     // a trusted network: an office, a VPN exit, a home network, not one person
 	IPKindAutomation = "automation" // a deploy service or CI (Forge, Ploi, GitHub Actions)
 	IPKindInfra      = "infra"      // your own servers, the hub, a VPN or proxy
 	IPKindTailnet    = "tailnet"    // on the tailnet, device or person not known
@@ -39,7 +40,17 @@ const (
 // IPSourceManual marks labels people added.
 const IPSourceManual = "manual"
 
-var ipKinds = map[string]bool{IPKindStaff: true, IPKindAutomation: true, IPKindInfra: true,
+// IPSourceCloudflareList prefixes the source of labels synced from a
+// Cloudflare IP list: "cloudflare:list:<list id>".
+const IPSourceCloudflareList = "cloudflare:list:"
+
+// IPListSource is a Cloudflare IP list's label source.
+func IPListSource(listID string) string { return IPSourceCloudflareList + listID }
+
+// IsIPListSource reports whether a label came from a Cloudflare IP list.
+func IsIPListSource(source string) bool { return strings.HasPrefix(source, IPSourceCloudflareList) }
+
+var ipKinds = map[string]bool{IPKindStaff: true, IPKindOffice: true, IPKindAutomation: true, IPKindInfra: true,
 	IPKindTailnet: true, IPKindPrivate: true, IPKindUnknown: true}
 
 // ParseIPPrefix accepts an address or a CIDR and returns it canonical (an

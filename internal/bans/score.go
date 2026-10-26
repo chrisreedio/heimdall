@@ -3,7 +3,7 @@
 // Package bans turns repeat offenders (failed SSH logins across the fleet,
 // internal/logins) into Cloudflare bans, the way an air defence network
 // works: the collectors and Cloudflare are the sensors, the hub decides,
-// IP awareness is identify-friend-or-foe (staff, automation, your
+// IP awareness is identify-friend-or-foe (staff, offices, automation, your
 // infrastructure, the tailnet, private networks and Cloudflare's edge are
 // never fired on), and Cloudflare's edge enforces.
 //
@@ -347,7 +347,7 @@ func actionFor(cfg config.Bans, hosts int, succeeded bool) (string, string) {
 
 func evidence(a logins.Address, days int, r store.CloudflareRadar, window string) Evidence {
 	ev := Evidence{Failures: a.Failures, Usernames: a.Usernames, Days: max(days, 1), First: a.First, Last: a.Last,
-		Window: window, Known: "nothing known: not staff, automation, infra, the tailnet, private or Cloudflare"}
+		Window: window, Known: "nothing known: not staff, an office, automation, infra, the tailnet, private or Cloudflare"}
 	for _, h := range a.Hosts {
 		ev.Hosts = append(ev.Hosts, Host{OrgID: h.OrgID, Org: h.OrgSlug, Name: h.Name})
 	}

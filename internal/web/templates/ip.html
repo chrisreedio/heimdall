@@ -10,7 +10,7 @@
   {{$many := gt (len .Verdicts) 1}}
   {{range .Verdicts}}<div>
     {{if $many}}<span class="muted small">In {{join .Orgs ", "}}:</span> {{end}}{{template "ipbadge" .Badge}}
-    {{if .Labels}}<ul class="ip-labels small">{{range .Labels}}<li><strong>{{.Kind}}</strong>: {{.Name}}{{with .Person}} (<a href="{{personURL .}}">{{.}}</a>){{end}}{{if .Guess}} <span class="muted">(a guess)</span>{{end}} <span class="muted">· {{.Source}}{{if .Prefix.IsValid}} · {{.Prefix}}{{end}}</span></li>{{end}}</ul>
+    {{if .Labels}}<ul class="ip-labels small">{{range .Labels}}<li><strong>{{.Kind}}</strong>: {{.Name}}{{if listDetail .}} · {{with .Person}}<a href="{{personURL .}}">{{.}}</a>{{else}}{{.Note}}{{end}}{{else}}{{with .Person}} (<a href="{{personURL .}}">{{.}}</a>){{end}}{{end}}{{if .Guess}} <span class="muted">(a guess)</span>{{end}} <span class="muted">· {{if isListSource .Source}}{{sourceName .Source}}{{else}}{{.Source}}{{end}}{{if .Prefix.IsValid}} · {{.Prefix}}{{end}}</span></li>{{end}}</ul>
     {{else}}<p class="muted small">Nothing is known about this address: no label, not the tailnet or a private network, and nobody signed in to Heimdall from it around then.</p>{{end}}
   </div>{{else}}<p class="empty">You don't have access to any org yet.</p>{{end}}
 </section>

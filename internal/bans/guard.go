@@ -14,7 +14,7 @@ import (
 
 // Guard is identify-friend-or-foe for a ban target. A ban is hub-wide at
 // Cloudflare, so it checks everything any org knows: a target is friendly
-// when it overlaps a label of any org (staff, automation, infra, tailnet,
+// when it overlaps a label of any org (staff, office, automation, infra, tailnet,
 // private, synced or manual), a built-in internal range, Cloudflare's
 // edge, one of your hosts' report addresses, an address someone signed in
 // to Heimdall from, or an address whose failures IP awareness vouched for.

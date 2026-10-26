@@ -146,7 +146,7 @@ See [docs/anomaly-signals.md](docs/anomaly-signals.md) for what each signal mean
 - "Patch plans" that group hosts into batches you can work through and tick off
 - Verification: the next check-in confirms the vulnerable version is gone
 - **Hand off to agent** (optional, off by default): ask your own coding agent, a Discord bot, to open a pull request that updates a site's vulnerable Composer or npm packages. The confirm step shows exactly what's posted, only that bot can be pinged, and every value comes from Heimdall's validated data. See [Hand off to an agent](docs/deployment.md#hand-off-to-an-agent)
-- **Cloudflare** (optional, read-only token): grey-cloud records that expose a host's address, dangling records, sites not behind Cloudflare, and daily security event counts. See [docs/cloudflare.md](docs/cloudflare.md)
+- **Cloudflare** (optional, read-only token): grey-cloud records that expose a host's address, dangling records, sites not behind Cloudflare, daily security event counts, and IP labels from the IP lists you keep there. See [docs/cloudflare.md](docs/cloudflare.md)
 - **Attack surface**: every public hostname followed to its zone, DNS record, host, site and open findings, worst first, with risky records (wildcards, takeover-prone CNAMEs), zone TLS settings and a DNS change log. Works without Cloudflare, with less in it. See [docs/surface.md](docs/surface.md)
 
 ### AI analysis (optional, your own model)

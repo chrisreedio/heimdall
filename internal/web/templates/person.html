@@ -12,7 +12,7 @@
     <tbody>{{range .Labels}}<tr>
       <td data-label="Address">{{if .Href}}<a href="{{.Href}}"><code>{{.Prefix.Addr}}</code></a>{{else}}<code>{{.Prefix}}</code>{{end}}</td>
       <td data-label="Kind">{{.Kind}}</td><td data-label="Name">{{.Name}}</td>
-      <td data-label="Source">{{if eq .Source "manual"}}manual{{else}}{{.Source}} <span class="muted small">synced</span>{{end}}</td>
+      <td data-label="Source">{{if eq .Source "manual"}}manual{{else if isListSource .Source}}Cloudflare IP list <span class="muted small">synced</span>{{else}}{{.Source}} <span class="muted small">synced</span>{{end}}</td>
       {{if $.Body.ShowOrgs}}<td data-label="Org">{{if .Org}}{{.Org}}{{else}}<span class="muted">every org</span>{{end}}</td>{{end}}
     </tr>{{end}}</tbody>
   </table></div>{{else}}<p class="empty">No label names them yet.{{if .CanLabel}} Add their home or office address below.{{end}}</p>{{end}}

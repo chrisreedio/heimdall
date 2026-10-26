@@ -3,6 +3,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +38,10 @@ var (
 	}
 	cloudflareEdgeURLs []string
 )
+
+// cloudflareLists is the IP list sync, for the settings page's "sync now";
+// set by newCloudflare when there's a token.
+var cloudflareLists *cloudflare.ListSyncer
 
 // cloudflareEdge is the edge set serve's ingest handler trusts for
 // CF-Connecting-IP; set by newCloudflare when [cloudflare] allows it.
@@ -62,7 +68,7 @@ func newCloudflare(cfg config.Config, s *store.Store, log *slog.Logger, r *ipinf
 	if err := es.Load(context.Background()); err != nil {
 		log.Warn("Cloudflare edge ranges not loaded; using the built-in list", "err", err)
 	}
-	cloudflareEdge = nil
+	cloudflareEdge, cloudflareLists = nil, nil
 	if c.ConnectingIP {
 		cloudflareEdge = edge
 		if !cfg.Ingest.BehindProxy {
@@ -78,6 +84,8 @@ func newCloudflare(cfg config.Config, s *store.Store, log *slog.Logger, r *ipinf
 	client := &cloudflare.Client{Base: c.APIBase, Token: token, HTTP: hc, UserAgent: "heimdall/" + version}
 	syncers = append(syncers, &cloudflare.Syncer{Client: client, Store: s, Zones: c.Zones, Security: c.SecurityEvents,
 		Interval: c.SyncEvery.Duration, Now: time.Now, Log: log, Surface: true, Edge: edge})
+	cloudflareLists = &cloudflare.ListSyncer{Client: client, Store: s, Now: time.Now, Log: log} // IP labels from mapped IP lists
+	syncers = append(syncers, cloudflareLists)
 	if c.Radar {
 		radar := &cloudflare.Radar{Client: client, Store: s, Edge: edge, Now: time.Now, Log: log}
 		r.Sources = append(r.Sources, radar)
@@ -305,6 +313,25 @@ func cmdCloudflareStatus(a *app, args []string) error {
 		}
 		rows = append(rows, []string{w, formatTime(st.At), status})
 	}
+	// IP lists keep their state with the other IP label sources.
+	row := []string{"ip lists", "never", ""}
+	if states, err := s.IPSourceStates(a.ctx); err == nil {
+		for _, st := range states {
+			if st.Source == cloudflare.ListsSource {
+				row[1], row[2] = formatTime(st.LastAttempt), cmp.Or(st.LastError, "ok")
+			}
+		}
+	}
+	if lists, err := s.CloudflareIPLists(a.ctx); err == nil && len(lists) > 0 {
+		mapped := 0
+		for _, l := range lists {
+			if l.Kind != store.CFListIgnore {
+				mapped++
+			}
+		}
+		row[2] += fmt.Sprintf(" (%d of %d lists mapped, on /cloudflare)", mapped, len(lists))
+	}
+	rows = append(rows, row)
 	return table(a, "SYNC\tLAST RUN\tRESULT", rows)
 }
 
@@ -364,6 +391,16 @@ func cmdCloudflareSync(a *app, args []string) error {
 		return err
 	}
 	fmt.Fprintf(a.stderr, "zones: %d, records: %d\n", len(zs), len(recs))
+	// IP lists are optional (their own permission): an error is reported,
+	// not fatal.
+	ls := &cloudflare.ListSyncer{Client: cl, Store: s, Now: time.Now}
+	if err := ls.Sync(a.ctx); err != nil {
+		fmt.Fprintf(a.stderr, "IP lists: %v\n", err)
+	} else if lists, err := s.CloudflareIPLists(a.ctx); err == nil {
+		mapped := slices.DeleteFunc(lists, func(l store.CloudflareIPList) bool { return l.Kind == store.CFListIgnore })
+		fmt.Fprintf(a.stderr, "IP lists: %d mapped to labels (map them on /cloudflare)\n", len(mapped))
+		resolveKnownCLI(a, s)
+	}
 	if serr != nil {
 		return fmt.Errorf("sync finished with errors (the last good data is kept): %w", serr)
 	}

@@ -4,7 +4,7 @@ Heimdall can turn [repeat offenders](failed-logins.md) into bans at Cloudflare's
 
 - **Sensors:** the collectors (failed SSH logins) and Cloudflare (zones, DNS, security events).
 - **Command and control:** the hub. It scores every offender, decides what deserves a ban, and keeps track of every ban until it ends.
-- **Identify-friend-or-foe:** [IP awareness](ip-awareness.md). Heimdall never fires on your staff, automation, infrastructure, the tailnet, private networks or Cloudflare's own edge.
+- **Identify-friend-or-foe:** [IP awareness](ip-awareness.md). Heimdall never fires on your staff, offices, automation, infrastructure, the tailnet, private networks or Cloudflare's own edge.
 - **Enforcement:** Cloudflare. An account-level IP list holds the bans, and one custom rule in each zone you opt in challenges or blocks every address on it.
 
 Bans are **off** until you choose a mode. Start in **shadow** mode: it records what it *would* ban, so you can tune the scoring on your own traffic before anything is written.
