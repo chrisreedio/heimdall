@@ -49,7 +49,7 @@ $ErrorActionPreference = 'Stop'
 # The release signature. Keep the pins the same as collect.sh, install.sh,
 # install-hub.sh and cmd/heimdall/signature.go (TestSignaturePinsMatch).
 $CosignVersion = 'v3.1.4'
-$ReleaseSigner = '^https://github.com/(chrisreedio|realmwatch)/heimdall/\.github/workflows/release\.yml@refs/tags/v'
+$ReleaseSigner = '^https://github.com/realmwatch/heimdall/\.github/workflows/release\.yml@refs/tags/v'
 $CosignSHA256 = @{
     'windows-amd64.exe' = 'cbe953787074611f1334cbf37dc1cf953995bb8c45398eb4fc7bb781d29c1f2a'
     'linux-amd64'       = '424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa' # for tests on Linux

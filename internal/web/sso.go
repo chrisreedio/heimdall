@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/realmwatch/heimdall/internal/auth"
@@ -77,9 +78,15 @@ func (s *server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 	next := safeNext(req.ReturnTo)
 
 	if e := q.Get("error"); e != "" {
+		desc := q.Get("error_description")
+		var codes []int
+		aadsts := ""
+		if c := entra.DescriptionCode(desc); c != 0 {
+			codes, aadsts = []int{c}, "AADSTS"+strconv.Itoa(c)
+		}
 		s.log.Warn("sso: identity provider returned an error", "error", truncate(e, 100),
-			"description", truncate(q.Get("error_description"), 300))
-		s.loginError(w, r, http.StatusUnauthorized, next, msgSSOFailed)
+			"error_codes", aadsts, "description", truncate(desc, 300))
+		s.loginError(w, r, http.StatusUnauthorized, next, ssoFailedMessage(codes))
 		return
 	}
 	code := q.Get("code")
@@ -90,16 +97,18 @@ func (s *server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 	id, err := s.cfg.SSO.Finish(ctx, code, req.Verifier, req.Nonce)
 	if err != nil {
 		// entra errors never include the secret, tokens or codes. A failed
-		// code exchange says why, for whoever set up the app registration;
-		// the person signing in still sees the generic message.
+		// code exchange says why in the log, for whoever set up the app
+		// registration; the person signing in sees ssoFailedMessage.
 		var te *entra.TokenError
+		msg := msgSSOFailed
 		if errors.As(err, &te) {
 			s.log.Warn("sso: sign-in rejected: token exchange failed", "status", te.Status, "error", te.Code,
 				"error_codes", te.AADSTS(), "description", te.Description, "hint", te.Hint)
+			msg = ssoFailedMessage(te.Codes)
 		} else {
 			s.log.Warn("sso: sign-in rejected", "err", err)
 		}
-		s.loginError(w, r, http.StatusUnauthorized, next, msgSSOFailed)
+		s.loginError(w, r, http.StatusUnauthorized, next, msg)
 		return
 	}
 	token, err := s.auth.LoginIdentity(ctx, store.EntraIdentity{
@@ -117,6 +126,20 @@ func (s *server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 	s.noteTailscaleUser(r, token) // tsproxy.go
 	s.setSession(w, token, int(s.cfg.SessionMax.Seconds()))
 	s.renderPage(w, r, http.StatusOK, "signedin", page{Title: "Signed in", Refresh: next, Body: next})
+}
+
+// ssoFailedMessage is the sign-in failure shown for Microsoft's AADSTS
+// codes: a fixed message for the ones Heimdall knows, the generic one
+// otherwise, and the code so it can be passed on. Never Microsoft's text.
+func ssoFailedMessage(codes []int) string {
+	msg, code := entra.SignInMessage(codes)
+	if msg == "" {
+		msg = msgSSOFailed
+	}
+	if code != 0 {
+		msg += " Error AADSTS" + strconv.Itoa(code) + "."
+	}
+	return msg
 }
 
 func truncate(s string, n int) string {

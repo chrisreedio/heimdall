@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -41,6 +42,9 @@ func (f *fakeSSO) Finish(_ context.Context, code, verifier, nonce string) (entra
 		return entra.Identity{TenantID: "t", ObjectID: "oid-1", Email: "alice@example.com", Name: "Alice", Roles: []string{"Heimdall.Viewer"}}, nil
 	case "nobody":
 		return entra.Identity{TenantID: "t", ObjectID: "unprovisioned", Email: "eve@example.com"}, nil
+	case "badsecret":
+		return entra.Identity{}, fmt.Errorf("entra: exchange: %w", &entra.TokenError{Status: http.StatusUnauthorized,
+			Code: "invalid_client", Codes: []int{7000215}, Description: "Invalid client secret provided."})
 	}
 	return entra.Identity{}, fmt.Errorf("%w: bad signature", entra.ErrInvalidToken)
 }
@@ -148,6 +152,48 @@ func TestSSOFailures(t *testing.T) {
 	}
 	if w := e.get("/auth/callback?code=good&state=" + url.QueryEscape(state)); w.Code != http.StatusBadRequest {
 		t.Errorf("state reused after an error: %d", w.Code)
+	}
+}
+
+// Microsoft's sign-in errors tell the person what to do, with the AADSTS
+// code to pass on, and never echo Microsoft's text or anything else from
+// the query.
+func TestSSOErrorMessages(t *testing.T) {
+	e, _ := newSSOEnv(t, true)
+	for _, tc := range []struct {
+		query, want string
+	}{
+		{"error=access_denied&error_description=" + url.QueryEscape("AADSTS65004: User declined to consent to access the app.\r\nTrace ID: 1"),
+			"Your organization needs an administrator to approve Heimdall before you can sign in. Ask your Microsoft 365 admin to grant consent for the Heimdall app. Error AADSTS65004."},
+		{"error=access_denied&error_description=" + url.QueryEscape("AADSTS50105: Your administrator has configured the application to block users unless they are specifically granted access."),
+			"Your account hasn't been given access to Heimdall in Microsoft Entra. Ask your admin to assign you to the app. Error AADSTS50105."},
+		{"error=invalid_request&error_description=" + url.QueryEscape("AADSTS12345678: Something new."),
+			"Sign-in failed. Try again, or ask an admin to check the server log. Error AADSTS12345678."},
+		{"error=access_denied", "Sign-in failed. Try again, or ask an admin to check the server log."},
+		{"code=badsecret", "Heimdall's sign-in is misconfigured. Tell your Heimdall admin; the details are in the hub log. Error AADSTS7000215."},
+	} {
+		state := e.begin("/")
+		w := e.get("/auth/callback?" + tc.query + "&state=" + url.QueryEscape(state))
+		body := html.UnescapeString(w.Body.String())
+		if w.Code != http.StatusUnauthorized || !strings.Contains(body, tc.want) {
+			t.Errorf("%s: %d, want %q in %s", tc.query, w.Code, tc.want, body)
+		}
+		for _, leak := range []string{"declined to consent", "specifically granted", "Something new", "Invalid client secret", "Trace ID", "badsecret"} {
+			if strings.Contains(body, leak) {
+				t.Errorf("%s: page shows %q", tc.query, leak)
+			}
+		}
+	}
+
+	// Injected markup, before or after a code, is never echoed.
+	for _, desc := range []string{"<script>alert(1)</script>", "AADSTS65004<script>alert(1)</script>",
+		"AADSTS65004: <script>alert(1)</script>", "AADSTS1234567890123: x"} {
+		state := e.begin("/")
+		w := e.get("/auth/callback?error=" + url.QueryEscape("<script>x</script>") + "&error_description=" + url.QueryEscape(desc) + "&state=" + url.QueryEscape(state))
+		if b := w.Body.String(); w.Code != http.StatusUnauthorized || strings.Contains(b, "<script>") || strings.Contains(b, "script&gt;") || strings.Contains(b, "alert(1)") ||
+			strings.Contains(b, "1234567890123") {
+			t.Errorf("%q: %d %s", desc, w.Code, b)
+		}
 	}
 }
 

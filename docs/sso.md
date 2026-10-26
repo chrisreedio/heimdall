@@ -142,12 +142,18 @@ A hub that already has duplicates keeps working as before. To clean up:
 
 Deleting a user removes their roles, sessions and MCP tokens with them. Patch plans and acknowledgements they made stay, without an author, and the audit log keeps every entry, including a `user.delete` entry with the email, kind and admin flag. Deleted users' IDs aren't reused. You can't delete yourself, or the last active global admin who can sign in: with `local_login = false`, local admins don't count, since they can't sign in to the web UI. On the Users page, **delete** appears only for disabled users, behind a confirmation box: disable first (that ends their sessions and can be undone), then delete.
 
-### "Sign-in failed" right after Microsoft's sign-in page
+### Sign-in fails at or right after Microsoft's sign-in page
 
-The person signing in sees only "Sign-in failed"; the reason is in the hub's log (`journalctl -u heimdall`), as `sso: sign-in rejected: token exchange failed` with Microsoft's `error`, `error_codes` (the AADSTS numbers), the first sentence of its description and a `hint`. The client secret, the authorization code and tokens are never logged. The usual causes, all in the app registration:
+The person signing in sees a short message saying who can fix it, with Microsoft's code to pass on, e.g. "Your organization needs an administrator to approve Heimdall before you can sign in. Ask your Microsoft 365 admin to grant consent for the Heimdall app. Error AADSTS65004." Problems in the app registration show "Heimdall's sign-in is misconfigured. Tell your Heimdall admin; the details are in the hub log." An unknown code shows "Sign-in failed" with the code. Only Heimdall's own fixed text and the code are shown, never Microsoft's description.
+
+The details are in the hub's log (`journalctl -u heimdall`): `sso: identity provider returned an error` when Microsoft sent the person back with an error, or `sso: sign-in rejected: token exchange failed` when Heimdall's code exchange failed, with Microsoft's `error`, `error_codes` (the AADSTS numbers), its description and, for a failed exchange, a `hint`. The client secret, the authorization code and tokens are never logged. The usual causes:
 
 | Code | What it means | Fix |
 |---|---|---|
+| `AADSTS65001`, `AADSTS65004`, `AADSTS90094`, `AADSTS90008` | The tenant requires admin consent, or the person declined it | An admin grants consent once for everyone: **App registrations → Heimdall → API permissions → Grant admin consent for** your tenant. |
+| `AADSTS50105` | The app requires assignment and the person isn't assigned | Assign the user, or a group they're in, under **Enterprise applications → Heimdall → Users and groups**. |
+| `AADSTS53003` | Blocked by Conditional Access | A Conditional Access policy (device, location, MFA) blocked the sign-in. Check the sign-in log entry under **Entra ID → Sign-in logs** for which policy, and adjust it or the device. |
+| `AADSTS50020` | The account is from another tenant | The account isn't in the tenant Heimdall signs in to (`tenant`). Sign in with an account from that tenant, or invite the person as a guest. |
 | `AADSTS7000215` | Invalid client secret | You stored the secret's **ID**. Store its **Value** (shown only when the secret is created; make a new one if you didn't copy it) with `sudo heimdall sso set-secret`, then `sudo heimdall restart`. |
 | `AADSTS7000222` | The client secret has expired | Create a new secret under **Certificates & secrets** and store its Value. |
 | `AADSTS700025` | "Client is public" | The redirect URI is under **Mobile and desktop applications**. Remove it there and add it under **Authentication → Add a platform → Web**. |
