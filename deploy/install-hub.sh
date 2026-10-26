@@ -89,9 +89,15 @@ usage: install-hub.sh --org SLUG (--ingest-host NAME | --tailnet-only)
                       [--org-name "Acme Corp"] [--admin EMAIL] [--mcp]
                       [--version vX.Y.Z] [--from-dir DIR] [--no-tailscale]
                       [--skip-signature-check]
+       install-hub.sh --org SLUG --no-tailscale --ui-url URL --ingest-url URL ...
 
   --no-tailscale   skip tailscale (UI stays on 127.0.0.1:8080; for testing or
                    if you'll put your own HTTPS proxy in front)
+  --ui-url URL, --ingest-url URL
+                   with --no-tailscale: your own proxy on this box (e.g.
+                   Cloudflare Tunnel with Access) forwards URL to the UI on
+                   127.0.0.1:8080 and the ingest URL to 127.0.0.1:8443. No
+                   Caddy is installed; both trust the proxy's client address
   --skip-signature-check
                    don't check the release's Sigstore signature, only its
                    checksums (where cosign can't run; not advised)
@@ -100,6 +106,7 @@ EOF
 }
 
 org='' org_name='' ingest_host='' tailnet_only=0 admin='' mcp=0 version=$HEIMDALL_VERSION from_dir='' use_ts=1 sigcheck=1
+proxy_ui='' proxy_ingest=''
 while [ $# -gt 0 ]; do
 	case $1 in
 	--org) org=${2:-}; shift ;;
@@ -111,6 +118,8 @@ while [ $# -gt 0 ]; do
 	--version) version=${2:-}; shift ;;
 	--from-dir) from_dir=${2:-}; shift ;;
 	--no-tailscale) use_ts=0 ;;
+	--ui-url) proxy_ui=${2:-}; shift ;;
+	--ingest-url) proxy_ingest=${2:-}; shift ;;
 	--skip-signature-check) sigcheck=0 ;;
 	*) usage ;;
 	esac
@@ -133,6 +142,14 @@ if [ -n "$ingest_host" ]; then
 	case $ingest_host in *[!a-z0-9.-]* | .* | *.) die "--ingest-host must be a DNS name" ;; esac
 elif [ "$tailnet_only" = 0 ] && [ "$use_ts" = 1 ]; then
 	die "choose --ingest-host NAME (servers anywhere) or --tailnet-only"
+fi
+if [ -n "$proxy_ui$proxy_ingest" ]; then
+	if [ "$use_ts" = 1 ] || [ -n "$ingest_host" ] || [ "$tailnet_only" = 1 ]; then
+		die "--ui-url and --ingest-url go with --no-tailscale, without --ingest-host or --tailnet-only"
+	fi
+	for u in "$proxy_ui" "$proxy_ingest"; do
+		case $u in https://*/* | *[!A-Za-z0-9:/.-]*) die "--ui-url and --ingest-url must be https://name, with no path" ;; https://?*) ;; *) die "--ui-url and --ingest-url must both be given, as https://name" ;; esac
+	done
 fi
 case $version in v[0-9]*.[0-9]*.[0-9]* | dev) ;; *) die "bad --version $version" ;; esac
 [ -n "$from_dir" ] || [ "$version" != dev ] || die "this script isn't from a release; pass --version vX.Y.Z or --from-dir"
@@ -233,10 +250,13 @@ if [ "$upgrade" = 1 ]; then
 else
 	say "Installing the hub"
 	install -m 0755 "$work/heimdall-linux-$arch" /usr/local/bin/heimdall
-	ui_url=http://127.0.0.1:8080
-	[ -z "$ts_name" ] || ui_url=https://$ts_name
-	set -- --database /var/lib/heimdall/heimdall.db --ui-base-url "$ui_url" --behind-proxy
-	if [ -n "$ingest_host" ]; then
+	base=${proxy_ui:-http://127.0.0.1:8080}
+	[ -z "$ts_name" ] || base=https://$ts_name
+	set -- --database /var/lib/heimdall/heimdall.db --ui-base-url "$base" --behind-proxy
+	[ -z "$proxy_ui" ] || set -- "$@" --ui-behind-proxy
+	if [ -n "$proxy_ingest" ]; then
+		set -- "$@" --ingest-public-url "$proxy_ingest"
+	elif [ -n "$ingest_host" ]; then
 		set -- "$@" --ingest-public-url "https://$ingest_host"
 	elif [ -n "$ts_name" ]; then
 		set -- "$@" --ingest-public-url "https://$ts_name:8443"
@@ -363,7 +383,12 @@ fi
 setup_caddy
 setup_admin
 
-if [ -n "$ingest_host" ]; then
+ui_shown="http://127.0.0.1:8080 (put HTTPS in front)"
+[ -z "$proxy_ui" ] || ui_shown="$proxy_ui (through your proxy to 127.0.0.1:8080)"
+[ -z "$ts_name" ] || ui_shown=https://$ts_name
+if [ -n "$proxy_ingest" ]; then
+	ingest_url="$proxy_ingest/api/v1/ingest (through your proxy to 127.0.0.1:8443)"
+elif [ -n "$ingest_host" ]; then
 	ingest_url="https://$ingest_host/api/v1/ingest"
 elif [ -n "$ts_name" ]; then
 	ingest_url="https://$ts_name:8443/api/v1/ingest (tailnet only)"
@@ -373,7 +398,7 @@ fi
 cat >&2 <<EOF
 
 Heimdall hub is running.
-  UI:      ${ts_name:+https://$ts_name}${ts_name:-http://127.0.0.1:8080 (put HTTPS in front)}
+  UI:      $ui_shown
   Ingest:  $ingest_url
 EOF
 [ "$mcp" = 0 ] || [ -z "$ts_name" ] || printf '  MCP:     https://%s:8444/mcp\n' "$ts_name" >&2

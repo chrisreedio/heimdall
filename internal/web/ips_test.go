@@ -298,7 +298,7 @@ func TestTailscaleServeHeaders(t *testing.T) {
 	} {
 		got = seen{}
 		s := &server{cfg: Config{BehindTailscaleServe: c.on}}
-		s.fromTailscaleServe(next).ServeHTTP(httptest.NewRecorder(), req(c.remote))
+		s.fromProxy(next).ServeHTTP(httptest.NewRecorder(), req(c.remote))
 		if got != c.want {
 			t.Errorf("on=%v from %s: got %+v, want %+v", c.on, c.remote, got, c.want)
 		}
@@ -320,6 +320,51 @@ func TestTailscaleServeHeaders(t *testing.T) {
 	ins, err := e.st.SignInsFrom(ctx, "100.101.102.103", 10)
 	if err != nil || len(ins) != 1 || ins[0].TailscaleUser != "Alice (alice@example.com)" || !ins[0].Open {
 		t.Fatalf("sign-ins = %+v, %v", ins, err)
+	}
+}
+
+// ui.behind_proxy: the client address from another local proxy (cloudflared,
+// Caddy), CF-Connecting-IP only after a Cloudflare edge hop, and never a
+// tailnet identity.
+func TestBehindProxyHeaders(t *testing.T) {
+	var ip string
+	var user tsUser
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip = clientIP(r)
+		user, _ = r.Context().Value(tsUserKey{}).(tsUser)
+	})
+	edge := netip.MustParsePrefix("173.245.48.0/20")
+	for _, c := range []struct {
+		name, remote, xff, cf string
+		edge                  bool
+		want                  string
+	}{
+		{"cloudflared", "127.0.0.1:5555", "198.51.100.66", "198.51.100.66", true, "198.51.100.66"},
+		{"caddy behind Cloudflare", "127.0.0.1:5555", "173.245.48.10", "198.51.100.67", true, "198.51.100.67"},
+		{"edge, no Cloudflare ranges known", "127.0.0.1:5555", "173.245.48.10", "198.51.100.67", false, "173.245.48.10"},
+		{"CF header after a non-edge hop", "127.0.0.1:5555", "198.51.100.66", "203.0.113.9", true, "198.51.100.66"},
+		{"spoofed earlier hops", "[::1]:5555", "203.0.113.1, 198.51.100.66", "", true, "198.51.100.66"},
+		{"not from loopback", "203.0.113.5:5555", "198.51.100.66", "198.51.100.67", true, "203.0.113.5"},
+		{"no header", "127.0.0.1:5555", "", "", true, "127.0.0.1"},
+	} {
+		r := httptest.NewRequest(http.MethodGet, "/", nil)
+		r.RemoteAddr = c.remote
+		if c.xff != "" {
+			r.Header.Set("X-Forwarded-For", c.xff)
+		}
+		if c.cf != "" {
+			r.Header.Set("CF-Connecting-IP", c.cf)
+		}
+		r.Header.Set("Tailscale-User-Login", "alice@example.com")
+		cfg := Config{BehindProxy: true}
+		if c.edge {
+			cfg.TrustedEdge = edge.Contains
+		}
+		ip, user = "", tsUser{}
+		(&server{cfg: cfg}).fromProxy(next).ServeHTTP(httptest.NewRecorder(), r)
+		if ip != c.want || user != (tsUser{}) {
+			t.Errorf("%s: ip %s user %+v, want %s and no user", c.name, ip, user, c.want)
+		}
 	}
 }
 

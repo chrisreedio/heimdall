@@ -15,11 +15,12 @@ import (
 )
 
 func cmdInit(a *app, args []string) error {
-	fs := a.flags("init", "[--database path] [--ui-base-url URL] [--ingest-public-url URL] [--behind-proxy] [--mcp-base-url URL]")
+	fs := a.flags("init", "[--database path] [--ui-base-url URL] [--ingest-public-url URL] [--behind-proxy] [--ui-behind-proxy] [--mcp-base-url URL]")
 	dbFlag := fs.String("database", "heimdall.db", "database path, relative to the config file's directory")
 	uiURL := fs.String("ui-base-url", "", "UI address you browse to, e.g. https://hub.tailnet.ts.net")
 	ingestURL := fs.String("ingest-public-url", "", "address servers use for ingest, e.g. https://ingest.example.com")
 	behind := fs.Bool("behind-proxy", false, "ingest sits behind a local TLS proxy (Caddy or tailscale serve)")
+	uiBehind := fs.Bool("ui-behind-proxy", false, "the UI sits behind a local proxy other than tailscale serve (cloudflared, Caddy, nginx)")
 	mcpURL := fs.String("mcp-base-url", "", "enable MCP at this https address")
 	if _, err := parse(fs, args, 0); err != nil {
 		return err
@@ -34,7 +35,7 @@ func cmdInit(a *app, args []string) error {
 
 	// Config first, exclusively: never clobber an existing install.
 	tmpl := config.TemplateWith(config.Setup{Database: *dbFlag, UIBaseURL: *uiURL, IngestPublicURL: *ingestURL,
-		BehindProxy: *behind, MCPBaseURL: *mcpURL})
+		BehindProxy: *behind, UIBehindProxy: *uiBehind, MCPBaseURL: *mcpURL})
 	if err := writeExclusive(a.configPath, tmpl, 0o640); err != nil {
 		return err
 	}

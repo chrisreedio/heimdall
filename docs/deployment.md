@@ -32,7 +32,7 @@ The sections below explain what the installers set up, if you'd rather do it by 
 ```
 servers ──HTTPS──▶ ingest (public, one path only) ─┐
                                                    ├─ heimdall serve ── /var/lib/heimdall/heimdall.db
-you ──tailnet/VPN──▶ UI (private) ─────────────────┘
+you ──tailnet/VPN/Access──▶ UI (private) ──────────┘
 ```
 
 - **Ingest** is the only thing your servers reach. Heimdall terminates TLS itself (`ingest.tls_cert`/`tls_key`), or sits behind a local proxy (`behind_proxy = true`).
@@ -47,7 +47,61 @@ Set `ui.base_url` to that `https://…ts.net` address. Only devices on your tail
 
 ## Option B: Caddy
 
-[`deploy/Caddyfile.example`](../deploy/Caddyfile.example) proxies ingest publicly (only `/api/v1/ingest`) and serves the UI on a private interface, with automatic certificates. Set `ingest.behind_proxy = true` so rate limits and logs see real client IPs.
+[`deploy/Caddyfile.example`](../deploy/Caddyfile.example) proxies ingest publicly (only `/api/v1/ingest`) and serves the UI on a private interface, with automatic certificates. Set `ingest.behind_proxy = true` so rate limits and logs see real client IPs, and `ui.behind_proxy = true` for the UI (see [below](#uibehind_proxy)).
+
+## Option C: Cloudflare Tunnel and Access (no Tailscale)
+
+For an org that doesn't use Tailscale. `cloudflared` on the hub connects out to Cloudflare, so the hub needs **no inbound ports at all**; Cloudflare Access signs people in (with the org's Entra ID, say) before a request reaches the UI, and Heimdall's own sign-in follows.
+
+```
+browser ──▶ heimdall.example.com ──Access──▶ tunnel ──▶ 127.0.0.1:8080  UI
+servers ──▶ bifrost.example.com  ──(no Access)─▶ tunnel ──▶ 127.0.0.1:8443  ingest
+```
+
+**1. Install the hub** with your two hostnames (one for the UI, one for ingest):
+
+```sh
+curl -fsSLO https://github.com/realmwatch/heimdall/releases/latest/download/install-hub.sh
+sudo sh install-hub.sh --org acme --no-tailscale \
+  --ui-url https://heimdall.example.com --ingest-url https://bifrost.example.com --admin you@example.com
+```
+
+No Tailscale or Caddy is installed. The UI listens on `127.0.0.1:8080` and ingest on `127.0.0.1:8443`, both trusting the tunnel's client address (`ui.behind_proxy` and `ingest.behind_proxy`), and `ui.base_url` and `ingest.public_url` are set to your names. On an existing hub, set those four keys in `heimdall.toml` and `sudo heimdall restart`.
+
+**2. In Cloudflare Zero Trust**, install `cloudflared` on the hub (Networks → Tunnels gives the command) and give the tunnel two **public hostnames**:
+
+| Hostname | Service | Access |
+|---|---|---|
+| `heimdall.example.com` | `HTTP` `127.0.0.1:8080` | An Access application: allow the org's users or group, with Entra ID as the only login method |
+| `bifrost.example.com` | `HTTP` `127.0.0.1:8443` | **None.** Collectors can't sign in to Access. If a wildcard Access app covers the zone, add a Bypass policy for this name |
+
+- Plain HTTP to `127.0.0.1` is right: it never leaves the box, and browsers and servers get HTTPS from Cloudflare.
+- `cloudflared` must run **on the hub**: both listeners are loopback only.
+- Use **one-level** names (`bifrost.example.com`, not `ingest.heimdall.example.com`): Cloudflare's free certificate covers `*.example.com` only.
+- The ingest name may be anything; a name that doesn't say what it is (`bifrost`) tells a scanner less.
+
+**3. Entra SSO:** `sudo heimdall sso setup`, with the redirect URI `https://heimdall.example.com/auth/callback`. People sign in twice, once at Access and once at Heimdall, usually a click the second time with the same Microsoft session. See [sso.md](sso.md) for roles.
+
+**4. Check:**
+
+- `curl -i https://bifrost.example.com/` returns `404` from Heimdall, not an Access sign-in page: ingest is reachable and outside Access.
+- After signing in, open `/ips/<your public address>`: as a global admin you see your own sign-in listed there. If sign-ins only ever show `127.0.0.1`, `ui.behind_proxy` is off.
+
+**Collector reports refused (403) at Cloudflare.** Cloudflare's bot and browser checks can challenge the collector, which is `curl`: Bot Fight Mode, Browser Integrity Check, a high Security Level, or a managed rule. Add a WAF custom rule for `bifrost.example.com` with the action **Skip** (remaining custom rules, Browser Integrity Check, Security Level, managed rules) when the path is `/api/v1/ingest`. Bot Fight Mode on the Free plan can't be skipped per rule; turn it off for the zone if it blocks reports. The hub checks every report's token and rate-limits each host itself.
+
+**MCP** (AI assistants) isn't behind this setup: assistants can't sign in to Access. Leave `[mcp]` off, or reach it over an SSH tunnel.
+
+### Other ways without Tailscale
+
+- **Microsoft Entra Private Access** (Global Secure Access) or **Entra Application Proxy**: the same shape as Cloudflare Access, with Microsoft's connector and Conditional Access. Needs Entra ID P1 or the Entra Suite. Point it at `http://127.0.0.1:8080` from a connector on the hub, set `ui.behind_proxy = true` and `ui.base_url` to the published URL. Ingest still needs its own public name (Caddy with `--ingest-host`, or a tunnel).
+- **The org's VPN** (WireGuard, OpenVPN, Azure P2S, AWS Client VPN): Caddy on the VPN address only (`bind` in [`deploy/Caddyfile.example`](../deploy/Caddyfile.example)), a certificate from a private CA or a DNS challenge, `ui.behind_proxy = true`.
+- **An SSH tunnel** for one or two admins: `ssh -L 8080:127.0.0.1:8080 hub` and open `http://127.0.0.1:8080` (set `ui.base_url` to that).
+
+Never put the UI on the public internet, SSO or not.
+
+### `ui.behind_proxy`
+
+Behind any proxy on the box, every request reaches the UI from `127.0.0.1`. With `ui.behind_proxy = true`, and **only for requests from loopback**, the UI takes the client's address from the last `X-Forwarded-For` hop (the one the proxy added; earlier ones are whatever the client sent), or from `CF-Connecting-IP` when that hop is one of Cloudflare's edge addresses (Caddy behind Cloudflare's proxy; needs `[cloudflare]` on, which keeps the edge ranges current). The audit log, sign-in throttling and the "signed in from here" guess on privileged sessions all use it. Leave it off if anything else on the box could reach the UI port. `ui.behind_tailscale_serve` is the same for `tailscale serve`, which also passes the tailnet identity.
 
 ## Where to host it
 

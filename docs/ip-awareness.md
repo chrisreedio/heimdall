@@ -79,6 +79,8 @@ behind_tailscale_serve = true
 
 Then, **only for requests from loopback**, the UI takes the client's address from the last `X-Forwarded-For` hop (the one tailscale serve adds) and records the tailnet identity from `Tailscale-User-Login` and `Tailscale-User-Name` on the session (shown on the IP page). Requests from anywhere else are never trusted with these headers. Leave it `false` if anything other than tailscale serve could reach the UI port on loopback, or if you use another proxy. The address is also what the audit log and sign-in throttling see. Restart the hub after changing it (`sudo heimdall restart`).
 
+Behind another proxy on the box instead (Cloudflare Tunnel with Access, Caddy, nginx), set `ui.behind_proxy = true`: the same, for the address only. See [deployment.md](deployment.md#uibehind_proxy).
+
 ## On the host page
 
 The **Privileged access** card lists recent sessions with a badge per source: "alice", "probably alice", "Laravel Forge", "web-02", "Tailnet", or **unknown address**. Each address links to its IP page. If any session in the last 24 hours came from an unknown address, a line says so with links to label them.

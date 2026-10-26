@@ -45,6 +45,9 @@ section_set() {
 step "An unsigned build is refused"
 # make dist doesn't sign; only the release workflow does.
 refuse 'SHA256SUMS.sigstore.json' sudo sh "$dist/install-hub.sh" --from-dir "$dist" --org acme --no-tailscale
+# --ui-url/--ingest-url need https names, with --no-tailscale only.
+refuse 'https://name' sudo sh "$dist/install-hub.sh" --from-dir "$dist" --org acme --no-tailscale --ui-url http://heimdall.example.com --ingest-url https://bifrost.example.com
+refuse 'go with --no-tailscale' sudo sh "$dist/install-hub.sh" --from-dir "$dist" --org acme --ingest-host ingest.example.com --ui-url https://heimdall.example.com --ingest-url https://bifrost.example.com
 [ ! -e /usr/local/bin/heimdall ] || fail "refused, but installed anyway"
 
 # A real, signed release: the new code checks its signature with the

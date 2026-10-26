@@ -353,10 +353,12 @@ Both units are sandboxed. `systemd-analyze security` rates the hub **1.4** and t
 database = "/var/lib/heimdall/heimdall.db"
 
 [ui]
-listen   = "127.0.0.1:8080"        # loopback only; HTTPS via `tailscale serve` or Caddy
+listen   = "127.0.0.1:8080"        # loopback only; HTTPS via `tailscale serve`, Cloudflare Tunnel or Caddy
 base_url = "https://heimdall.internal"
 session_idle    = "30m"
 session_max     = "12h"
+behind_tailscale_serve = false     # true behind `tailscale serve`
+behind_proxy    = false            # true behind cloudflared (Cloudflare Tunnel + Access), Caddy or nginx
 
 [auth]
 local_login = true                 # break-glass; set false once SSO works

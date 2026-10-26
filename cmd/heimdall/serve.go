@@ -229,6 +229,7 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.
 	}
 	wcfg.Bans = bansService                                 // set by startBans (bans.go)
 	wcfg.BehindTailscaleServe = cfg.UI.BehindTailscaleServe // tailscale serve's client headers (web/tsproxy.go)
+	wcfg.BehindProxy, wcfg.TrustedEdge = cfg.UI.BehindProxy, cloudflareTrustedEdge()
 	if aiSvc != nil {
 		wcfg.AI = aiSvc
 	}
