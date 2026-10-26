@@ -15,7 +15,7 @@
   <tr>
     <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}{{if or .KEV .InNews .KernelStatus (hotEPSS .EPSS)}}<div class="find-badges">{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}{{template "epssbadge" .EPSS}}{{template "kernelbadge" .KernelStatus}}</div>{{end}}</td>
     <td><span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</td>
-    <td>{{.Package}}{{if gt (len .Binaries) 1}}<div class="muted small">{{join .Binaries ", "}}</div>{{end}}</td>
+    <td>{{.Package}}{{if eq .Ecosystem "npm"}} <span class="tag">npm</span>{{end}}{{if .Dev}}{{template "devbadge"}}{{end}}{{if gt (len .Binaries) 1}}<div class="muted small">{{join .Binaries ", "}}</div>{{end}}</td>
     <td class="ver">{{.Version}}</td>
     <td class="ver">{{if .Fixed}}{{.Fixed}}{{if .FixPending}} <span class="badge ok">update pending</span>{{end}}{{else}}<span class="muted">no fix yet</span>{{end}}</td>
     <td class="nowrap" title="{{time .FirstSeen}}">{{day .FirstSeen}}</td>
@@ -44,6 +44,7 @@
 {{if $calm}}<div class="calm" role="status">{{template "icon" "check"}}<div>
   <p><strong>Nothing needs attention here.</strong> No findings are fixable now, known-exploited, in the news or likely to be exploited (EPSS {{watchEPSS}} or more).</p>
   {{if .Hidden}}<p class="muted small">{{num .Hidden}} other finding{{if ne .Hidden 1}}s have{{else}} has{{end}} no fix released yet and little sign of exploitation. Heimdall rechecks on every report and lists {{if eq .Hidden 1}}it{{else}}them{{end}} here once a fix ships or that changes. <a href="{{.AllSevLink}}">Show all findings</a></p>{{end}}
+  {{if .HiddenDev}}<p class="muted small">{{num .HiddenDev}} finding{{if ne .HiddenDev 1}}s are{{else}} is{{end}} on npm dev dependencies, which build the site but don't run it. <a href="{{.AllSevLink}}">Show all findings</a></p>{{end}}
 </div></div>
 {{else}}<div class="view-bar">
   <nav class="seg" aria-label="Group findings">
@@ -59,6 +60,11 @@
   <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
   <p class="muted small">{{if .Note}}{{.Note}}{{else}}Upgrades only these packages.{{if ne $.PM "composer"}} It names only packages the host has a pending update for.{{end}} Filter by severity above to patch, say, just the critical ones first.{{end}} Heimdall never runs it for you.</p>
 </div>{{end}}
+{{range .NpmCmds}}<div class="cmd fix-cmd">
+  <div class="cmd-label">{{.Label}}</div>
+  <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
+  <p class="muted small">{{.Note}} Heimdall never runs it for you.</p>
+</div>{{end}}
 {{if and .RebootCmd (not .RebootFirst)}}{{template "rebootcmd" .}}{{end}}
 {{if .NotInCache}}<p class="muted small not-in-cache"><strong>{{.NotInCache}} finding{{if ne .NotInCache 1}}s{{end}} fixed upstream, not yet in this host's package cache.</strong> A fix is published, but no pending update installs it, so {{if eq .NotInCache 1}}it isn't{{else}}they aren't{{end}} in the command{{if not .FixCmd}} (there's nothing to upgrade yet){{end}}. The collector reads the package manager's existing cache without refreshing it: either the host's package sources don't offer the fix yet, or the cache is old. Run {{if eq .PM "rpm"}}<code>sudo dnf makecache</code>{{else if eq .PM "apk"}}<code>sudo apk update</code>{{else}}<code>sudo apt-get update</code>{{end}} on the host first; its next report shows which.</p>{{end}}
 {{with .OldKernelCmd}}<div class="cmd fix-cmd">
@@ -73,7 +79,7 @@
 {{else}}
   {{if .Rows}}{{template "findings" .Rows}}{{else}}<p class="empty">No findings match the filter.</p>{{end}}
 {{end}}
-{{if and .Focus .Total .Hidden}}<p class="muted small focus-more">Plus {{num .Hidden}} finding{{if ne .Hidden 1}}s{{end}} with no fix released yet and little sign of exploitation. <a href="{{.AllSevLink}}">Show all findings</a></p>{{end}}
+{{if and .Focus .Total (or .Hidden .HiddenDev)}}<p class="muted small focus-more">Plus {{if .Hidden}}{{num .Hidden}} finding{{if ne .Hidden 1}}s{{end}} with no fix released yet and little sign of exploitation{{end}}{{if and .Hidden .HiddenDev}}, and {{end}}{{if .HiddenDev}}{{num .HiddenDev}} on npm dev dependencies, which build the site but don't run it{{end}}. <a href="{{.AllSevLink}}">Show all findings</a></p>{{end}}
 {{if gt .Pages 1}}<nav class="pager" aria-label="Pages">
   {{with .PrevLink}}<a class="button secondary" href="{{.}}">← Previous</a>{{else}}<span></span>{{end}}
   <span class="muted small">Page {{.Page}} of {{.Pages}}</span>
@@ -88,7 +94,7 @@
     <div class="pkg-grid pkg-head" role="row"><span>Package</span><span>Installed</span><span>Worst</span><span class="num">KEV</span><span class="num">Crit</span><span class="num">High</span><span class="num">Med</span><span class="num">Low</span><span class="num">Fixable</span></div>
     {{range .}}<details class="pkg-row">
       <summary class="pkg-grid" role="row">
-        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span>{{template "kernelbadge" .KernelStatus}}{{if .News}} <span class="badge news" title="{{.News}} named by a live incident in the news">in the news</span>{{end}}</span>
+        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span>{{template "kernelbadge" .KernelStatus}}{{if .Dev}}{{template "devbadge"}}{{end}}{{if .News}} <span class="badge news" title="{{.News}} named by a live incident in the news">in the news</span>{{end}}</span>
         <span class="ver">{{.Version}}</span>
         <span><span class="sev sev-{{sev .Worst}}">{{.Worst}}</span></span>
         <span class="num">{{if .KEV}}<span class="badge kev">{{.KEV}}</span>{{else}}<span class="muted">0</span>{{end}}</span>
@@ -106,6 +112,27 @@
 
 {{/* epssbadge: an EPSS score worth watching (store.WatchEPSS or more), with a leading space. */}}
 {{define "epssbadge"}}{{if hotEPSS .}} <span class="badge warn" title="EPSS: a {{pct .}} chance of exploitation in the next 30 days">EPSS {{pct .}}</span>{{end}}{{end}}
+
+{{/* devbadge: an npm dev dependency, with a leading space. */}}
+{{define "devbadge"}} <span class="badge muted" title="An npm dev dependency: needed to build or test the site, not to run it. Left out of what needs attention and of the severity, known-exploited and fixable counts">dev</span>{{end}}
+
+{{/* siteeco: one ecosystem's findings in a host page site card (siteEco). */}}
+{{define "siteeco"}}{{$e := .E}}
+    <div class="site-eco">
+    <h4>{{.Name}}{{with .File}} <span class="muted small">· {{.}}</span>{{end}}</h4>
+    {{range $e.Commands}}
+    <div class="cmd">
+      <div class="cmd-label">{{.Label}}</div>
+      <div class="codebox"><pre id="{{.ID}}">{{.Text}}</pre><button type="button" class="copy" data-copy="{{.ID}}" hidden>Copy</button></div>
+      {{with .Note}}<p class="muted small">{{.}}</p>{{end}}
+    </div>
+    {{end}}
+    <details class="site-findings"{{if .Open}} open{{end}}>
+      <summary>{{len $e.Findings}} finding{{if ne (len $e.Findings) 1}}s{{end}} in {{len $e.Groups}} package{{if ne (len $e.Groups) 1}}s{{end}}{{if or $e.Fixable $e.Watch}} · {{attn $e.Fixable $e.Watch}}{{end}}{{with $e.Dev}} · {{.}} on dev dependencies{{end}}</summary>
+      {{template "pkggroups" $e.Groups}}
+    </details>
+    </div>
+{{end}}
 
 {{/* kernelbadge: a finding's (or package group's) kernel status, with a leading space. */}}
 {{define "kernelbadge"}}{{if eq . "not_running"}} <span class="badge muted" title="On an older kernel that's installed but not running: removing it clears this">not running</span>{{else if eq . "reboot_pending"}} <span class="badge warn" title="On the running kernel, while a newer kernel is already installed: rebooting clears this (the newer kernel may have findings of its own)">reboot pending</span>{{else if eq . "userland"}} <span class="badge muted" title="On a package built from the kernel source that isn't the kernel (tools, headers): not live kernel exposure, so it's left out of the known-exploited and fixable counts. Upgrading it still clears it">kernel userland</span>{{else if eq . "newer_kernel"}} <span class="badge muted" title="On the newer kernel that's installed but not booted yet: it runs after the reboot, so rebooting won't clear this">next kernel</span>{{end}}{{end}}
@@ -137,6 +164,7 @@
     {{range $s := sevChips}}<a class="chip chip-browse chip-sev chip-sev-{{$s}}{{if eq $.V.Sev $s}} active{{end}}" href="{{index $.V.SevLinks $s}}"><strong>{{index $.C.BySev $s}}</strong> {{if eq $s "unknown"}}unrated{{else}}{{$s}}{{end}}</a>
     {{end}}
     {{if .C.NotRunning}}<span class="chip chip-muted" title="On older kernels that are installed but not running: not live exposure, so they're left out of the known-exploited and fixable counts"><strong>{{.C.NotRunning}}</strong> on kernels not running</span>{{end}}
+    {{if .C.Dev}}<span class="chip chip-muted" title="On npm dev dependencies: needed to build or test a site, not to run it, so they're left out of what needs attention and of the severity, known-exploited and fixable counts. Show all findings to list them"><strong>{{.C.Dev}}</strong> on dev dependencies</span>{{end}}
     {{if .C.KernelUserland}}<span class="chip chip-muted" title="On packages built from the kernel source that aren't the kernel (linux-tools-common, linux-libc-dev): not live kernel exposure, so they're left out of the known-exploited and fixable counts"><strong>{{.C.KernelUserland}}</strong> on kernel userland</span>{{end}}
   </div>
 {{end}}

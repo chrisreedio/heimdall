@@ -21,7 +21,8 @@ import (
 )
 
 // Format strings. A breaking change gets a new one, and the hub accepts
-// several during a transition. Collectors 0.2+ emit v2 (v1 plus sites).
+// several during a transition. Collectors 0.2+ emit v2 (v1 plus sites),
+// later ones v3 (containers, lockfiles), then v4 (sites' npm packages).
 const (
 	FormatV1 = "heimdall.snapshot/v1"
 	FormatV2 = "heimdall.snapshot/v2"
@@ -31,7 +32,7 @@ const (
 )
 
 // Formats lists every format the hub accepts.
-var Formats = []string{FormatV1, FormatV2, FormatV3}
+var Formats = []string{FormatV1, FormatV2, FormatV3, FormatV4}
 
 // Limits keep a hostile host from storing unbounded data.
 const (

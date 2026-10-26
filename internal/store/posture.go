@@ -30,6 +30,7 @@ type FindingCounts struct {
 	RebootPending                                    int // on the running kernel, a newer one installed
 	KernelUserland                                   int // only on kernel userland packages (kernel.Userland)
 	Watch                                            int // of NoFix, known-exploited, in the news or WatchEPSS likely
+	Dev                                              int // npm dev dependencies: in Total, and no other count
 }
 
 // WatchEPSS is the EPSS score (the chance of exploitation in the next 30
@@ -43,7 +44,7 @@ const WatchEPSS = 0.10
 func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]FindingCounts, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT host_id, site_root, total, kev, critical, high, medium, low, unknown,
-		       fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending, kernel_userland, watch
+		       fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending, kernel_userland, watch, dev
 		FROM finding_counts`)
 	if err != nil {
 		return nil, err
@@ -55,10 +56,10 @@ func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]Fin
 		var root string
 		var c FindingCounts
 		if err := rows.Scan(&host, &root, &c.Total, &c.KEV, &c.Critical, &c.High, &c.Medium, &c.Low, &c.Unknown,
-			&c.Fixable, &c.FixPending, &c.FixUrgent, &c.InNews, &c.NotRunning, &c.RebootPending, &c.KernelUserland, &c.Watch); err != nil {
+			&c.Fixable, &c.FixPending, &c.FixUrgent, &c.InNews, &c.NotRunning, &c.RebootPending, &c.KernelUserland, &c.Watch, &c.Dev); err != nil {
 			return nil, err
 		}
-		c.NoFix = c.Total - c.Fixable - c.NotRunning - c.KernelUserland
+		c.NoFix = c.Total - c.Fixable - c.NotRunning - c.KernelUserland - c.Dev
 		if out[host] == nil {
 			out[host] = map[string]FindingCounts{}
 		}
@@ -76,7 +77,9 @@ func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]Fin
 // running kernel's while a newer one is installed, and userland when every
 // binary is a kernel userland package (?3, kernel.Userland's list):
 // kernel.State.Status. ?4 is WatchEPSS: watch counts findings with no fix
-// that are known-exploited, in the news, or scored at least that.
+// that are known-exploited, in the news, or scored at least that. A
+// finding on an npm dev dependency (findings.dev) counts in total and dev
+// only (report.Counts.Dev).
 const countsSQL = `
 	WITH kev AS (
 		SELECT k.cve_id AS id FROM kev_entries k
@@ -93,7 +96,7 @@ const countsSQL = `
 		SELECT CAST(key AS INTEGER) AS host_id, json_extract(value, '$.old') AS old, json_extract(value, '$.boot') AS boot
 		FROM json_each(?2)),
 	fs AS (
-		SELECT f.host_id, f.site_root, a.severity AS sev,
+		SELECT f.host_id, f.site_root, a.severity AS sev, f.dev AS dev,
 		       coalesce(f.fixed_version, '') != '' AS fixable, f.fix_pending AS pending,
 		       f.advisory_id IN (SELECT id FROM kev) AS kev, f.advisory_id IN (SELECT id FROM news) AS news,
 		       f.advisory_id IN (SELECT id FROM hot) AS hot,
@@ -109,17 +112,17 @@ const countsSQL = `
 		JOIN (SELECT h.id, coalesce(s.package_manager = 'dpkg', 0) AS dpkg FROM hosts h
 		      LEFT JOIN snapshots s ON s.id = h.last_snapshot_id WHERE ?1 = 0 OR h.id = ?1) h ON h.id = f.host_id
 		WHERE f.resolved_at IS NULL AND a.withdrawn IS NULL),
-	fk AS (SELECT *, nr0 AND NOT ku AS nr, ku OR nr0 AS off FROM fs)
+	fk AS (SELECT *, nr0 AND NOT ku AS nr, ku OR nr0 OR dev AS off FROM fs)
 	INSERT INTO finding_counts (host_id, site_root, total, kev, critical, high, medium, low, unknown,
-	                            fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending, kernel_userland, watch)
+	                            fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending, kernel_userland, watch, dev)
 	SELECT host_id, site_root, count(*),
 	       sum(kev AND NOT off),
-	       sum(sev = 'critical'), sum(sev = 'high'), sum(sev = 'medium'),
-	       sum(sev = 'low'), sum(sev NOT IN ('critical', 'high', 'medium', 'low')),
+	       sum(sev = 'critical' AND NOT dev), sum(sev = 'high' AND NOT dev), sum(sev = 'medium' AND NOT dev),
+	       sum(sev = 'low' AND NOT dev), sum(sev NOT IN ('critical', 'high', 'medium', 'low') AND NOT dev),
 	       sum(fixable AND NOT off), sum(pending AND NOT off),
 	       sum(fixable AND NOT off AND sev IN ('critical', 'high')),
-	       sum(news), sum(nr), sum(rb AND NOT off), sum(ku),
-	       sum(NOT fixable AND NOT off AND (kev OR news OR hot))
+	       sum(news AND NOT dev), sum(nr), sum(rb AND NOT off), sum(ku),
+	       sum(NOT fixable AND NOT off AND (kev OR news OR hot)), sum(dev)
 	FROM fk
 	GROUP BY host_id, site_root`
 

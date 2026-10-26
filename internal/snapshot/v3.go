@@ -44,9 +44,9 @@ var (
 	appVersionRe       = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+!-]{0,99}$`)
 )
 
-// validateV3 checks containers and lockfiles, which only v3 may carry.
+// validateV3 checks containers and lockfiles, which only v3 and later carry.
 func validateV3(s *Snapshot, unavailable map[string]bool, bad func(field, format string, a ...any)) {
-	if s.Format != FormatV3 {
+	if !atLeastV3(s.Format) {
 		if s.Containers != nil {
 			bad("containers", "not allowed in %s", s.Format)
 		}
@@ -64,7 +64,7 @@ func validateV3(s *Snapshot, unavailable map[string]bool, bad func(field, format
 	case unavailable["containers"] && len(s.Containers) > 0:
 		bad("containers", "must be empty when listed in unavailable")
 	case !unavailable["containers"] && s.Containers == nil:
-		bad("containers", "required in %s (use [] for none, or list \"containers\" as unavailable)", FormatV3)
+		bad("containers", "required in %s (use [] for none, or list \"containers\" as unavailable)", s.Format)
 	case len(s.Containers) > MaxContainers:
 		bad("containers", "too many (%d > %d)", len(s.Containers), MaxContainers)
 	default:
@@ -94,7 +94,7 @@ func validateV3(s *Snapshot, unavailable map[string]bool, bad func(field, format
 	case unavailable["lockfiles"] && len(s.Lockfiles) > 0:
 		bad("lockfiles", "must be empty when listed in unavailable")
 	case !unavailable["lockfiles"] && s.Lockfiles == nil:
-		bad("lockfiles", "required in %s (use [] for none)", FormatV3)
+		bad("lockfiles", "required in %s (use [] for none)", s.Format)
 	case len(s.Lockfiles) > MaxLockfiles:
 		bad("lockfiles", "too many (%d > %d)", len(s.Lockfiles), MaxLockfiles)
 	default:

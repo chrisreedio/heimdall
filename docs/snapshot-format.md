@@ -1,4 +1,4 @@
-# Snapshot format (v1 and v2)
+# Snapshot format (v1 to v4)
 
 > The JSON document `collect.sh` produces and the hub accepts.
 > Source of truth: [`internal/snapshot/snapshot.go`](../internal/snapshot/snapshot.go) and [`sites.go`](../internal/snapshot/sites.go).
@@ -7,8 +7,10 @@
 |---|---|---|
 | `heimdall.snapshot/v1` | collector 0.1.x | OS, kernel, packages, pending updates |
 | `heimdall.snapshot/v2` | collector 0.2+ | everything in v1, plus [`sites`](#sites-v2): web apps, PHP-FPM versions, Laravel and Composer packages |
+| `heimdall.snapshot/v3` | collector 0.3+ | everything in v2, plus [`containers` and `lockfiles`](#version-3-additions) |
+| `heimdall.snapshot/v4` | collectors after 0.4.38 | everything in v3, plus each site's [`npm_packages`](#version-4-additions) |
 
-The hub accepts both, so collectors can be upgraded one server at a time.
+The hub accepts all four, so collectors can be upgraded one server at a time (upgrade the hub first).
 
 ## At a glance
 
@@ -97,7 +99,7 @@ Full examples: [`debian12.json`](../internal/snapshot/testdata/debian12.json) an
 | `server_names[]` | Hostnames from `server_name` / `ServerName` / `ServerAlias` | Lowercase DNS names, optionally `*.`-prefixed, plus `_` and `localhost`. At most 50. |
 | `web_server` | Where the site was found | `nginx`, `apache`, or `""` when listed in `HEIMDALL_SITES` |
 | `php_fpm_version` | The PHP-FPM pool the vhost passes PHP to | `"8.3"`-style, or `""` if it can't be told (e.g. a TCP pool) |
-| `readable` | Whether the collector could read the app's composer files | `false` means there must be no framework, version, requirement, deploy time or packages |
+| `readable` | Whether the collector could read the app's composer files | `false` means there must be no framework, version, requirement, deploy time or packages (Composer or npm) |
 | `framework` / `framework_version` | `laravel` when `composer.lock` has `laravel/framework` | Version without the leading `v` |
 | `php_requirement` | `require.php` from `composer.json` | At most 100 characters of `0-9 A-Z a-z . , \| < > = ^ ~ * @ -` and spaces |
 | `deployed_at` | `composer.lock` modification time | RFC 3339, or `null` |
@@ -125,7 +127,7 @@ This keeps "the collector couldn't check" separate from "nothing to report". A c
 
 - **Adding an optional field** still needs a new format version, because the hub rejects unknown fields. Strictness is the point.
 - **Or a request header,** for optional extras an older hub can do without. Any hub ignores a header it doesn't know, so these never need a new format: `X-Heimdall-Hostname`, `X-Heimdall-Triggers`, the privilege watch's `X-Heimdall-Privilege` and `X-Heimdall-Privilege-Watch`, `X-Heimdall-Machine` (a hash of the machine ID, see [Many servers](collector.md#many-servers-enrollment-keys)), and each site's git remote, `X-Heimdall-Site-Repos` (see [collector.md](collector.md#site-repositories)).
-- **New version:** `heimdall.snapshot/v2` added `sites`. The hub accepts v1 and v2, so collectors can be upgraded gradually. A future v3 would follow the same pattern.
+- **New version:** `heimdall.snapshot/v2` added `sites`, v3 containers and lockfiles, v4 sites' npm packages. The hub accepts every version, so collectors can be upgraded gradually; upgrade the hub first, since an older hub rejects a newer format.
 
 ## Version 3 additions
 
@@ -137,3 +139,24 @@ This keeps "the collector couldn't check" separate from "nothing to report". A c
 | `lockfiles[]` | `path` (absolute), `ecosystem` (`npm` or `PyPI`), `packages[]` with `name` and `version`. At most 50 files and 5,000 packages each. |
 
 `package_manager` also accepts `pacman` and `windows`. Windows program names may contain spaces and common punctuation, but never quotes, angle brackets or control characters.
+
+## Version 4 additions
+
+`heimdall.snapshot/v4` is v3 plus one optional field on each site, read from the app root's `package-lock.json` (see [collector.md](collector.md#npm-packages-snapshot-v4)). It's forbidden before v4; in v4 it may be absent or `[]` when the site has no lockfile.
+
+```json
+"npm_packages": [
+  {"name": "axios", "version": "1.7.2", "dev": false},
+  {"name": "vite", "version": "5.0.10", "dev": true},
+  {"name": "semver", "version": "6.3.1", "dev": true},
+  {"name": "semver", "version": "7.6.0", "dev": false}
+]
+```
+
+| Field | Meaning | Rules |
+|---|---|---|
+| `name` | The package's npm name | Lowercase, optionally `@scope/`-prefixed, at most 214 characters |
+| `version` | The installed version | A plain version (`1.2.3`, `2.0.0-beta.1`); ranges, URLs and `npm:` aliases aren't allowed |
+| `dev` | Every copy is a dev dependency (`"dev": true` in the lockfile) | `true` or `false` |
+
+The same name may appear at several versions (nested `node_modules`), but each name and version only once. At most 5,000 per site, and none when `readable` is `false`. The hub matches them against OSV's `npm` ecosystem and attaches the findings to the site; findings on dev dependencies are kept apart (see [collector.md](collector.md#npm-packages-snapshot-v4)).

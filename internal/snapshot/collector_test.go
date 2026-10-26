@@ -87,6 +87,8 @@ func TestCollectorSites(t *testing.T) {
 		"/srv/worker":      {"/srv/worker", "", "", "laravel", "11.31.0", "^8.2", nil, true, 4},
 		"/var/www/missing": {"/var/www/missing", "", "", "", "", "", nil, false, 0},
 	}
+	// npm packages (and how many are dev) from each app's package-lock.json.
+	wantNpm := map[string][2]int{"/home/forge/example.com": {3, 2}}
 	for _, f := range files {
 		t.Run(filepath.Base(f), func(t *testing.T) {
 			b, err := os.ReadFile(f)
@@ -119,6 +121,15 @@ func TestCollectorSites(t *testing.T) {
 					site.Readable != w.readable || len(site.ComposerPackages) != w.packages ||
 					strings.Join(site.ServerNames, ",") != strings.Join(w.names, ",") {
 					t.Errorf("%s:\n got %+v\nwant %+v", root, site, w)
+				}
+				dev := 0
+				for _, p := range site.NpmPackages {
+					if p.Dev {
+						dev++
+					}
+				}
+				if n := wantNpm[root]; len(site.NpmPackages) != n[0] || dev != n[1] {
+					t.Errorf("%s: %d npm packages (%d dev), want %d (%d)", root, len(site.NpmPackages), dev, n[0], n[1])
 				}
 				if w.version != "" && site.DeployedAt == nil {
 					t.Errorf("%s: deployed_at missing", root)

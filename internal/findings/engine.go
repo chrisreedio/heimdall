@@ -48,8 +48,9 @@ type HostResult struct {
 }
 
 // EvaluateHost recomputes a host's findings from its latest snapshot: OS
-// packages against the distro's OSV ecosystem, and each site's Composer
-// packages against Packagist.
+// packages against the distro's OSV ecosystem, each site's Composer
+// packages against Packagist and its npm packages against npm, and
+// allowlisted lockfiles against theirs.
 func (e *Engine) EvaluateHost(ctx context.Context, host store.IngestHost) (HostResult, error) {
 	res := HostResult{Host: host}
 	inv, err := e.Store.Inventory(ctx, host)
@@ -89,6 +90,10 @@ func (e *Engine) EvaluateHost(ctx context.Context, host store.IngestHost) (HostR
 	}
 
 	var fs []store.Finding
+	// One finding per site, advisory and package (the store's key), though
+	// npm can install a package at several versions: the oldest version
+	// stands for them all, and it's dev only if every copy is.
+	seen := map[[3]string]int{}
 	for _, t := range order {
 		ti := targets[t]
 		for _, id := range ids[t.key] {
@@ -105,10 +110,22 @@ func (e *Engine) EvaluateHost(ctx context.Context, host store.IngestHost) (HostR
 					}
 				}
 			}
-			fs = append(fs, store.Finding{
+			f := store.Finding{
 				AdvisoryID: id, Ecosystem: t.key.Ecosystem, Package: t.key.Name, Version: t.key.Version,
-				Binaries: ti.binaries, FixedVersion: fixed, FixPending: pending, SiteRoot: t.site,
-			})
+				Binaries: ti.binaries, FixedVersion: fixed, FixPending: pending, SiteRoot: t.site, Dev: ti.dev,
+			}
+			k := [3]string{t.site, id, t.key.Name}
+			i, dup := seen[k]
+			if !dup {
+				seen[k] = len(fs)
+				fs = append(fs, f)
+				continue
+			}
+			f.Dev = f.Dev && fs[i].Dev
+			if compare(ti.scheme, f.Version, fs[i].Version) < 0 {
+				fs[i] = f
+			}
+			fs[i].Dev = f.Dev
 		}
 	}
 	res.Findings = len(fs)
@@ -126,6 +143,7 @@ type targetInfo struct {
 	scheme   version.Scheme
 	binaries []string // installed packages the target covers (OS: binaries of a source package)
 	pending  []string // versions pending updates would install
+	dev      bool     // npm: a dev dependency, needed only to build or test the site
 }
 
 // addOSTargets adds one target per source package and version.
@@ -167,11 +185,16 @@ func addLockfileTargets(targets map[target]*targetInfo, files []store.InventoryL
 	}
 }
 
-// PackagistEcosystem is OSV's ecosystem for Composer packages.
-const PackagistEcosystem = "Packagist"
+// OSV's ecosystems for Composer and npm packages.
+const (
+	PackagistEcosystem = "Packagist"
+	NpmEcosystem       = "npm"
+)
 
 // addSiteTargets adds each site's Composer packages (dev branches can't be
-// matched against version ranges, so they're skipped).
+// matched against version ranges, so they're skipped) and npm packages,
+// keyed by the site's root so their findings belong to the site. Fix
+// selection for npm uses the Composer comparison, as for lockfiles.
 func addSiteTargets(targets map[target]*targetInfo, sites []store.InventorySite) {
 	for _, site := range sites {
 		for _, p := range site.Packages {
@@ -181,6 +204,12 @@ func addSiteTargets(targets map[target]*targetInfo, sites []store.InventorySite)
 			t := target{site: site.Root, key: store.OSVKey{Ecosystem: PackagistEcosystem, Name: p.Name, Version: p.Version}}
 			if targets[t] == nil {
 				targets[t] = &targetInfo{scheme: version.Composer, binaries: []string{p.Name}}
+			}
+		}
+		for _, p := range site.NpmPackages {
+			t := target{site: site.Root, key: store.OSVKey{Ecosystem: NpmEcosystem, Name: p.Name, Version: p.Version}}
+			if targets[t] == nil {
+				targets[t] = &targetInfo{scheme: version.Composer, binaries: []string{p.Name}, dev: p.Dev}
 			}
 		}
 	}

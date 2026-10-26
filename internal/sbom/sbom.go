@@ -123,12 +123,16 @@ func Write(w io.Writer, inv store.HostInventory, toolVersion string, now time.Ti
 		for _, p := range pkgs {
 			c := component{Type: "library", Name: p.Name, Version: p.Version, PURL: appPURL(eco, p.Name, p.Version),
 				Properties: []property{{"heimdall:location", where}}}
+			if p.Dev {
+				c.Properties = append(c.Properties, property{"heimdall:dev", "true"})
+			}
 			c.BOMRef = c.PURL + "#" + where
 			doc.Components = append(doc.Components, c)
 		}
 	}
 	for _, s := range inv.Sites {
 		add("Packagist", s.Root, s.Packages)
+		add("npm", store.NpmManifest(s.Root), s.NpmPackages)
 	}
 	for _, l := range inv.Lockfiles {
 		add(l.Ecosystem, l.Path, l.Packages)
