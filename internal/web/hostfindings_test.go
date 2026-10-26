@@ -226,7 +226,7 @@ func TestHostPageCalm(t *testing.T) {
 		t.Fatal(err)
 	}
 	page = e.get("/hosts/acme/web-01", signedIn(e)).Body.String()
-	for _, want := range []string{`<strong>1</strong> needs attention`, `class="pkg-list"`, `EPSS 42%</span>`} {
+	for _, want := range []string{`<strong>1</strong> to watch, no fix yet`, `class="pkg-list"`, "None of these can be fixed by updating yet", `EPSS 42%</span>`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("watched page missing %q", want)
 		}

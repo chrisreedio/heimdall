@@ -132,6 +132,8 @@ type hostBody struct {
 	Report          report.Host
 	OSFindings      []report.Finding
 	Sites           []siteSection
+	Lockfiles       []siteSection // npm and PyPI lockfiles, Root their path
+	Attn            attnWhere
 	Stale           bool
 	Pending         []store.InventoryPackage
 	PendingSecurity int
@@ -225,7 +227,8 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 			body.Report = h
 		}
 	}
-	body.OSFindings, body.Sites = splitFindings(body.Report)
+	body.OSFindings, body.Sites, body.Lockfiles = splitFindings(body.Report)
+	body.Attn = attnWhereOf(body.OSFindings, body.Sites, body.Lockfiles)
 	labels, err := s.st.SiteLabelsByName(ctx)
 	if err != nil {
 		s.fail(w, r, v, err)
@@ -563,7 +566,11 @@ func sortSites(rows []siteRow) {
 // siteSection is a site on the host page with its own findings.
 type siteSection struct {
 	report.Site
+	ID         string // the card's anchor
 	Findings   []report.Finding
+	Groups     []pkgGroup // Findings by package, most urgent first
+	Fixable    int        // live findings with a fix
+	Watch      int        // no fix yet, but worth watching
 	Command    *command
 	Label      string
 	LabelSet   bool
@@ -589,8 +596,9 @@ func composerCommand(id string, fs []report.Finding) *command {
 		Text: "composer update " + strings.Join(names, " ") + " --with-dependencies"}
 }
 
-// splitFindings separates OS findings from each site's Composer findings.
-func splitFindings(h report.Host) (osFindings []report.Finding, sites []siteSection) {
+// splitFindings separates OS findings from each site's Composer findings
+// and each lockfile's (findings carry the site root or lockfile path).
+func splitFindings(h report.Host) (osFindings []report.Finding, sites, lockfiles []siteSection) {
 	bySite := map[string][]report.Finding{}
 	for _, f := range h.Findings {
 		if f.Site == "" {
@@ -601,10 +609,80 @@ func splitFindings(h report.Host) (osFindings []report.Finding, sites []siteSect
 	}
 	for i, site := range h.Sites {
 		fs := bySite[site.Root]
-		sites = append(sites, siteSection{Site: site, Findings: fs,
-			Command: composerCommand("cmd-site-"+strconv.Itoa(i), fs)})
+		sec := siteSection{Site: site, ID: "site-" + strconv.Itoa(i), Findings: fs, Groups: groupByPackage(fs),
+			Command: composerCommand("cmd-site-"+strconv.Itoa(i), fs)}
+		sec.Fixable, sec.Watch = attentionOf(fs)
+		sites = append(sites, sec)
 	}
-	return osFindings, sites
+	for i, path := range h.Lockfiles {
+		fs := bySite[path]
+		sec := siteSection{Site: report.Site{Root: path}, ID: "lockfile-" + strconv.Itoa(i), Findings: fs, Groups: groupByPackage(fs)}
+		sec.Fixable, sec.Watch = attentionOf(fs)
+		lockfiles = append(lockfiles, sec)
+	}
+	return osFindings, sites, lockfiles
+}
+
+// attentionOf counts the findings that need attention (needsAction): the
+// fixable ones, and those with no fix yet that are worth watching.
+func attentionOf(fs []report.Finding) (fixable, watch int) {
+	for _, f := range fs {
+		switch {
+		case !needsAction(f):
+		case f.Fixed != "":
+			fixable++
+		default:
+			watch++
+		}
+	}
+	return fixable, watch
+}
+
+// attnWhere says where a host's findings that need attention are, for
+// the line under its chips: the counts cover OS and site packages alike,
+// but the OS table comes first and the sites far below.
+type attnWhere struct {
+	OSFixable, OSWatch     int
+	SiteFixable, SiteWatch int
+	Sites                  int // sites with any
+	LockFixable, LockWatch int
+	Lockfiles              int // lockfiles with any
+}
+
+// attnText is a count of findings that need attention, split by whether
+// anything can be done today.
+func attnText(fixable, watch int) string {
+	var parts []string
+	if fixable > 0 {
+		parts = append(parts, strconv.Itoa(fixable)+" fixable now")
+	}
+	if watch > 0 {
+		parts = append(parts, strconv.Itoa(watch)+" to watch (no fix yet)")
+	}
+	if len(parts) == 0 {
+		return "nothing needs attention"
+	}
+	return strings.Join(parts, " · ")
+}
+
+func attnWhereOf(os []report.Finding, sites, lockfiles []siteSection) attnWhere {
+	var a attnWhere
+	a.OSFixable, a.OSWatch = attentionOf(os)
+	for _, s := range sites {
+		a.SiteFixable += s.Fixable
+		a.SiteWatch += s.Watch
+		if s.Fixable+s.Watch > 0 {
+			a.Sites++
+		}
+	}
+	for _, l := range lockfiles {
+		a.LockFixable += l.Fixable
+		a.LockWatch += l.Watch
+		if l.Fixable+l.Watch > 0 {
+			a.Lockfiles++
+		}
+	}
+	return a
 }
 
 // visibleHosts lists hosts (optionally in one org) that the viewer can see.
