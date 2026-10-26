@@ -308,7 +308,7 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		}
 		body.News = newsRows(entries)
 	}
-	if body.Privilege, err = s.privilegeFor(ctx, host, body.PackageMgr); err != nil {
+	if body.Privilege, err = s.privilegeFor(ctx, host, body.PackageMgr, body.Summary.CollectorVersion); err != nil {
 		s.fail(w, r, v, err)
 		return
 	}

@@ -82,7 +82,7 @@ func TestHostPageLogins(t *testing.T) {
 	web := e.seed()
 	ctx := t.Context()
 	page := func() string { return e.get("/hosts/acme/web-01", signedIn(e)).Body.String() }
-	for _, want := range []string{`id="logins"`, "Failed logins", "Not watched", "<code>sudo heimdall-collect upgrade --watch-logins</code>"} {
+	for _, want := range []string{`id="logins"`, "Failed logins", "Not watched", `<pre id="cmd-logins">sudo heimdall-collect upgrade --watch-logins</pre>`} {
 		if !strings.Contains(page(), want) {
 			t.Errorf("unwatched host page missing %q", want)
 		}

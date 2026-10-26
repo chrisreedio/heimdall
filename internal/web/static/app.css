@@ -956,6 +956,9 @@ details.repo-pick form { flex-wrap: wrap; align-items: flex-end; max-width: 560p
 .not-in-cache code { font-size: 12px; }
 .ai-by-heimdall { font-size: 11px; vertical-align: 1px; margin-left: 4px; }
 .priv-fix { margin: 6px 0 0; max-width: 70ch; }
+.fix-cmd { margin-top: 6px; }
+.fix-cmd pre { font-size: 12.5px; padding: 8px 64px 8px 10px; }
+.fix-cmd .copy { top: 5px; padding: 2px 10px; }
 .priv-recent { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
 .priv-recent .priv-who { overflow-wrap: anywhere; }
 /* Host page: the one-fact cards (tailnet, privilege, logins) side by side. */
