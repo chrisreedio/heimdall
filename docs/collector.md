@@ -48,7 +48,7 @@ Every row runs in CI as an unprivileged user (`make test-collector`), and each s
 
 OSV has no Windows ecosystem, so Windows hosts get inventory, update and lifecycle status, but no CVE findings.
 
-**Install** (once, from an elevated PowerShell, after verifying the files against `SHA256SUMS`):
+**Install** (once, from an elevated PowerShell). Download `install-windows.ps1`, `collect.ps1`, `SHA256SUMS` and `SHA256SUMS.sigstore.json` from the release into one folder. The installer checks the [signature](deployment.md#release-signatures) and `collect.ps1`'s checksum before installing anything:
 
 ```powershell
 .\install-windows.ps1 -HubUrl https://ingest.example.com
@@ -64,7 +64,7 @@ With an [enrollment key](#many-servers-enrollment-keys) instead of a token, add 
 
 The installer sets up two scheduled tasks running as **`NT AUTHORITY\LocalService`**, a built-in low-privilege account, with the least privilege (see [When it reports](#when-windows-reports)). The token goes in `C:\ProgramData\Heimdall\token`, with permissions limited to LocalService (read), SYSTEM and Administrators. It never appears on a command line.
 
-**Upgrading:** download the new release's `install-windows.ps1`, `collect.ps1` and `SHA256SUMS` and run the installer again, the same way. It replaces `collect.ps1` and both tasks (an install from before v0.4.14 has its daily task replaced by the hourly one) and keeps the hub URL; press Enter at the token prompt to keep the current token. There's no `heimdall-collect upgrade` on Windows yet. When the hub runs a newer release, `collect.ps1 -Push` says so on stderr.
+**Upgrading:** download the new release's `install-windows.ps1`, `collect.ps1`, `SHA256SUMS` and `SHA256SUMS.sigstore.json` and run the installer again, the same way. It replaces `collect.ps1` and both tasks (an install from before v0.4.14 has its daily task replaced by the hourly one) and keeps the hub URL; press Enter at the token prompt to keep the current token. There's no `heimdall-collect upgrade` on Windows yet. When the hub runs a newer release, `collect.ps1 -Push` says so on stderr.
 
 **Try it without installing:** `powershell -File collect.ps1 -Print` shows exactly what would be sent.
 
@@ -124,7 +124,7 @@ The collector runs on every server you manage, so it's built to be **boring, rea
 
 ## Installing
 
-**Quickest:** **Hosts → Add a host** in the UI gives you a one-line command running `install.sh` from the release. It verifies checksums (and the Sigstore signature when `cosign` is installed), creates the user and token, schedules pushes (hourly, after boot and after package changes; see [When it reports](#when-it-reports)) and sends the first report. On the hub's own box it uses `/etc/heimdall-collect`, so the hub's config is never touched.
+**Quickest:** **Hosts → Add a host** in the UI gives you a one-line command running `install.sh` from the release. It verifies the release's [signature](deployment.md#release-signatures) and checksums, creates the user and token, schedules pushes (hourly, after boot and after package changes; see [When it reports](#when-it-reports)) and sends the first report. On the hub's own box it uses `/etc/heimdall-collect`, so the hub's config is never touched.
 
 ### Many servers: enrollment keys
 

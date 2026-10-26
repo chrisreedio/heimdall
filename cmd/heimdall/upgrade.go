@@ -34,14 +34,15 @@ var (
 )
 
 // cmdUpgrade upgrades this hub to the latest (or a given) release by
-// running that release's install-hub.sh, after checking it against the
-// release's SHA256SUMS. The installer then verifies the rest (and the
-// Sigstore signature, when cosign is installed), stops the hub, migrates,
-// restarts and rolls back on failure.
+// running that release's install-hub.sh, after checking the Sigstore
+// signature on the release's SHA256SUMS (signature.go) and the script
+// against it. The installer then verifies the rest, stops the hub,
+// migrates, restarts and rolls back on failure.
 func cmdUpgrade(a *app, args []string) error {
-	fs := a.flags("upgrade", "[--version vX.Y.Z] [--check] [-- install-hub.sh flags]")
+	fs := a.flags("upgrade", "[--version vX.Y.Z] [--check] [--skip-signature-check] [-- install-hub.sh flags]")
 	want := fs.String("version", "", "release to install (default: the latest)")
 	check := fs.Bool("check", false, "only report whether a newer release exists")
+	skipSig := fs.Bool("skip-signature-check", false, "don't check the release's Sigstore signature (only its checksums); for when cosign can't run here")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -83,6 +84,18 @@ func cmdUpgrade(a *app, args []string) error {
 	script, _, err := hc.Get(a.ctx, releaseBase+tag+"/install-hub.sh", 1<<20, nil)
 	if err != nil {
 		return err
+	}
+	if *skipSig {
+		fmt.Fprintln(a.stderr, "WARNING: not checking the release's signature (--skip-signature-check); only its checksums")
+		extra = append([]string{"--skip-signature-check"}, extra...)
+	} else {
+		bundle, _, err := hc.Get(a.ctx, releaseBase+tag+"/SHA256SUMS.sigstore.json", 1<<20, nil)
+		if err != nil {
+			return fmt.Errorf("fetching the release's signature: %w", err)
+		}
+		if err := verifyReleaseSums(a, hc, sums, bundle); err != nil {
+			return err
+		}
 	}
 	if err := checkSum(sums, "install-hub.sh", script); err != nil {
 		return err

@@ -95,7 +95,7 @@ Admins see a banner in the UI when a newer release exists. The hub checks GitHub
 ```sh
 sudo heimdall upgrade            # or: heimdall upgrade --check
 ```
-It finds the latest release (or `--version vX.Y.Z`), checks that release's `install-hub.sh` against its `SHA256SUMS`, and runs it. Flags after `--` go to the installer. Without Heimdall's command, the same thing by hand:
+It finds the latest release (or `--version vX.Y.Z`), checks the [signature](#release-signatures) on that release's `SHA256SUMS`, checks `install-hub.sh` against it, and runs it. Flags after `--` go to the installer. Without Heimdall's command, the same thing by hand:
 ```sh
 curl -fsSLO https://github.com/realmwatch/heimdall/releases/download/vX.Y.Z/install-hub.sh
 sudo sh install-hub.sh
@@ -107,6 +107,26 @@ The installer verifies the release, then:
 4. Trusts the release's collector checksum, so servers that update don't raise "collector changed" anomalies.
 
 Your config, data, Tailscale and Caddy settings and the unit's `LoadCredential` lines are kept. If the new version doesn't come up, its log is printed before the rollback.
+
+### Release signatures
+
+Every release's `SHA256SUMS` is signed with Sigstore by this repository's release workflow, for a `v*` tag. It lists every other file in the release. `install-hub.sh`, `install.sh`, `install-windows.ps1`, `heimdall upgrade` and `heimdall-collect upgrade` all refuse a release whose signature doesn't check out, so release files swapped after the fact (with a stolen token, for example) or changed by a mirror or proxy are never installed.
+
+They check it with [cosign](https://github.com/sigstore/cosign). They don't use whatever `cosign` happens to be installed: they use a pinned build, whose version and SHA-256 are in the installer. It's fetched once from cosign's GitHub release, checked against its pinned hash every time it's used, and kept in `/usr/local/lib/heimdall` (`C:\ProgramData\Heimdall` on Windows). It's about 140 MB. On an architecture with no pinned build (other than amd64, arm64 and, for collectors, armv7), an installed `cosign` is used, and with none the install stops.
+
+The check needs outbound HTTPS to GitHub, as the install already does, and to Sigstore's `tuf-repo-cdn.sigstore.dev` for the current signing root (with revocations). Without it the check fails and nothing is installed.
+
+**Where it can't run** (no cosign for the architecture, or no route to it), `--skip-signature-check` (`-SkipSignatureCheck` on Windows) installs with checksums only, and says so on every run. Avoid it: checksums from the same place as the files only catch corruption, not tampering.
+
+**The first install** of each server still trusts the `install.sh` (or `install-hub.sh`) you download, since nothing checks it yet. To check it as well, verify the release by hand first, as each release's notes show:
+```sh
+V=vX.Y.Z; R=https://github.com/realmwatch/heimdall/releases/download/$V
+curl -fsSLO $R/install.sh -O $R/SHA256SUMS -O $R/SHA256SUMS.sigstore.json
+cosign verify-blob SHA256SUMS --bundle SHA256SUMS.sigstore.json \
+  --certificate-identity-regexp '^https://github.com/realmwatch/heimdall/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+sha256sum -c --ignore-missing SHA256SUMS
+```
 
 **New config sections.** Features added since your hub was installed (for example `[news]` or `[ai]` on a hub from v0.4.10) get their section appended to `heimdall.toml`, **off**, under a `# Added by heimdall vX.Y.Z` comment, so you can see them and turn them on. Nothing you wrote is changed or reordered, and missing keys inside your existing sections aren't added (their defaults apply). The previous file is kept as `heimdall.toml.pre-upgrade`, and the new one must load before it replaces the old. `heimdall migrate` does this (the installer runs it, and restores the old config on a rollback); when it can't write the file it says so and prints `run: sudo heimdall config update`, and the upgrade goes on. Preview with `heimdall config update --dry-run`.
 

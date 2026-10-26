@@ -21,7 +21,11 @@
   create` or the hub's Add servers page), and the hub adds this server and
   gives it its own token. A server that already has a token keeps it.
 
-  Verify collect.ps1 against the release's SHA256SUMS before installing.
+  Download collect.ps1, SHA256SUMS and SHA256SUMS.sigstore.json from the
+  same release into one folder. The installer checks SHA256SUMS' Sigstore
+  signature (with a pinned cosign it fetches once into
+  C:\ProgramData\Heimdall) and collect.ps1 against SHA256SUMS before
+  installing. -SkipSignatureCheck checks the checksums only (not advised).
 
 .EXAMPLE
   .\install-windows.ps1 -HubUrl https://ingest.example.com
@@ -37,9 +41,58 @@ param(
     [Parameter(Mandatory)][string]$HubUrl,
     [string]$Source = (Join-Path $PSScriptRoot 'collect.ps1'),
     [string]$At = '', # ignored: older versions reported daily at this time
-    [switch]$Enroll
+    [switch]$Enroll,
+    [switch]$SkipSignatureCheck
 )
 $ErrorActionPreference = 'Stop'
+
+# The release signature. Keep the pins the same as collect.sh, install.sh,
+# install-hub.sh and cmd/heimdall/signature.go (TestSignaturePinsMatch).
+$CosignVersion = 'v3.1.4'
+$ReleaseSigner = '^https://github.com/(chrisreedio|realmwatch)/heimdall/\.github/workflows/release\.yml@refs/tags/v'
+$CosignSHA256 = @{
+    'windows-amd64.exe' = 'cbe953787074611f1334cbf37dc1cf953995bb8c45398eb4fc7bb781d29c1f2a'
+    'linux-amd64'       = '424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa' # for tests on Linux
+}
+
+# Get-PinnedCosign: the path of the pinned cosign, fetched into $Dir first
+# if it's missing or doesn't match its hash.
+function Get-PinnedCosign([string]$Dir) {
+    $build = if ($IsLinux) { 'linux-amd64' } else { 'windows-amd64.exe' }
+    if ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture -ne 'X64') {
+        $c = Get-Command cosign -ErrorAction SilentlyContinue
+        if ($c) { return $c.Source }
+        throw 'No pinned cosign for this architecture to check the release signature; install cosign, or pass -SkipSignatureCheck'
+    }
+    $want = $CosignSHA256[$build]
+    $bin = Join-Path $Dir "cosign-$CosignVersion-$build"
+    if ((Test-Path -LiteralPath $bin) -and (Get-FileHash -Algorithm SHA256 -LiteralPath $bin).Hash.ToLowerInvariant() -eq $want) { return $bin }
+    Write-Host "Fetching cosign $CosignVersion (once) to check the release signature"
+    New-Item -ItemType Directory -Force -Path $Dir | Out-Null
+    $tmp = "$bin.tmp"
+    $ProgressPreference = 'SilentlyContinue' # much faster downloads
+    Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/sigstore/cosign/releases/download/$CosignVersion/cosign-$build" -OutFile $tmp
+    if ((Get-FileHash -Algorithm SHA256 -LiteralPath $tmp).Hash.ToLowerInvariant() -ne $want) {
+        Remove-Item -LiteralPath $tmp -Force
+        throw 'The cosign download does not match its pinned hash; not using it'
+    }
+    if ($IsLinux) { chmod 0755 $tmp }
+    Move-Item -LiteralPath $tmp -Destination $bin -Force
+    return $bin
+}
+
+# Assert-ReleaseSignature: check $Sums against its Sigstore signature
+# ($Sums.sigstore.json, next to it), or throw.
+function Assert-ReleaseSignature([string]$Sums, [string]$CosignDir) {
+    $bundle = "$Sums.sigstore.json"
+    if (-not (Test-Path -LiteralPath $bundle)) { throw "SHA256SUMS.sigstore.json not found next to SHA256SUMS; download it from the same release" }
+    $cosign = Get-PinnedCosign $CosignDir
+    $out = & $cosign verify-blob $Sums --bundle $bundle --certificate-identity-regexp $ReleaseSigner `
+        --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "SHA256SUMS signature verification FAILED; not installing: $(($out | Select-Object -Last 1))" }
+    Write-Host 'Sigstore signature verified'
+}
+if ($env:HEIMDALL_INSTALL_LIBRARY) { return } # tests: functions only
 if ($At) { Write-Warning '-At is ignored: the collector now reports hourly, after boot and after software changes.' }
 
 if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
@@ -48,9 +101,15 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 }
 if (-not $HubUrl.StartsWith('https://')) { throw '-HubUrl must be https://' }
 
-# Verify collect.ps1 against the release's SHA256SUMS (downloaded next to it).
+# Verify SHA256SUMS' signature, then collect.ps1 against it (both
+# downloaded next to it).
 $sums = Join-Path (Split-Path -Parent $Source) 'SHA256SUMS'
 if (-not (Test-Path -LiteralPath $sums)) { throw "SHA256SUMS not found next to $Source; download it from the same release" }
+if ($SkipSignatureCheck) {
+    Write-Warning "Not checking the release's signature (-SkipSignatureCheck); only its checksums"
+} else {
+    Assert-ReleaseSignature $sums (Join-Path $env:ProgramData 'Heimdall')
+}
 $want = (Get-Content -LiteralPath $sums | Where-Object { $_ -match '\scollect\.ps1$' } | Select-Object -First 1) -replace '\s.*$', ''
 $got = (Get-FileHash -Algorithm SHA256 -LiteralPath $Source).Hash.ToLowerInvariant()
 if (-not $want -or $want -ne $got) { throw 'collect.ps1 does not match SHA256SUMS; not installing' }

@@ -32,19 +32,74 @@ die() { printf 'heimdall install-hub: %s\n' "$*" >&2; exit 1; }
 say() { printf '==> %s\n' "$*" >&2; }
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# ── Release signature ── (keep this block the same in collect.sh, install.sh
+# and install-hub.sh; the pins are also in cmd/heimdall/signature.go and
+# install-windows.ps1, and TestSignaturePinsMatch checks they agree.)
+# A release's SHA256SUMS must carry a Sigstore signature made by this repo's
+# release workflow for a v* tag. cosign checks it: a pinned build, fetched
+# once into /usr/local/lib/heimdall and checked against its hash each use.
+COSIGN_VERSION=v3.1.4
+RELEASE_SIGNER='^https://github.com/(chrisreedio|realmwatch)/heimdall/\.github/workflows/release\.yml@refs/tags/v'
+
+# cosign_bin: print the path of the cosign to check signatures with,
+# fetching the pinned build first if it's missing or doesn't match.
+cosign_bin() {
+	case $(uname -m) in
+	x86_64 | amd64) c=amd64 s=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa ;;
+	aarch64 | arm64) c=arm64 s=ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2 ;;
+	armv7l) c=arm s=09e77a313910cf5c4774508d85d017d9c60983f41bf657f83ecbd3892f7952cb ;;
+	*) command -v cosign; return ;; # no pinned build: an installed cosign, if any
+	esac
+	b=/usr/local/lib/heimdall/cosign-$COSIGN_VERSION-$c
+	if [ ! -x "$b" ] || ! printf '%s  %s\n' "$s" "$b" | sha256sum -c - >/dev/null 2>&1; then
+		printf '==> Fetching cosign %s (once) to check the release signature\n' "$COSIGN_VERSION" >&2
+		u=https://github.com/sigstore/cosign/releases/download/$COSIGN_VERSION/cosign-linux-$c
+		install -d -m 0755 /usr/local/lib/heimdall
+		if command -v curl >/dev/null 2>&1; then
+			curl -fsSL --proto '=https' --tlsv1.2 -o "$b.tmp" "$u" || return 1
+		else
+			wget -q -O "$b.tmp" "$u" || return 1
+		fi
+		if ! printf '%s  %s\n' "$s" "$b.tmp" | sha256sum -c - >/dev/null 2>&1; then
+			rm -f "$b.tmp"
+			echo "the cosign download doesn't match its pinned hash" >&2
+			return 1
+		fi
+		chmod 0755 "$b.tmp" && mv "$b.tmp" "$b"
+	fi
+	echo "$b"
+}
+
+# verify_release DIR: check DIR/SHA256SUMS against its Sigstore signature
+# (DIR/SHA256SUMS.sigstore.json), or exit.
+verify_release() {
+	[ -s "$1/SHA256SUMS.sigstore.json" ] || die "the release has no signature (SHA256SUMS.sigstore.json); not installing it"
+	cosign=$(cosign_bin) || cosign=''
+	[ -n "$cosign" ] || die "can't check the release signature: no cosign for $(uname -m); install cosign, or pass --skip-signature-check"
+	HOME=$1 "$cosign" verify-blob "$1/SHA256SUMS" --bundle "$1/SHA256SUMS.sigstore.json" \
+		--certificate-identity-regexp "$RELEASE_SIGNER" \
+		--certificate-oidc-issuer https://token.actions.githubusercontent.com >"$1/cosign.log" 2>&1 ||
+		die "SHA256SUMS signature verification FAILED; not installing it: $(tail -n 1 "$1/cosign.log")"
+	printf '==> Sigstore signature verified\n' >&2
+}
+
 usage() {
 	cat >&2 <<'EOF'
 usage: install-hub.sh --org SLUG (--ingest-host NAME | --tailnet-only)
                       [--org-name "Acme Corp"] [--admin EMAIL] [--mcp]
                       [--version vX.Y.Z] [--from-dir DIR] [--no-tailscale]
+                      [--skip-signature-check]
 
   --no-tailscale   skip tailscale (UI stays on 127.0.0.1:8080; for testing or
                    if you'll put your own HTTPS proxy in front)
+  --skip-signature-check
+                   don't check the release's Sigstore signature, only its
+                   checksums (where cosign can't run; not advised)
 EOF
 	exit 2
 }
 
-org='' org_name='' ingest_host='' tailnet_only=0 admin='' mcp=0 version=$HEIMDALL_VERSION from_dir='' use_ts=1
+org='' org_name='' ingest_host='' tailnet_only=0 admin='' mcp=0 version=$HEIMDALL_VERSION from_dir='' use_ts=1 sigcheck=1
 while [ $# -gt 0 ]; do
 	case $1 in
 	--org) org=${2:-}; shift ;;
@@ -56,6 +111,7 @@ while [ $# -gt 0 ]; do
 	--version) version=${2:-}; shift ;;
 	--from-dir) from_dir=${2:-}; shift ;;
 	--no-tailscale) use_ts=0 ;;
+	--skip-signature-check) sigcheck=0 ;;
 	*) usage ;;
 	esac
 	shift
@@ -107,12 +163,11 @@ fetch() {
 }
 say "Fetching Heimdall $version ($arch)"
 for f in SHA256SUMS "heimdall-linux-$arch" heimdall.service collect.sh splash.html; do fetch "$f"; done
-if have cosign && (fetch SHA256SUMS.sigstore.json) 2>/dev/null; then
-	cosign verify-blob "$work/SHA256SUMS" --bundle "$work/SHA256SUMS.sigstore.json" \
-		--certificate-identity-regexp '^https://github.com/(chrisreedio|realmwatch)/heimdall/\.github/workflows/release\.yml@refs/tags/v' \
-		--certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null 2>&1 ||
-		die "SHA256SUMS signature verification FAILED"
-	say "Sigstore signature verified"
+if [ "$sigcheck" = 1 ]; then
+	fetch SHA256SUMS.sigstore.json
+	verify_release "$work"
+else
+	say "WARNING: not checking the release's signature (--skip-signature-check); only its checksums"
 fi
 (cd "$work" && grep -E " (heimdall-linux-$arch|heimdall\.service|collect\.sh|splash\.html)\$" SHA256SUMS | sha256sum -c - >/dev/null) ||
 	die "checksum verification FAILED; not installing"
