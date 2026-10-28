@@ -24,6 +24,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/realmwatch/heimdall/internal/ai"
 	"github.com/realmwatch/heimdall/internal/auth"
 	"github.com/realmwatch/heimdall/internal/auth/entra"
 	"github.com/realmwatch/heimdall/internal/bans"
@@ -564,6 +565,13 @@ var funcs = template.FuncMap{
 	"isListSource": store.IsIPListSource,
 	// aitext renders AI text escaped, with known names linked (aiLinker).
 	"aitext": func(l *aiLinker, text string) template.HTML { return l.HTML(text) },
+	// aititle is a step's title, without linking the step's own hosts:
+	// they're shown as badges next to it.
+	"aititle": func(l *aiLinker, text string, hosts []string) template.HTML { return l.HTMLExcept(text, hosts) },
+	// aicmds and ainotes pass a step's commands and a result's notes to
+	// their partials (templates/ai.html).
+	"aicmds":  func(v aiView, a ai.Action, id string) aiCmds { return aiCmds{V: v, A: a, ID: id} },
+	"ainotes": func(l *aiLinker, n ai.Notes) aiNotes { return aiNotes{Links: l, Notes: n} },
 	"time": func(t time.Time) string {
 		if t.IsZero() {
 			return "never"

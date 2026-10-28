@@ -148,11 +148,15 @@ func aiHandoffs(view *aiView, org, host string, sites []siteSection, h report.Ho
 		return
 	}
 	for i, a := range view.Result.Actions {
-		rest, ok := strings.CutPrefix(a.Command, "composer update ")
-		if !ok {
+		var pkgs []string
+		for _, c := range a.Commands {
+			if rest, ok := strings.CutPrefix(c.Command, "composer update "); ok {
+				pkgs = append(pkgs, strings.Fields(strings.TrimSuffix(rest, " --with-dependencies"))...)
+			}
+		}
+		if len(pkgs) == 0 {
 			continue
 		}
-		pkgs := strings.Fields(strings.TrimSuffix(rest, " --with-dependencies"))
 		var links, named []handoffLink
 		text := strings.ToLower(a.Title + " " + a.Why)
 		for _, site := range sites {

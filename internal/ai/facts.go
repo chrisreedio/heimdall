@@ -356,7 +356,7 @@ func (d hostData) allowed(full bool) HostAllowed {
 		a.Commands = append(a.Commands, c.Command)
 	}
 	if full && u.RebootFindings > 0 && d.rep.NewerKernel != "" {
-		a.Required = []Action{{Title: clip("Reboot to run "+d.rep.NewerKernel, maxTitle), Command: RebootCommand,
+		a.Required = []RequiredStep{{Title: clip("Reboot to run "+d.rep.NewerKernel, maxTitle), Command: RebootCommand,
 			Why: cleanText(rebootWhy(d, u.RebootFindings), maxWhy)}}
 		a.RequiredFirst = len(u.Metas) == 0
 	}

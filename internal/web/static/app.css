@@ -891,15 +891,23 @@ dl.conn dd { margin: 0; min-width: 0; }
 .ai-run { margin-left: auto; }
 .ai-run button { padding: 5px 14px; font-size: 13px; font-weight: 600; }
 .ai-run button[disabled] { opacity: .65; cursor: default; filter: none; }
-.ai-summary { margin: 12px 0 0; max-width: 90ch; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
-.ai-actions { margin: 12px 0 0; padding-left: 22px; display: grid; gap: 10px; max-width: 100ch; }
-.ai-actions li { padding-left: 2px; overflow-wrap: anywhere; }
+.ai-summary { margin: 12px 0 0; max-width: 110ch; line-height: 1.55; white-space: pre-line; overflow-wrap: anywhere; }
+.ai-actions { margin: 12px 0 0; padding-left: 22px; display: grid; gap: 12px; }
+.ai-actions > li { padding-left: 2px; min-width: 0; overflow-wrap: anywhere; }
 .ai-actions li::marker { color: var(--muted); font-weight: 600; }
 .ai-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 .ai-title .tag { text-decoration: none; }
 .ai-why { margin-top: 2px; white-space: pre-line; }
-.ai-cmd { margin-top: 6px; }
-.ai-notes { margin: 12px 0 0; max-width: 90ch; white-space: pre-line; }
+/* Commands span the card on one line each, scrolling inside their box
+   rather than wrapping. */
+.ai-cmdgroup { margin-top: 6px; min-width: 0; }
+.ai-cmdhosts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-bottom: 4px; }
+.ai-cmd { display: flex; align-items: flex-start; gap: 6px; }
+.ai-cmd pre { flex: 1; min-width: 0; padding-right: 14px; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
+.ai-cmd .copy { position: static; flex: none; margin-top: 7px; }
+.ai-cmdbox { min-width: 0; }
+.ai-notes { margin: 12px 0 0; padding-left: 18px; display: grid; gap: 4px; max-width: 110ch; }
+.ai-notes li { white-space: pre-line; overflow-wrap: anywhere; }
 .ai-foot { margin: 12px 0 0; padding-top: 8px; border-top: 1px solid var(--border); }
 .ai-notice, .ai-running, .ai-empty { margin: 10px 0 0; }
 .ai-error { margin: 10px 0 0; padding: 6px 10px; border-radius: 6px; background: var(--med-bg); color: var(--med-fg); max-width: 90ch; }

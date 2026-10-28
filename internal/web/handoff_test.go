@@ -333,9 +333,9 @@ func TestHandoffOnAIPlan(t *testing.T) {
 	})
 	host := e.seedSites()
 	storeRun(t, e.st, host.OrgID, host.ID, ai.Result{Summary: "x", Actions: []ai.Action{
-		{Title: "Patch the OS", Why: "x", Host: "app-01", Command: "sudo apt-get install --only-upgrade libssl3"},
-		{Title: "Update Laravel", Why: "x", Host: "app-01", Command: "composer update laravel/framework --with-dependencies"},
-		{Title: "Reboot", Why: "x", Host: "app-01", Command: "sudo reboot"},
+		step("Patch the OS", "x", "app-01", "sudo apt-get install --only-upgrade libssl3"),
+		step("Update Laravel", "x", "app-01", "composer update laravel/framework --with-dependencies"),
+		step("Reboot", "x", "app-01", "sudo reboot"),
 	}}, testNow.Add(-time.Hour))
 	page := e.get("/hosts/acme/app-01", signedIn(e)).Body.String()
 	if n := strings.Count(page, `class="ai-handoff"`); n != 1 {

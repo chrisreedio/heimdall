@@ -120,7 +120,7 @@ func TestKernelFixCommand(t *testing.T) {
 			// in both its checks.
 			allowed := Allowed{Hosts: map[string]HostAllowed{"h": allowedFor(c.host.PM, cmd)}}
 			res, err := Parse(answer(act("h", cmd)), allowed)
-			if err != nil || res.Actions[0].Command != cmd {
+			if err != nil || firstCommand(res.Actions[0]) != cmd {
 				t.Errorf("validator dropped %q: %v", cmd, err)
 			}
 			if !commandShapeOK(cmd) {
@@ -164,7 +164,7 @@ func TestKernelCommandVariantsRejected(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := res.Actions[0].Command; got != "" {
+		if got := firstCommand(res.Actions[0]); got != "" {
 			t.Errorf("%s: kept %q", c.host, got)
 		}
 	}
