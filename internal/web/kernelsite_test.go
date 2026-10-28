@@ -22,9 +22,9 @@ func TestAIHandoffNamesItsSite(t *testing.T) {
 	sites := []siteSection{{Site: report.Site{Root: a, ServerNames: []string{"affiliates.example.dev"}}},
 		{Site: report.Site{Root: b, ServerNames: []string{"shop.example.com"}}}}
 	view := &aiView{View: ai.View{Result: &ai.Result{Actions: []ai.Action{
-		{Title: "Upgrade affiliates.example.dev dependencies", Command: "composer update laravel/framework --with-dependencies"},
-		{Title: "Upgrade dependencies", Why: "Run this in " + b + " and test.", Command: "composer update laravel/framework --with-dependencies"},
-		{Title: "Upgrade Laravel everywhere", Command: "composer update laravel/framework --with-dependencies"},
+		step("Upgrade affiliates.example.dev dependencies", "", "web-01", "composer update laravel/framework --with-dependencies"),
+		step("Upgrade dependencies", "Run this in "+b+" and test.", "web-01", "composer update laravel/framework --with-dependencies"),
+		step("Upgrade Laravel everywhere", "", "web-01", "composer update laravel/framework --with-dependencies"),
 	}}}}
 	aiHandoffs(view, "acme", "web-01", sites, h)
 	if l := view.Handoffs[0]; len(l) != 1 || !strings.Contains(l[0].URL, "affiliates") || l[0].Site != "" {

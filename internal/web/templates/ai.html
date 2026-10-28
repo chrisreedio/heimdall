@@ -4,6 +4,17 @@ rendered as escaped text only (aitext links the hostnames, site domains
 and CVE IDs it knows, around the escaped text); commands passed an allowlist and are shown
 for copying, never run. */}}
 
+{{/* aicmds: a step's commands, one copy box each. When they aren't all for
+every host of the step, each is labelled with its hosts. ID is the copy
+boxes' id prefix. */}}
+{{define "aicmds"}}{{$v := .V}}{{$lab := .A.Labelled}}{{range $j, $c := .A.Commands}}<div class="ai-cmdgroup">
+  {{if $lab}}<div class="ai-cmdhosts small"><span class="muted">On</span>{{range $c.Hosts}} {{aitext $v.Links .}}{{end}}</div>{{end}}
+  <div class="codebox ai-cmd"><pre id="{{$.ID}}-{{$j}}">{{$c.Command}}</pre><button type="button" class="copy" data-copy="{{$.ID}}-{{$j}}" hidden>Copy</button></div>
+</div>{{end}}{{end}}
+
+{{/* ainotes: up to three short notes. */}}
+{{define "ainotes"}}{{with .Notes}}<ul class="muted small ai-notes">{{range .}}<li>{{aitext $.Links .}}</li>{{end}}</ul>{{end}}{{end}}
+
 {{/* aiheimdall: marks a plan step Heimdall added or edited after the model answered (ai.Reconcile). */}}
 {{define "aiheimdall"}}{{if eq . "added"}} <span class="pill muted ai-by-heimdall" title="The model's plan left this out; Heimdall added it from the host's data">added by Heimdall</span>{{else if eq . "edited"}} <span class="pill muted ai-by-heimdall" title="Heimdall removed packages from the model's command that it didn't suggest for this host (such as ones with no pending update)">edited by Heimdall</span>{{end}}{{end}}
 
@@ -19,11 +30,11 @@ for copying, never run. */}}
   {{with .Result}}
   <p class="ai-summary">{{aitext $v.Links .Summary}}</p>
   {{if .Actions}}<ol class="ai-actions">{{range $i, $a := .Actions}}{{if lt $i 5}}<li>
-    <div class="ai-title"><strong>{{aitext $v.Links .Title}}</strong>{{with .Host}} {{aitext $v.Links .}}{{end}}{{template "aiheimdall" .Heimdall}}</div>
+    <div class="ai-title"><strong>{{aititle $v.Links .Title .Hosts}}</strong>{{range .Hosts}} {{aitext $v.Links .}}{{end}}{{template "aiheimdall" .Heimdall}}</div>
     {{with .Why}}<div class="muted small ai-why">{{aitext $v.Links .}}</div>{{end}}
-    {{with .Command}}<details class="ai-cmdbox"><summary>Command</summary><div class="codebox ai-cmd"><pre id="ai-{{$v.Org.Slug}}-{{$i}}">{{.}}</pre><button type="button" class="copy" data-copy="ai-{{$v.Org.Slug}}-{{$i}}" hidden>Copy</button></div></details>{{end}}
+    {{with .Commands}}<details class="ai-cmdbox"><summary>{{if gt (len .) 1}}{{len .}} commands{{else}}Command{{end}}</summary>{{template "aicmds" (aicmds $v $a (printf "ai-%s-%d" $v.Org.Slug $i))}}</details>{{end}}
   </li>{{end}}{{end}}</ol>{{end}}
-  {{with .Notes}}<p class="muted small ai-notes">{{aitext $v.Links .}}</p>{{end}}
+  {{template "ainotes" (ainotes $v.Links .Notes)}}
   {{end}}
   {{template "aistatus" .}}
   {{with .At}}<p class="muted small ai-foot">Generated {{time .}} by {{$v.Deployment}} · advisory only, check before acting</p>{{end}}
@@ -44,13 +55,13 @@ for copying, never run. */}}
   {{if .Actions}}<details class="ai-plan">
     <summary>The plan: {{len .Actions}} step{{if ne (len .Actions) 1}}s{{end}}</summary>
     <ol class="ai-actions">{{range $i, $a := .Actions}}<li>
-      <div class="ai-title"><strong>{{aitext $v.Links .Title}}</strong>{{template "aiheimdall" .Heimdall}}</div>
+      <div class="ai-title"><strong>{{aititle $v.Links .Title .Hosts}}</strong>{{template "aiheimdall" .Heimdall}}</div>
       {{with .Why}}<div class="muted small ai-why">{{aitext $v.Links .}}</div>{{end}}
-      {{with .Command}}<div class="codebox ai-cmd"><pre id="ai-host-{{$i}}">{{.}}</pre><button type="button" class="copy" data-copy="ai-host-{{$i}}" hidden>Copy</button></div>{{end}}
+      {{template "aicmds" (aicmds $v $a (printf "ai-host-%d" $i))}}
       {{with index $v.Handoffs $i}}<div class="ai-handoff">{{if gt (len .) 1}}<span class="muted small">Hand off to agent:</span>{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}">{{.Site}}</a>{{end}}{{else}}{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}">Hand off to agent</a>{{end}}{{end}}</div>{{end}}
     </li>{{end}}</ol>
-    {{with .Notes}}<p class="muted small ai-notes">{{aitext $v.Links .}}</p>{{end}}
-  </details>{{else}}{{with .Notes}}<p class="muted small ai-notes">{{aitext $v.Links .}}</p>{{end}}{{end}}
+    {{template "ainotes" (ainotes $v.Links .Notes)}}
+  </details>{{else}}{{template "ainotes" (ainotes $v.Links .Notes)}}{{end}}
   {{else}}{{if and (not .Running) (not .Error)}}<p class="muted small ai-empty">{{if .CanRun}}Get a short, prioritized plan for this host from your AI deployment: what to patch first, whether to reboot, and what can wait.{{else}}No explanation yet. An operator can ask for one.{{end}}</p>{{end}}{{end}}
   {{template "aistatus" .}}
   {{with .At}}<p class="muted small ai-foot">Generated <span title="{{time .}}">{{dayAgo .}}</span> by {{$v.Deployment}} · advisory only, Heimdall never runs these</p>{{end}}

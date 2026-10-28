@@ -48,6 +48,20 @@ type aiView struct {
 	Links    *aiLinker // links the org's hosts and sites in the text
 }
 
+// aiCmds is a step's commands for the "aicmds" partial; ID prefixes their
+// copy boxes' ids.
+type aiCmds struct {
+	V  aiView
+	A  ai.Action
+	ID string
+}
+
+// aiNotes is a result's notes for the "ainotes" partial.
+type aiNotes struct {
+	Links *aiLinker
+	Notes ai.Notes
+}
+
 // aiBriefs is the dashboard's brief card: one brief per visible org.
 type aiBriefs struct {
 	Briefs  []aiView

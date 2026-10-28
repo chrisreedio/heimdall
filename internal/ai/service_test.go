@@ -136,8 +136,8 @@ func TestExplainHost(t *testing.T) {
 		t.Fatalf("runs: %+v %v", runs, err)
 	}
 	v := ViewOf(runs, now, svc.Stale())
-	if v.Result == nil || len(v.Result.Actions) != 2 || v.Result.Actions[0].Command != "sudo apt-get install --only-upgrade openssh-server" ||
-		v.Result.Actions[1].Command != RebootCommand || v.Result.Actions[0].Heimdall != "" {
+	if v.Result == nil || len(v.Result.Actions) != 2 || firstCommand(v.Result.Actions[0]) != "sudo apt-get install --only-upgrade openssh-server" ||
+		firstCommand(v.Result.Actions[1]) != RebootCommand || v.Result.Actions[0].Heimdall != "" {
 		t.Errorf("view: %+v", v.Result)
 	}
 	if at, _ := st.LastAuditAt(t.Context(), "ai.explain"); at.IsZero() {

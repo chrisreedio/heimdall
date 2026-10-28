@@ -37,6 +37,13 @@ func TestAILinker(t *testing.T) {
 	if strings.Contains(got, "<b>") {
 		t.Error("unescaped")
 	}
+	// No badge before a possessive, and none for the hosts a title skips.
+	if got := string(l.HTML("web-01's kernel and web-02’s")); strings.Contains(got, "<a") {
+		t.Errorf("possessive linked: %s", got)
+	}
+	if got := string(l.HTMLExcept("Reboot web-01 and web-02", []string{"WEB-01"})); strings.Count(got, "<a") != 1 || !strings.Contains(got, `href="/hosts/acme/web-02"`) {
+		t.Errorf("skip: %s", got)
+	}
 	var none *aiLinker
 	if got := none.HTML("<x> web-01"); got != "&lt;x&gt; web-01" {
 		t.Errorf("nil linker = %q", got)

@@ -22,7 +22,7 @@ Rules:
 - Base every statement on the data. Don't invent hosts, packages, versions, CVEs or numbers. If something isn't in the data, say you don't know.
 - The computed facts are authoritative: Heimdall worked out kernel_state, kernel_status, fix availability and suggested_commands from the host's own package data. Don't second-guess them, and don't reason your way to other fixes.
 - Prioritize: known-exploited (kev) and in-the-news findings first, then fixable critical/high findings, pending security updates, reboots, end-of-life software, then the rest.
-- A "command" must be copied exactly from that same host's suggested_commands (you may drop packages from its list, nothing else), or be null. Never write any other command. Heimdall never runs commands; people copy them. Keep suggested_commands in the order given.
+- Each entry of a step's "commands" is one command and the hosts it's for. It must be copied exactly from each of those hosts' suggested_commands (you may drop packages from its list, nothing else). Never write any other command. When hosts need different commands for the same fix, give one entry per distinct command; when they share one, give it once with all of them. Heimdall never runs commands; people copy them. Keep suggested_commands in the order given.
 - suggested_commands name only packages that have a pending update in the host's package cache. Never suggest upgrading any other package, and never claim an upgrade fixes something it doesn't. fixed_upstream_not_in_package_cache counts findings whose fix is published but that no pending update installs yet: the collector reads the package cache without refreshing it, so either the host's package sources don't offer the fix yet or the cache is old. Say so in notes (running the package manager's update and letting the host report again tells which); don't make it an action with a command.
 - running_kernel is the kernel the host runs now. Kernel fixes arrive as a new kernel, so they always need a reboot. kernel_state is current, reboot_pending (newer_installed_kernel is installed but not running yet), old_kernels (older kernels are installed but not running), or reboot_pending_and_old_kernels. Each kernel finding's kernel_status says which kernel it is on, and its fix follows the commands given:
   - reboot_pending: on the running kernel while newer_installed_kernel is installed. The fix is the reboot command, not an upgrade (findings_cleared_by_reboot counts them). It's live exposure until the reboot, so when there are any the reboot is the first step. Say the newer kernel may still have findings of its own.
@@ -31,11 +31,11 @@ Rules:
   - userland: only on packages built from the kernel source that aren't the kernel (linux-tools-common, linux-libc-dev: perf tooling and headers). Not live kernel exposure, and not counted in kev or fixable even when the advisory is known-exploited. Never make one an urgent step or reason for a reboot; mention them in notes at most. Upgrading them via suggested_commands is fine.
   - running: on the running kernel, no newer one installed.
 - Only suggest a reboot when it's in suggested_commands.
-- Set "host" to a hostname exactly as it appears in the data, or null.
+- One step per fix. When the same fix (the same package or advisory) applies to several hosts, make it one step and list every host it applies to in "hosts", exactly as they appear in the data; never one step per host for the same fix. Leave hostnames out of the title (write "Patch openssl", not "Patch openssl on <host>"): the hosts are shown next to it.
 - Findings with no fix released yet can't be patched now. finding_counts.watch counts the ones still worth watching (known-exploited, in the news, or with a high EPSS score); the rest can wait, so don't list or dwell on them, and don't recite severity totals that are mostly unfixable. findings_needing_attention is fixable plus watch.
 - When a host's findings_needing_attention is 0 and nothing else needs doing (no reboot, pending security updates, end of life, stale report or anomaly), say so plainly in one sentence and give no actions, or only what the data still calls for. Don't invent busywork.
-- Plain text only: no Markdown, no HTML, no links. Dates as "Oct 23, 2026". Write hostnames and site domains exactly as in the data.
-- Be brief: summary 1-3 sentences, at most 5 actions (fewer when little needs doing), notes at most 3 sentences.
+- Plain text only: no Markdown, no HTML, no links. Dates as "Oct 23, 2026". Write hostnames and site domains exactly as in the data, and never in the possessive (write "the kernel on <host>", not "<host>'s kernel").
+- Be brief: summary 1-3 sentences, at most 5 actions (fewer when little needs doing), notes at most 3 short points of one sentence each.
 - Answer only with the JSON object the schema describes.`
 
 // The tasks name no hostnames: everything reported lives in the data.
@@ -44,7 +44,7 @@ const hostTask = "Task: explain the host in the data for its operator. Turn its 
 	"and what can safely wait."
 
 const briefTask = "Task: write today's brief for this organization's fleet. Say what changed in the period, what's urgent, " +
-	"and what to do first (at most 5 actions, each naming a host when it's about one)."
+	"and what to do first (at most 5 actions, one per fix, each listing every host it applies to)."
 
 // buildPrompt wraps the facts in the labelled, delimited data section.
 func buildPrompt(task string, facts []byte) Request {

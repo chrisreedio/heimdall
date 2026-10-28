@@ -149,19 +149,19 @@ func TestKernelCaseReconcile(t *testing.T) {
 	if len(res.Actions) != 3 {
 		t.Fatalf("actions %+v", res.Actions)
 	}
-	if r := res.Actions[0]; r.Command != RebootCommand || r.Heimdall != HeimdallAdded || r.Host != local ||
+	if r := res.Actions[0]; firstCommand(r) != RebootCommand || r.Heimdall != HeimdallAdded || !slices.Equal(r.Hosts, []string{local}) ||
 		!strings.Contains(r.Title, storetest.KernelNew) || !strings.Contains(r.Why, "may still have findings of its own") {
 		t.Errorf("added reboot step %+v", r)
 	}
-	if e := res.Actions[1]; e.Command != "sudo apt-get install --only-upgrade liblzma5" || e.Heimdall != HeimdallEdited {
+	if e := res.Actions[1]; firstCommand(e) != "sudo apt-get install --only-upgrade liblzma5" || e.Heimdall != HeimdallEdited {
 		t.Errorf("edited step %+v", e)
 	}
-	if n := res.Actions[2]; n.Command != "" || n.Heimdall != "" {
+	if n := res.Actions[2]; firstCommand(n) != "" || n.Heimdall != "" {
 		t.Errorf("step without a command %+v", n)
 	}
 	for _, act := range res.Actions {
-		if strings.Contains(act.Command, "linux-aws") {
-			t.Errorf("kept %q", act.Command)
+		if strings.Contains(firstCommand(act), "linux-aws") {
+			t.Errorf("kept %q", firstCommand(act))
 		}
 	}
 
@@ -176,7 +176,7 @@ func TestKernelCaseReconcile(t *testing.T) {
 	fun := storetest.OldKernelHost
 	fa := Allowed{Hosts: map[string]HostAllowed{fun: allowed[fun]}}
 	res, _ = Parse(answer(act(fun, purge617), act(fun, RebootCommand), act(fun, noOpMeta)), fa)
-	if res = Reconcile(res, fa); len(res.Actions) != 1 || res.Actions[0].Command != purge617 {
+	if res = Reconcile(res, fa); len(res.Actions) != 1 || firstCommand(res.Actions[0]) != purge617 {
 		t.Errorf("web-02 plan: %+v", res.Actions)
 	}
 
@@ -192,7 +192,7 @@ func TestKernelCaseReconcile(t *testing.T) {
 		t.Fatal(runs, err)
 	}
 	v := ViewOf(runs, now, svc.Stale())
-	if v.Result == nil || len(v.Result.Actions) != 3 || v.Result.Actions[0].Heimdall != HeimdallAdded || v.Result.Actions[0].Command != RebootCommand {
+	if v.Result == nil || len(v.Result.Actions) != 3 || v.Result.Actions[0].Heimdall != HeimdallAdded || firstCommand(v.Result.Actions[0]) != RebootCommand {
 		t.Errorf("stored plan %+v", v.Result)
 	}
 }

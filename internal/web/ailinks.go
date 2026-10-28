@@ -78,8 +78,13 @@ func wordByte(b byte) bool {
 }
 
 // HTML is text, escaped, with the names it knows linked. A nil linker
-// only escapes (AI text without an org, or with linking unavailable).
-func (l *aiLinker) HTML(text string) template.HTML {
+// only escapes (AI text without an org, or with linking unavailable). A
+// name followed by a possessive ("web-01's") stays plain: a badge with
+// "'s" after it reads badly.
+func (l *aiLinker) HTML(text string) template.HTML { return l.HTMLExcept(text, nil) }
+
+// HTMLExcept is HTML, leaving the hosts in skip plain.
+func (l *aiLinker) HTMLExcept(text string, skip []string) template.HTML {
 	if l == nil {
 		return template.HTML(template.HTMLEscapeString(text))
 	}
@@ -90,11 +95,14 @@ func (l *aiLinker) HTML(text string) template.HTML {
 		before := i > 0 && (wordByte(text[i-1]) || text[i-1] == '.')
 		// A trailing period ends a sentence; one followed by more name doesn't.
 		after := j < len(text) && (wordByte(text[j]) || text[j] == '.' && j+1 < len(text) && wordByte(text[j+1]))
-		if before || after {
+		if before || after || strings.HasPrefix(text[j:], "'s") || strings.HasPrefix(text[j:], "’s") {
 			continue
 		}
 		word := text[i:j]
 		link, ok := l.links[strings.ToLower(word)]
+		if ok && link.Kind == "host" && slices.ContainsFunc(skip, func(h string) bool { return strings.EqualFold(h, word) }) {
+			continue
+		}
 		if !ok && cveName.MatchString(word) {
 			link, ok = aiLink{Kind: "cve", Name: strings.ToUpper(word), URL: "/search?q=" + url.QueryEscape(strings.ToUpper(word))}, true
 		}
