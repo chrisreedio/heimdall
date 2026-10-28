@@ -328,7 +328,7 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		return
 	}
 	if s.canHandoff(v, host.OrgID) {
-		aiHandoffs(body.AI, host.OrgSlug, host.Name, body.Sites, body.Report)
+		aiHandoffs(body.AI, map[string]handoffHost{host.Name: {Org: host.OrgSlug, Host: body.Report}})
 	}
 	body.Surface = s.surfaceLineFor(ctx, v, host.OrgID, host.Name, "")
 	s.render(w, r, http.StatusOK, "host", v, host.Name, "hosts", body)

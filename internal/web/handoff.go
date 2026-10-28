@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/realmwatch/heimdall/internal/ai"
 	"github.com/realmwatch/heimdall/internal/auth"
 	"github.com/realmwatch/heimdall/internal/handoff"
 	"github.com/realmwatch/heimdall/internal/report"
@@ -135,49 +136,86 @@ func siteName(site report.Site) string {
 
 // handoffLink is a "Hand off to agent" button for one site.
 type handoffLink struct {
-	Site string // the site's name, when a step covers several sites
+	Host string
+	Site string // the button's label when a step covers several sites: the site's name (with its host when another host has one of that name)
 	URL  string
 }
 
+// handoffHost is a host of an AI plan that the viewer may hand off from:
+// its own org's slug (so the links never assume one org) and its report.
+type handoffHost struct {
+	Org  string
+	Host report.Host
+}
+
 // aiHandoffs adds hand-off buttons to the AI plan's Composer steps: one
-// per site of the host that has a fixable finding in a package the step's
-// (allowlisted) composer update command names. OS patching and reboots
-// aren't pull requests, so they never get one.
-func aiHandoffs(view *aiView, org, host string, sites []siteSection, h report.Host) {
-	if view == nil || view.Result == nil {
+// per (host, site) that has a fixable finding in a package the step's
+// (allowlisted) composer update command for that host names. A command
+// that knows its sites (ai.Command.Sites) offers only those. hosts are the
+// plan's hosts the viewer may hand off from; others get no button. OS
+// patching and reboots aren't pull requests, so they never get one.
+func aiHandoffs(view *aiView, hosts map[string]handoffHost) {
+	if view == nil || view.Result == nil || len(hosts) == 0 {
 		return
 	}
 	for i, a := range view.Result.Actions {
-		var pkgs []string
-		for _, c := range a.Commands {
-			if rest, ok := strings.CutPrefix(c.Command, "composer update "); ok {
-				pkgs = append(pkgs, strings.Fields(strings.TrimSuffix(rest, " --with-dependencies"))...)
-			}
-		}
-		if len(pkgs) == 0 {
-			continue
-		}
 		var links, named []handoffLink
 		text := strings.ToLower(a.Title + " " + a.Why)
-		for _, site := range sites {
-			hit := slices.ContainsFunc(handoffFindings(h, site.Root), func(f handoff.Finding) bool {
-				return f.Ecosystem == "composer" && slices.Contains(pkgs, f.Package)
-			})
-			if !hit {
+		seen := map[string]bool{}
+		for _, c := range a.Commands {
+			rest, ok := strings.CutPrefix(c.Command, "composer update ")
+			if !ok {
 				continue
 			}
-			l := handoffLink{Site: cmp.Or(siteName(site.Site), site.Root), URL: handoffURL(org, host, site.Root, "")}
-			links = append(links, l)
-			// A step about one site names it (its domain or root): offer only that one.
-			if n := strings.ToLower(siteName(site.Site)); (n != "" && strings.Contains(text, n)) || strings.Contains(text, strings.ToLower(site.Root)) {
-				named = append(named, l)
+			pkgs := strings.Fields(strings.TrimSuffix(rest, " --with-dependencies"))
+			targets := c.Hosts
+			if len(targets) == 0 { // stored before commands had hosts: the step's
+				targets = a.Hosts
+			}
+			for _, name := range targets {
+				hh, ok := hosts[name]
+				if !ok {
+					continue
+				}
+				only := c.SitesOf(name)
+				for _, site := range hh.Host.Sites {
+					label := cmp.Or(siteName(site), site.Root)
+					if (len(only) > 0 && !slices.Contains(only, label) && !slices.Contains(only, site.Root)) || seen[name+"\x00"+site.Root] {
+						continue
+					}
+					hit := slices.ContainsFunc(handoffFindings(hh.Host, site.Root), func(f handoff.Finding) bool {
+						return f.Ecosystem == "composer" && slices.Contains(pkgs, f.Package)
+					})
+					if !hit {
+						continue
+					}
+					seen[name+"\x00"+site.Root] = true
+					l := handoffLink{Host: name, Site: label, URL: handoffURL(hh.Org, name, site.Root, "")}
+					links = append(links, l)
+					// A step about one site names it (its domain or root): offer only that one.
+					if n := strings.ToLower(siteName(site)); (n != "" && strings.Contains(text, n)) || strings.Contains(text, strings.ToLower(site.Root)) {
+						named = append(named, l)
+					}
+				}
 			}
 		}
 		if len(named) > 0 {
 			links = named
 		}
-		if len(links) == 1 {
+		switch {
+		case len(links) == 1:
 			links[0].Site = ""
+		case len(links) > 1:
+			// Two hosts can serve a site of the same name: say which host.
+			clash := map[string]bool{}
+			for _, l := range links {
+				clash[l.Site] = clash[l.Site] || slices.ContainsFunc(links, func(o handoffLink) bool { return o.Site == l.Site && o.Host != l.Host })
+			}
+			for j := range links {
+				if clash[links[j].Site] {
+					links[j].Site = links[j].Host + " · " + links[j].Site
+				}
+			}
 		}
 		if len(links) > 0 {
 			if view.Handoffs == nil {
@@ -186,6 +224,14 @@ func aiHandoffs(view *aiView, org, host string, sites []siteSection, h report.Ho
 			view.Handoffs[i] = links
 		}
 	}
+}
+
+// hasComposer reports whether a plan has a Composer step (so a hand-off
+// may apply).
+func hasComposer(res *ai.Result) bool {
+	return res != nil && slices.ContainsFunc(res.Actions, func(a ai.Action) bool {
+		return slices.ContainsFunc(a.Commands, func(c ai.Command) bool { return strings.HasPrefix(c.Command, "composer update ") })
+	})
 }
 
 type handoffBody struct {

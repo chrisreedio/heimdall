@@ -5,12 +5,19 @@ and CVE IDs it knows, around the escaped text); commands passed an allowlist and
 for copying, never run. */}}
 
 {{/* aicmds: a step's commands, one copy box each. When they aren't all for
-every host of the step, each is labelled with its hosts. ID is the copy
+every host of the step, or one is a Composer update (it runs in a site's
+directory), each is labelled with its hosts and, when known, each host's
+sites, one line per host: "On web-01 · app.example.com". ID is the copy
 boxes' id prefix. */}}
 {{define "aicmds"}}{{$v := .V}}{{$lab := .A.Labelled}}{{range $j, $c := .A.Commands}}<div class="ai-cmdgroup">
-  {{if $lab}}<div class="ai-cmdhosts small"><span class="muted">On</span>{{range $c.Hosts}} {{aitext $v.Links .}}{{end}}</div>{{end}}
+  {{if $lab}}{{if $c.Sites}}{{range $h := $c.Hosts}}<div class="ai-cmdhosts small"><span class="muted">On</span> {{aitext $v.Links $h}}{{with $c.SitesOf $h}} <span class="muted">·</span>{{range $n, $s := .}}{{if $n}}<span class="muted ai-sep">,</span>{{end}} {{aitext $v.Links $s}}{{end}}{{end}}</div>
+  {{end}}{{else}}<div class="ai-cmdhosts small"><span class="muted">On</span>{{range $c.Hosts}} {{aitext $v.Links .}}{{end}}</div>{{end}}{{end}}
   <div class="codebox ai-cmd"><pre id="{{$.ID}}-{{$j}}">{{$c.Command}}</pre><button type="button" class="copy" data-copy="{{$.ID}}-{{$j}}" hidden>Copy</button></div>
 </div>{{end}}{{end}}
+
+{{/* aihandoff: a step's "Hand off to agent" buttons (aiHandoffs), labelled
+by site when there are several. */}}
+{{define "aihandoff"}}{{with .}}<div class="ai-handoff">{{if gt (len .) 1}}<span class="muted small">Hand off to agent:</span>{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}">{{.Site}}</a>{{end}}{{else}}{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}">Hand off to agent</a>{{end}}{{end}}</div>{{end}}{{end}}
 
 {{/* ainotes: up to three short notes. */}}
 {{define "ainotes"}}{{with .Notes}}<ul class="muted small ai-notes">{{range .}}<li>{{aitext $.Links .}}</li>{{end}}</ul>{{end}}{{end}}
@@ -33,6 +40,7 @@ boxes' id prefix. */}}
     <div class="ai-title"><strong>{{aititle $v.Links .Title .Hosts}}</strong>{{range .Hosts}} {{aitext $v.Links .}}{{end}}{{template "aiheimdall" .Heimdall}}</div>
     {{with .Why}}<div class="muted small ai-why">{{aitext $v.Links .}}</div>{{end}}
     {{with .Commands}}<details class="ai-cmdbox"><summary>{{if gt (len .) 1}}{{len .}} commands{{else}}Command{{end}}</summary>{{template "aicmds" (aicmds $v $a (printf "ai-%s-%d" $v.Org.Slug $i))}}</details>{{end}}
+    {{template "aihandoff" (index $v.Handoffs $i)}}
   </li>{{end}}{{end}}</ol>{{end}}
   {{template "ainotes" (ainotes $v.Links .Notes)}}
   {{end}}
@@ -58,7 +66,7 @@ boxes' id prefix. */}}
       <div class="ai-title"><strong>{{aititle $v.Links .Title .Hosts}}</strong>{{template "aiheimdall" .Heimdall}}</div>
       {{with .Why}}<div class="muted small ai-why">{{aitext $v.Links .}}</div>{{end}}
       {{template "aicmds" (aicmds $v $a (printf "ai-host-%d" $i))}}
-      {{with index $v.Handoffs $i}}<div class="ai-handoff">{{if gt (len .) 1}}<span class="muted small">Hand off to agent:</span>{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}">{{.Site}}</a>{{end}}{{else}}{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}">Hand off to agent</a>{{end}}{{end}}</div>{{end}}
+      {{template "aihandoff" (index $v.Handoffs $i)}}
     </li>{{end}}</ol>
     {{template "ainotes" (ainotes $v.Links .Notes)}}
   </details>{{else}}{{template "ainotes" (ainotes $v.Links .Notes)}}{{end}}

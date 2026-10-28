@@ -56,11 +56,18 @@ type Action struct {
 	rejected []rejectedCommand // the model's commands for known hosts that the allowlist dropped
 }
 
-// Command is one command and the hosts (of its action) it's for.
+// Command is one command and the hosts (of its action) it's for. A
+// Composer update runs in a site's directory, not system-wide: Sites names,
+// per host, the sites it's for (those whose own update names all of its
+// packages). Commands stored before sites were known have none.
 type Command struct {
-	Hosts   []string `json:"hosts,omitempty"`
-	Command string   `json:"command"`
+	Hosts   []string            `json:"hosts,omitempty"`
+	Sites   map[string][]string `json:"sites,omitempty"`
+	Command string              `json:"command"`
 }
+
+// SitesOf is the sites the command is for on host h, if known.
+func (c Command) SitesOf(h string) []string { return c.Sites[h] }
 
 type rejectedCommand struct{ host, command string }
 
@@ -93,19 +100,27 @@ func (a *Action) addHost(h string) {
 	}
 }
 
-// addCommand adds cmd for host h, grouped with the same command for other
-// hosts.
-func (a *Action) addCommand(h, cmd string) {
+// addCommand adds cmd for host h (in sites, for a Composer update),
+// grouped with the same command for other hosts: each keeps its sites.
+func (a *Action) addCommand(h, cmd string, sites []string) {
 	a.addHost(h)
-	for i := range a.Commands {
-		if c := &a.Commands[i]; c.Command == cmd {
-			if !slices.Contains(c.Hosts, h) {
-				c.Hosts = append(c.Hosts, h)
+	i := slices.IndexFunc(a.Commands, func(c Command) bool { return c.Command == cmd })
+	if i < 0 {
+		a.Commands = append(a.Commands, Command{Command: cmd})
+		i = len(a.Commands) - 1
+	}
+	c := &a.Commands[i]
+	if !slices.Contains(c.Hosts, h) {
+		c.Hosts = append(c.Hosts, h)
+	}
+	for _, s := range sites {
+		if !slices.Contains(c.Sites[h], s) && len(c.Sites[h]) < maxSites {
+			if c.Sites == nil {
+				c.Sites = map[string][]string{}
 			}
-			return
+			c.Sites[h] = append(c.Sites[h], s)
 		}
 	}
-	a.Commands = append(a.Commands, Command{Hosts: []string{h}, Command: cmd})
 }
 
 // HasCommand reports whether the step has cmd for host h.
@@ -118,10 +133,11 @@ func (a Action) hasCommandFor(h string) bool {
 }
 
 // Labelled reports whether the commands need their hosts shown: some
-// command isn't for exactly the step's hosts.
+// command isn't for exactly the step's hosts, or runs in a site's
+// directory (a Composer update), which the label names.
 func (a Action) Labelled() bool {
 	return slices.ContainsFunc(a.Commands, func(c Command) bool {
-		return len(c.Hosts) > 0 && !sameSet(c.Hosts, a.Hosts)
+		return len(c.Hosts) > 0 && (!sameSet(c.Hosts, a.Hosts) || len(c.Sites) > 0)
 	})
 }
 
@@ -155,6 +171,7 @@ const (
 	maxNote        = 600
 	maxNoteItems   = 3
 	maxHosts       = 60 // per step
+	maxSites       = 20 // per host of a command
 	maxCommand     = 2000
 	maxCommandPkgs = 60
 )
@@ -226,6 +243,31 @@ type HostAllowed struct {
 	// RequiredFirst.
 	Required      []RequiredStep
 	RequiredFirst bool
+	// Sites are the host's Composer commands (also in Commands) with the
+	// site each runs in.
+	Sites []SiteCommand
+}
+
+// SiteCommand is a site's Composer update command.
+type SiteCommand struct {
+	Site, Command string
+}
+
+// sitesFor names the sites a Composer command is for on the host: those
+// whose own update names every package it does. nil for other commands.
+func sitesFor(cmd string, h HostAllowed) []string {
+	kind, _, pkgs, ok := splitCommand(cmd, h.PM)
+	if !ok || kind != "composer" {
+		return nil
+	}
+	var out []string
+	for _, s := range h.Sites {
+		_, _, spkgs, ok := splitCommand(s.Command, h.PM)
+		if ok && !slices.ContainsFunc(pkgs, func(p string) bool { return !slices.Contains(spkgs, p) }) && !slices.Contains(out, s.Site) {
+			out = append(out, s.Site)
+		}
+	}
+	return out
 }
 
 // RequiredStep is a step Heimdall writes for a host when the plan lacks it.
@@ -318,7 +360,7 @@ func Parse(text string, allowed Allowed) (*Result, error) {
 					continue
 				}
 				if cmd := checkCommand(*c.Command, ha); cmd != "" {
-					act.addCommand(name, cmd)
+					act.addCommand(name, cmd, sitesFor(cmd, ha))
 				} else {
 					act.addHost(name)
 					act.rejected = append(act.rejected, rejectedCommand{host: name, command: cleanLine(*c.Command, maxCommand)})
@@ -368,7 +410,7 @@ func Reconcile(res *Result, allowed Allowed) *Result {
 		if len(a.rejected) > 0 {
 			for _, r := range a.rejected {
 				if c := trimCommand(r.command, allowed.Hosts[r.host]); c != "" {
-					a.addCommand(r.host, c)
+					a.addCommand(r.host, c, sitesFor(c, allowed.Hosts[r.host]))
 					a.Heimdall = HeimdallEdited
 				} else if !a.hasCommandFor(r.host) {
 					a.Hosts = slices.DeleteFunc(slices.Clone(a.Hosts), func(h string) bool { return h == r.host })
@@ -432,6 +474,7 @@ func mergeSameFix(acts []Action, allowed Allowed) []Action {
 		m.Commands = slices.Clone(m.Commands)
 		for j := range m.Commands {
 			m.Commands[j].Hosts = slices.Clone(m.Commands[j].Hosts)
+			m.Commands[j].Sites = cloneSites(m.Commands[j].Sites)
 		}
 		for _, h := range a.Hosts {
 			if len(m.Hosts) < maxHosts {
@@ -441,13 +484,24 @@ func mergeSameFix(acts []Action, allowed Allowed) []Action {
 		for _, c := range a.Commands {
 			for _, h := range c.Hosts {
 				if slices.Contains(m.Hosts, h) {
-					m.addCommand(h, c.Command)
+					m.addCommand(h, c.Command, c.Sites[h])
 				}
 			}
 		}
 		if a.Heimdall == HeimdallEdited && m.Heimdall == "" {
 			m.Heimdall = HeimdallEdited
 		}
+	}
+	return out
+}
+
+func cloneSites(m map[string][]string) map[string][]string {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string][]string, len(m))
+	for h, l := range m {
+		out[h] = slices.Clone(l)
 	}
 	return out
 }
@@ -578,7 +632,20 @@ func Decode(raw []byte) (*Result, bool) {
 		}
 		a.Commands = slices.DeleteFunc(a.Commands, func(c Command) bool { return !commandShapeOK(c.Command) })
 		for j := range a.Commands {
-			a.Commands[j].Hosts = slices.DeleteFunc(a.Commands[j].Hosts, func(h string) bool { return !slices.Contains(a.Hosts, h) })
+			c := &a.Commands[j]
+			c.Hosts = slices.DeleteFunc(c.Hosts, func(h string) bool { return !slices.Contains(a.Hosts, h) })
+			var sites map[string][]string
+			for _, h := range c.Hosts {
+				for _, s := range c.Sites[h] {
+					if s = cleanLine(s, 253); s != "" && !slices.Contains(sites[h], s) && len(sites[h]) < maxSites {
+						if sites == nil {
+							sites = map[string][]string{}
+						}
+						sites[h] = append(sites[h], s)
+					}
+				}
+			}
+			c.Sites = sites
 		}
 	}
 	// A brief stored before same-fix steps were merged ("Patch Brotli" on
