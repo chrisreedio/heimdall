@@ -19,14 +19,13 @@ func TestAIHandoffNamesItsSite(t *testing.T) {
 		{Site: a, Package: "laravel/framework", Version: "12.64.0", Fixed: "12.68.0", Advisory: "GHSA-aaaa-bbbb-cccc"},
 		{Site: b, Package: "laravel/framework", Version: "13.5.0", Fixed: "13.29.0", Advisory: "GHSA-aaaa-bbbb-cccc"},
 	}}
-	sites := []siteSection{{Site: report.Site{Root: a, ServerNames: []string{"affiliates.example.dev"}}},
-		{Site: report.Site{Root: b, ServerNames: []string{"shop.example.com"}}}}
+	h.Sites = []report.Site{{Root: a, ServerNames: []string{"affiliates.example.dev"}}, {Root: b, ServerNames: []string{"shop.example.com"}}}
 	view := &aiView{View: ai.View{Result: &ai.Result{Actions: []ai.Action{
 		step("Upgrade affiliates.example.dev dependencies", "", "web-01", "composer update laravel/framework --with-dependencies"),
 		step("Upgrade dependencies", "Run this in "+b+" and test.", "web-01", "composer update laravel/framework --with-dependencies"),
 		step("Upgrade Laravel everywhere", "", "web-01", "composer update laravel/framework --with-dependencies"),
 	}}}}
-	aiHandoffs(view, "acme", "web-01", sites, h)
+	aiHandoffs(view, map[string]handoffHost{"web-01": {Org: "acme", Host: h}})
 	if l := view.Handoffs[0]; len(l) != 1 || !strings.Contains(l[0].URL, "affiliates") || l[0].Site != "" {
 		t.Errorf("step about affiliates: %+v", l)
 	}

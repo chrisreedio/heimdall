@@ -112,6 +112,20 @@ func (s *server) aiBriefsFor(r *http.Request, v *auth.Viewer, org string, orgs [
 			return nil, err
 		}
 		view.Action = "/ai/brief/" + url.PathEscape(o.Slug)
+		if s.canHandoff(v, o.ID) && hasComposer(view.Result) {
+			rep, err := report.Build(r.Context(), s.st, report.Filter{Org: o.Slug, Scope: v.Scope}, s.now())
+			if err != nil {
+				return nil, err
+			}
+			// The brief is the org's, so its hosts are: the viewer may
+			// operate on each (canHandoff above), and each link carries
+			// the host's own org slug.
+			hosts := map[string]handoffHost{}
+			for _, h := range rep.Hosts {
+				hosts[h.Name] = handoffHost{Org: h.Org, Host: h}
+			}
+			aiHandoffs(&view, hosts)
+		}
 		out.Briefs = append(out.Briefs, view)
 	}
 	out.ShowOrg = len(out.Briefs) > 1

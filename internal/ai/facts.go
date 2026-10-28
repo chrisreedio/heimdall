@@ -355,6 +355,9 @@ func (d hostData) allowed(full bool) HostAllowed {
 	for _, c := range cmds {
 		a.Commands = append(a.Commands, c.Command)
 	}
+	for _, c := range d.composerCommands() {
+		a.Sites = append(a.Sites, SiteCommand{Site: c.site, Command: c.Command})
+	}
 	if full && u.RebootFindings > 0 && d.rep.NewerKernel != "" {
 		a.Required = []RequiredStep{{Title: clip("Reboot to run "+d.rep.NewerKernel, maxTitle), Command: RebootCommand,
 			Why: cleanText(rebootWhy(d, u.RebootFindings), maxWhy)}}
@@ -392,8 +395,9 @@ func (d hostData) osFindings() []report.Finding {
 }
 
 // commands are the host's suggested commands, in the order to run them,
-// and the upgrade they come from. full adds the pending security updates
-// and the sites' Composer updates (the brief leaves them out).
+// and the upgrade they come from: the OS fix, each site's Composer update,
+// the old-kernel removal and the reboot. full adds the pending security
+// updates (the brief leaves them out).
 func (d hostData) commands(full bool) ([]commandFact, report.Upgrade) {
 	reboot := d.sum.RebootRequired
 	cmd, label, u := fixCommand(d.pm, d.osFindings(), report.PackagesOf(d.inv))
@@ -418,25 +422,9 @@ func (d hostData) commands(full bool) ([]commandFact, report.Upgrade) {
 			slices.Sort(sec)
 			out = append(out, commandFact{Label: "Install pending security updates", Command: prefix[len(prefix)-1] + " " + strings.Join(sec, " ")})
 		}
-		composer := map[string]bool{}
-		for _, s := range d.inv.Sites {
-			for _, p := range s.Packages {
-				composer[p.Name] = true
-			}
-		}
-		for _, s := range d.rep.Sites {
-			var names []string
-			for _, f := range d.rep.Findings {
-				if f.Site == s.Root && f.Fixed != "" && composerName.MatchString(f.Package) && composer[f.Package] && !slices.Contains(names, f.Package) {
-					names = append(names, f.Package)
-				}
-			}
-			if len(names) > 0 && len(names) <= maxCommandPkgs {
-				slices.Sort(names)
-				out = append(out, commandFact{Label: "In " + clip(s.Root, 200) + ": update the Composer packages with fixes",
-					Command: "composer update " + strings.Join(names, " ") + " --with-dependencies"})
-			}
-		}
+	}
+	for _, c := range d.composerCommands() {
+		out = append(out, c.commandFact)
 	}
 	notRunning := 0
 	for _, f := range d.rep.Findings {
@@ -449,6 +437,51 @@ func (d hostData) commands(full bool) ([]commandFact, report.Upgrade) {
 		out = append(out, rebootCommand(reboot, u.Kernel && cmd != "", u.RebootFindings > 0 && d.rep.NewerKernel != "")...)
 	}
 	return out, u
+}
+
+// siteCommand is a site's Composer update command and the site it runs in.
+type siteCommand struct {
+	commandFact
+	site string // the site's name (its first server name, else its root)
+}
+
+// composerCommands are the sites' Composer updates, one per site: the
+// packages with a fix that the site's own composer.lock has, when there
+// are at most maxCommandPkgs of them.
+func (d hostData) composerCommands() []siteCommand {
+	locked := map[string]map[string]bool{}
+	for _, s := range d.inv.Sites {
+		if locked[s.Root] == nil {
+			locked[s.Root] = map[string]bool{}
+		}
+		for _, p := range s.Packages {
+			locked[s.Root][p.Name] = true
+		}
+	}
+	var out []siteCommand
+	for _, s := range d.rep.Sites {
+		var names []string
+		for _, f := range d.rep.Findings {
+			if f.Site == s.Root && f.Fixed != "" && composerName.MatchString(f.Package) && locked[s.Root][f.Package] && !slices.Contains(names, f.Package) {
+				names = append(names, f.Package)
+			}
+		}
+		if len(names) > 0 && len(names) <= maxCommandPkgs {
+			slices.Sort(names)
+			out = append(out, siteCommand{site: siteName(s), commandFact: commandFact{
+				Label:   "In " + clip(s.Root, 200) + ": update the Composer packages with fixes",
+				Command: "composer update " + strings.Join(names, " ") + " --with-dependencies"}})
+		}
+	}
+	return out
+}
+
+// siteName is how a site is shown: its first server name, else its root.
+func siteName(s report.Site) string {
+	if len(s.ServerNames) > 0 && s.ServerNames[0] != "_" && s.ServerNames[0] != "" {
+		return clip(s.ServerNames[0], 253)
+	}
+	return clip(s.Root, 200)
 }
 
 // fact summarizes one host at the given detail level.
@@ -619,11 +652,7 @@ func rebootCommand(reboot *bool, kernelFix, rebootFindings bool) []commandFact {
 }
 
 func siteFactFor(s report.Site, all []report.Finding, lv detail) siteFact {
-	name := s.Root
-	if len(s.ServerNames) > 0 && s.ServerNames[0] != "_" && s.ServerNames[0] != "" {
-		name = s.ServerNames[0]
-	}
-	sf := siteFact{Name: clip(name, 253), Root: clip(s.Root, 200), Framework: clip(s.Framework, 40),
+	sf := siteFact{Name: siteName(s), Root: clip(s.Root, 200), Framework: clip(s.Framework, 40),
 		FrameworkVersion: clip(s.FrameworkVersion, 40), FrameworkLife: life(s.FrameworkLife), PHP: clip(s.PHPFPM, 20),
 		PHPLife: life(s.PHPLife), PHPRequirement: clip(s.PHPRequirement, 60), PHPAllowed: s.PHPSatisfied, Counts: s.Counts}
 	var fs []report.Finding

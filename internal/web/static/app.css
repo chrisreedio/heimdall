@@ -902,6 +902,7 @@ dl.conn dd { margin: 0; min-width: 0; }
    rather than wrapping. */
 .ai-cmdgroup { margin-top: 6px; min-width: 0; }
 .ai-cmdhosts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-bottom: 4px; }
+.ai-cmdhosts .ai-sep { margin-left: -6px; }
 .ai-cmd { display: flex; align-items: flex-start; gap: 6px; }
 .ai-cmd pre { flex: 1; min-width: 0; padding-right: 14px; white-space: pre; overflow-wrap: normal; overflow-x: auto; }
 .ai-cmd .copy { position: static; flex: none; margin-top: 7px; }
