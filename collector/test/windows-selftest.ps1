@@ -115,4 +115,53 @@ foreach ($c in @(@('v0.4.14', '0.4.13', $true), @('v0.5.0', '0.4.13', $true), @(
         @('v0.4.12', '0.4.13', $false), @('v1', '0.4.13', $true), @('', '0.4.13', $false), @('v0.4.14-dev', '0.4.13', $false))) {
     Check ((Test-HeimdallNewer $c[0] $c[1]) -eq $c[2]) "Test-HeimdallNewer $($c[0]) $($c[1])"
 }
+
+# -SetHub: a real report (Send-HeimdallSnapshot) to the new address with a
+# fake Invoke-WebRequest; hub-url changes only on a 2xx.
+$dir = Join-Path ([IO.Path]::GetTempPath()) ('heimdall-sethub-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $dir | Out-Null
+$urlFile = Join-Path $dir 'hub-url'
+$env:HEIMDALL_TOKEN_FILE = Join-Path $dir 'token'
+Set-Content -LiteralPath $env:HEIMDALL_TOKEN_FILE -Value ('hmd_ingest_' + 'a' * 43) -NoNewline -Encoding ASCII
+Remove-Item Env:HEIMDALL_URL -ErrorAction SilentlyContinue
+$fake = @{ code = 200; calls = @() }
+function Start-Sleep { }
+function Invoke-WebRequest {
+    param($Uri, $Headers, [switch]$UseBasicParsing, $Method, $ContentType, $Body, $TimeoutSec, $MaximumRedirection)
+    $fake.calls += "$Uri $($Headers['Authorization'])"
+    if ($fake.code -eq 0) { throw 'could not resolve host' }
+    if ($fake.code -ge 300) {
+        $e = New-Object System.Exception "HTTP $($fake.code)"
+        $e | Add-Member -NotePropertyName Response -NotePropertyValue ([pscustomobject]@{ StatusCode = $fake.code })
+        throw $e
+    }
+    [pscustomobject]@{ StatusCode = $fake.code; Headers = @{} }
+}
+$send = { param($u) Send-HeimdallSnapshot '{}' $u }
+function SetHub([string]$u) {
+    $fake.calls = @()
+    try { Set-HeimdallHub -Url $u -UrlFile $urlFile -Send $send 2>$null; return '' } catch { return $_.Exception.Message }
+}
+Set-Content -LiteralPath $urlFile -Value 'https://ingest.example.com' -NoNewline -Encoding ASCII
+foreach ($code in 401, 403, 500, 0) {
+    $fake.code = $code
+    $err = SetHub 'https://new-ingest.example.com'
+    Check ($err -eq 'not changed; still reporting to https://ingest.example.com') "failed test ($code) says so: $err"
+    Check ((Get-Content -LiteralPath $urlFile -Raw) -eq 'https://ingest.example.com') "failed test ($code) left hub-url alone"
+}
+foreach ($bad in 'http://new-ingest.example.com', 'ftp://x', 'https://a.example.com/ x', "https://a.example.com'", 'https://user@a.example.com', "https://a.example.com`n", '') {
+    $err = SetHub $bad
+    Check ($err -ne '' -and $fake.calls.Count -eq 0) "rejected '$bad' before sending ($err)"
+}
+Check ((SetHub 'https://ingest.example.com/') -eq '' -and $fake.calls.Count -eq 0) 'same URL: nothing sent'
+$fake.code = 200
+$err = SetHub 'https://new-ingest.example.com:8443/'
+Check ($err -eq '') "set-hub succeeded ($err)"
+Check ($fake.calls.Count -eq 1 -and $fake.calls[0] -eq "https://new-ingest.example.com:8443/api/v1/ingest Bearer hmd_ingest_$('a' * 43)") "test report: $($fake.calls -join '; ')"
+Check ((Get-Content -LiteralPath $urlFile -Raw) -eq 'https://new-ingest.example.com:8443') 'hub-url changed'
+Check (@(Get-ChildItem -LiteralPath $dir -Force -Filter '.hub-url.*').Count -eq 0) 'no temp file left'
+Remove-Item -LiteralPath $dir -Recurse -Force
+Remove-Item Env:HEIMDALL_TOKEN_FILE
+Remove-Item Function:Invoke-WebRequest, Function:Start-Sleep
+
 if ($script:failed) { exit 1 }
