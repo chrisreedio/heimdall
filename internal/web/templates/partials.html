@@ -13,7 +13,7 @@
   <tbody>
   {{range .}}
   <tr>
-    <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}{{if or .KEV .InNews .KernelStatus (hotEPSS .EPSS)}}<div class="find-badges">{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}{{template "epssbadge" .EPSS}}{{template "kernelbadge" .KernelStatus}}</div>{{end}}</td>
+    <td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{if .CVSS}} <span class="muted">{{printf "%.1f" .CVSS}}</span>{{end}}{{if or .KEV .InNews .KernelStatus .ClientOnly (hotEPSS .EPSS)}}<div class="find-badges">{{if .KEV}}<span class="badge kev" title="CISA Known Exploited Vulnerability">KEV</span>{{end}}{{if .InNews}} <a class="badge news" href="/news" title="Named by a live incident in the news">in the news</a>{{end}}{{template "epssbadge" .EPSS}}{{template "kernelbadge" .KernelStatus}}{{template "clientbadge" .ClientOnly}}</div>{{end}}</td>
     <td><span class="id">{{with first .CVEs}}{{.}}{{else}}{{.Advisory}}{{end}}</span>{{if .Summary}}<div class="summary" title="{{.Summary}}">{{.Summary}}</div>{{end}}</td>
     <td>{{.Package}}{{if eq .Ecosystem "npm"}} <span class="tag">npm</span>{{end}}{{if .Dev}}{{template "devbadge"}}{{end}}{{if gt (len .Binaries) 1}}<div class="muted small">{{join .Binaries ", "}}</div>{{end}}</td>
     <td class="ver">{{.Version}}</td>
@@ -94,7 +94,7 @@
     <div class="pkg-grid pkg-head" role="row"><span>Package</span><span>Installed</span><span>Worst</span><span class="num">KEV</span><span class="num">Crit</span><span class="num">High</span><span class="num">Med</span><span class="num">Low</span><span class="num">Fixable</span></div>
     {{range .}}<details class="pkg-row">
       <summary class="pkg-grid" role="row">
-        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span>{{template "kernelbadge" .KernelStatus}}{{if .Dev}}{{template "devbadge"}}{{end}}{{if .News}} <span class="badge news" title="{{.News}} named by a live incident in the news">in the news</span>{{end}}</span>
+        <span class="pkg-name"><span class="id">{{.Package}}</span> <span class="muted small">{{.Total}}</span>{{template "kernelbadge" .KernelStatus}}{{template "clientbadge" .ClientOnly}}{{if .Dev}}{{template "devbadge"}}{{end}}{{if .News}} <span class="badge news" title="{{.News}} named by a live incident in the news">in the news</span>{{end}}</span>
         <span class="ver">{{.Version}}</span>
         <span><span class="sev sev-{{sev .Worst}}">{{.Worst}}</span></span>
         <span class="num">{{if .KEV}}<span class="badge kev">{{.KEV}}</span>{{else}}<span class="muted">0</span>{{end}}</span>
@@ -136,6 +136,10 @@
 
 {{/* kernelbadge: a finding's (or package group's) kernel status, with a leading space. */}}
 {{define "kernelbadge"}}{{if eq . "not_running"}} <span class="badge muted" title="On an older kernel that's installed but not running: removing it clears this">not running</span>{{else if eq . "reboot_pending"}} <span class="badge warn" title="On the running kernel, while a newer kernel is already installed: rebooting clears this (the newer kernel may have findings of its own)">reboot pending</span>{{else if eq . "userland"}} <span class="badge muted" title="On a package built from the kernel source that isn't the kernel (tools, headers): not live kernel exposure, so it's left out of the known-exploited and fixable counts. Upgrading it still clears it">kernel userland</span>{{else if eq . "newer_kernel"}} <span class="badge muted" title="On the newer kernel that's installed but not booted yet: it runs after the reboot, so rebooting won't clear this">next kernel</span>{{end}}{{end}}
+
+{{/* clientbadge: the finding's source is installed only for its clients;
+     the argument names the server package that isn't. */}}
+{{define "clientbadge"}}{{with .}} <span class="badge muted" title="Only this package's client tools and libraries are installed, not its server ({{.}}). Most of its advisories are about the server, so with no fix yet it's only worth watching if it's known-exploited. Upgrading still clears it">client only</span>{{end}}{{end}}
 
 {{/* rebootcmd: the "reboot to run the newer kernel" command (a findingsView). */}}
 {{define "rebootcmd"}}{{with .RebootCmd}}<div class="cmd fix-cmd">
