@@ -252,6 +252,14 @@ gitconfig /var/www/api 'file:///srv/git/api.git'
 # Unreadable by the collector: skipped.
 gitconfig /var/www/legacy 'https://github.com/acme/legacy.git'
 chmod 600 /var/www/legacy/.git/config
+# Checked-out branches (asserted by TestCollectorSiteBranches): a plain
+# checkout, a zero-downtime release that kept its .git (detached, as a
+# release clone often is), and one HEAD the collector can't read.
+printf 'ref: refs/heads/main\n' >/home/forge/example.com/.git/HEAD
+printf '0123456789abcdef0123456789abcdef01234567\n' >/home/forge/zdt.example.com/releases/20261020120000/.git/HEAD
+printf 'ref: refs/heads/env/beta\n' >/var/www/alp/.git/HEAD
+printf 'ref: refs/heads/secret\n' >/var/www/legacy/.git/HEAD
+chmod 700 /var/www/legacy/.git
 
 chmod 755 /home/forge
 

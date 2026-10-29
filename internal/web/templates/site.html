@@ -43,6 +43,21 @@
     </details>{{end}}
     {{with .RepoNotice}}<span class="small {{if $.Body.RepoError}}repo-error{{else}}repo-ok{{end}}" role="status">{{.}}</span>{{end}}
   </div>
+  <div class="runtimes-row repo-row branch-row" id="branch">{{template "icon" "code"}}<span class="k">Branch</span>
+    {{with .Repo.Branch}}<code class="path">{{.}}</code>
+    <span class="muted small">{{if $.Body.Repo.ManualBranch}}set by an operator{{if and $.Body.Repo.DetectedBranch (ne $.Body.Repo.DetectedBranch $.Body.Repo.ManualBranch)}} (the collector found <code>{{$.Body.Repo.DetectedBranch}}</code>){{end}}{{else}}found by the collector in <code>.git/HEAD</code>{{end}}</span>
+    {{else}}{{with .Repo.DetectedCommit}}<span class="muted small">Unknown: the checkout is detached at <code>{{shortCommit .}}</code>, so there's no branch to read. An operator can set it here.</span>{{else}}<span class="muted small">Unknown (no git checkout found, common with zero-downtime deploys). The collector reads the site's <code>.git/HEAD</code> when there is one; an operator can set it here.</span>{{end}}{{end}}
+    {{if .CanOperate}}<details class="label-pick repo-pick"{{if .BranchError}} open{{end}}>
+      <summary class="link small">{{if .Repo.ManualBranch}}change{{else}}set{{end}}</summary>
+      <form method="post" action="/sites/branch" class="inline card repo-form">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="org" value="{{.Org}}"><input type="hidden" name="host" value="{{.Host}}"><input type="hidden" name="root" value="{{.Site.Root}}">
+        <label class="repo-label">Branch <input type="text" name="branch" value="{{.Repo.ManualBranch}}" placeholder="main" maxlength="200" autocomplete="off" spellcheck="false"></label>
+        <button type="submit">Save</button>{{if .Repo.ManualBranch}} <button type="submit" name="clear" value="1" class="secondary">Use detected</button>{{end}}
+        <p class="muted small repo-help">The branch this site deploys from. Wins over what the collector finds. A hand-off can target it.</p>
+      </form>
+    </details>{{end}}
+    {{with .BranchNotice}}<span class="small {{if $.Body.BranchError}}repo-error{{else}}repo-ok{{end}}" role="status">{{.}}</span>{{end}}
+  </div>
 </section>
 
 <section id="findings">

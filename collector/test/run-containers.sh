@@ -70,7 +70,7 @@ while IFS='|' read -r name image refresh setup shell; do
 	run_target "$name" -v "$here:/opt/heimdall:ro" "$image" sh -c "
 		timeout $refresh_limit $refresh >/dev/null 2>&1 || echo 'package metadata refresh skipped (slow mirror)' >&2
 		($setup) >/dev/null 2>&1
-		su -s $shell heimdall -c 'set -a; [ ! -r /tmp/collect.env ] || . /tmp/collect.env; $shell /opt/heimdall/collect.sh --print && printf \"site-repos: %s\\n\" \"\$($shell /opt/heimdall/collect.sh --site-repos)\" >&2'
+		su -s $shell heimdall -c 'set -a; [ ! -r /tmp/collect.env ] || . /tmp/collect.env; $shell /opt/heimdall/collect.sh --print && printf \"site-repos: %s\\n\" \"\$($shell /opt/heimdall/collect.sh --site-repos)\" >&2 && printf \"site-branches: %s\\n\" \"\$($shell /opt/heimdall/collect.sh --site-branches)\" >&2'
 	" &
 done <<EOF
 $targets

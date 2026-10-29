@@ -27,7 +27,7 @@ export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
-VERSION=0.4.43
+VERSION=0.4.44
 FORMAT=heimdall.snapshot/v4
 
 die() { printf 'heimdall-collect: %s\n' "$*" >&2; exit 1; }
@@ -849,6 +849,117 @@ site_repos() {
 	}
 }
 
+# ── Site branches (sent as X-Heimdall-Site-Branches) ───────────────────────
+# Each site's checked-out branch, for the hand-off's choice of where a pull
+# request goes. Read from the site's .git/HEAD and nothing else: git is
+# never run, and no other file in .git is opened. Only paths inside the
+# site's own tree are followed: the app root, or for a release layout
+# (<base>/current, <base>/releases/<n>) the base directory. A site with no
+# readable HEAD, as is common with zero-downtime deploys whose releases
+# keep no .git, is simply left out. HEIMDALL_DETECT_REPOS=0 turns this off
+# too.
+
+# phys_dir DIR: DIR's physical path (every symlink resolved), or nothing.
+phys_dir() { (cd -P "$1" 2>/dev/null && pwd -P); }
+
+# within PATH TREE: PATH is TREE or inside it (both physical).
+within() {
+	case $1 in
+	"$2" | "$2"/*) return 0 ;;
+	esac
+	return 1
+}
+
+# valid_branch NAME: a branch name of refname-safe characters only, the
+# same rule as the hub's handoff.ValidBranch.
+valid_branch() {
+	[ ${#1} -ge 1 ] && [ ${#1} -le 200 ] || return 1
+	case $1 in
+	*[!A-Za-z0-9._/-]* | -* | /* | .* | */ | *. | *.lock | *..* | *//* | */.* | */-*) return 1 ;;
+	esac
+	return 0
+}
+
+# head_ref FILE: "branch:<name>" or "commit:<sha>" from a HEAD file, or
+# nothing (a missing, symlinked, oversized or malformed one).
+head_ref() {
+	if [ ! -f "$1" ] || [ -L "$1" ] || [ ! -r "$1" ]; then return 1; fi
+	[ "$(wc -c <"$1" 2>/dev/null || echo 99999)" -le 512 ] || return 1
+	line=$(awk 'NR == 1 { sub(/[ \t\r]+$/, ""); print; exit }' "$1" 2>/dev/null) || return 1
+	case $line in
+	"ref: refs/heads/"*)
+		b=${line#ref: refs/heads/}
+		valid_branch "$b" || return 1
+		printf 'branch:%s' "$b"
+		return 0
+		;;
+	esac
+	case ${#line} in 40 | 64) ;; *) return 1 ;; esac
+	case $line in *[!0-9a-f]*) return 1 ;; esac
+	printf 'commit:%s' "$line"
+}
+
+# git_head GIT TREE: the HEAD of the repository at GIT (a .git directory,
+# or a .git file holding "gitdir: <path>", as worktrees and submodules
+# use), only if that repository is inside TREE.
+git_head() {
+	if [ -d "$1" ]; then
+		gd=$(phys_dir "$1") || return 1
+	elif [ -f "$1" ] && [ ! -L "$1" ] && [ -r "$1" ]; then
+		[ "$(wc -c <"$1" 2>/dev/null || echo 99999)" -le 1024 ] || return 1
+		p=$(awk 'NR == 1 { if (sub(/^gitdir:[ \t]*/, "")) { sub(/[ \t\r]+$/, ""); print } exit }' "$1" 2>/dev/null)
+		case $p in
+		'') return 1 ;;
+		/*) ;;
+		*) p=${1%/*}/$p ;;
+		esac
+		gd=$(phys_dir "$p") || return 1
+	else
+		return 1
+	fi
+	if [ -z "$gd" ] || ! within "$gd" "$2"; then return 1; fi
+	head_ref "$gd/HEAD"
+}
+
+# site_branch ROOT: the site's "branch:<name>" or "commit:<sha>", or
+# nothing. Looks, in order, in the app root's .git (through the root's
+# symlinks, as long as they stay in the site's tree), then for a release
+# layout in <base>/.git beside releases/.
+site_branch() {
+	base=
+	case $1 in
+	*/current) base=${1%/current} ;;
+	*/releases/*) base=${1%/releases/*} ;;
+	esac
+	tree=$(phys_dir "${base:-$1}") || return 1
+	root=$(phys_dir "$1") || return 1
+	# current -> somewhere outside the site: don't follow it.
+	if [ -z "$tree" ] || [ -z "$root" ] || ! within "$root" "$tree"; then return 1; fi
+	if git_head "$root/.git" "$tree"; then return 0; fi
+	[ -n "$base" ] || return 1
+	git_head "$tree/.git" "$tree"
+}
+
+# site_branches: the X-Heimdall-Site-Branches value for the sites in a
+# snapshot on stdin, "v1 <root> <ref>,..." (just "v1" when none are
+# known), at most about 4 KB.
+site_branches() {
+	out=v1
+	if [ "${HEIMDALL_DETECT_REPOS:-1}" = 0 ]; then
+		printf '%s' "$out"
+		return
+	fi
+	sed -n 's/^ *{"root": "\([^"]*\)", "document_root".*/\1/p' | {
+		while IFS= read -r r; do
+			ref=$(site_branch "$r") || continue
+			entry="$r $ref"
+			[ $((${#out} + ${#entry} + 1)) -le 4000 ] || break
+			if [ "$out" = v1 ]; then out="v1 $entry"; else out="$out,$entry"; fi
+		done
+		printf '%s' "$out"
+	}
+}
+
 # ── Snapshot ────────────────────────────────────────────────────────────────
 
 self_sha256() {
@@ -1171,6 +1282,8 @@ EOF
 	# Each site's git remote, credentials stripped (site_repos). The value
 	# is only paths and URLs, never quotes or backslashes.
 	repos_header="header = \"X-Heimdall-Site-Repos: $(site_repos <"$tmp/snapshot.json" | tr -cd 'A-Za-z0-9._~:/@+, -' | cut -c1-4096)\""
+	# Each site's checked-out branch, from .git/HEAD (site_branches).
+	branches_header="header = \"X-Heimdall-Site-Branches: $(site_branches <"$tmp/snapshot.json" | tr -cd 'A-Za-z0-9._~:/@+, -' | cut -c1-4096)\""
 
 	# The token goes to curl on stdin via --config (printf is a shell
 	# builtin), so it never appears in any process's arguments. The reply
@@ -1180,7 +1293,7 @@ EOF
 	status=$(printf '%s\n' \
 		"header = \"Authorization: Bearer $token\"" \
 		'header = "Content-Type: application/json"' \
-		"$encoding" "$cacert" "$hostname_header" "$machine_header" "$triggers_header" "$repos_header" "$(privilege_config)" "$(logins_config)" |
+		"$encoding" "$cacert" "$hostname_header" "$machine_header" "$triggers_header" "$repos_header" "$branches_header" "$(privilege_config)" "$(logins_config)" |
 		"$curl" --config - --silent --show-error \
 			--proto '=https,http' --tlsv1.2 \
 			--connect-timeout 10 --max-time 120 \
@@ -1362,8 +1475,8 @@ upgrade() {
 
 usage() {
 	cat >&2 <<'EOF'
-usage: heimdall-collect --print | --push | --site-repos | --deploy-watches |
-                        --logins | --version
+usage: heimdall-collect --print | --push | --site-repos | --site-branches |
+                        --deploy-watches | --logins | --version
        heimdall-collect deployed
        sudo heimdall-collect upgrade [vX.Y.Z] [--watch-privilege-users |
                                      --watch-privilege | --no-watch-privilege]
@@ -1373,6 +1486,8 @@ usage: heimdall-collect --print | --push | --site-repos | --deploy-watches |
   --print       write a snapshot to stdout (for review or 'heimdall import')
   --push        send a snapshot to $HEIMDALL_URL using $HEIMDALL_TOKEN_FILE
   --site-repos  print the site repositories --push would send
+  --site-branches
+                print the sites' checked-out branches --push would send
   --deploy-watches
                 print the paths watched for site deploys (install.sh puts
                 them in heimdall-collect-changes.path)
@@ -1408,7 +1523,7 @@ case $1 in
 deployed) deployed; exit 0 ;; # any user, root too: it only touches a file
 # For heimdall-collect-soon.service (root), not for people:
 event-allowed) if event_allowed; then exit 0; else exit 1; fi ;;
---print | --push | --site-repos | --deploy-watches | --logins) ;;
+--print | --push | --site-repos | --site-branches | --deploy-watches | --logins) ;;
 *) usage ;;
 esac
 
@@ -1420,6 +1535,7 @@ case $1 in
 --print) snapshot ;;
 --push) push ;;
 --site-repos) sites_json | site_repos; echo ;;
+--site-branches) sites_json | site_branches; echo ;;
 --deploy-watches) deploy_watches ;;
 --logins) logins_header "${HEIMDALL_LOGIN_COUNTS:-/var/lib/heimdall-logins/counts}" | sed -n 's/^header = "X-Heimdall-Logins: \(.*\)"$/\1/p' ;;
 esac

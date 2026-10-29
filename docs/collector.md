@@ -306,7 +306,7 @@ The `|| true` covers a server where the collector isn't installed (`heimdall-col
 - **The worst case is capped.** Touching it about once a minute would mean about 60 reports an hour, more than the hub's limit of 30 per hour per host (`[ingest] rate_per_host`). But event reports are [capped at 12 per rolling hour](#the-cap-on-event-reports), and the hourly report bypasses the cap, so the host stays well under the hub's limit and its hourly reports always get through. The same holds for anyone who can write a watched site file.
 - **What the cap costs:** while someone keeps the cap used up, a genuine event (a deploy, a package change, a `sudo` the privilege watch records) waits for the next hourly report instead of going out a minute later. It's still recorded and sent; only the minute-later report is skipped. Each skip leaves a `skipping this event report` line in `journalctl -u heimdall-collect-soon`, so a steady stream of them is visible.
 - **The disk:** anyone who can run commands on the server can already fill its disk through `/tmp`. The `0666` file adds no new way to do that.
-- **The automatic watches** need nothing from site users: systemd (root) watches the paths, and the collector still reads only `composer.json`, `composer.lock` and `.git/config`, as `heimdall`.
+- **The automatic watches** need nothing from site users: systemd (root) watches the paths, and the collector still reads only `composer.json`, `composer.lock`, `.git/config` and `.git/HEAD`, as `heimdall`.
 - **Compared with the sudoers rule** this page used to suggest (`forge ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block heimdall-collect.service`), nothing is added to sudoers, and a deploy user who never had sudo needs none.
 
 ### Checking that it worked
@@ -362,6 +362,7 @@ On the hub's own box the collector's settings are in `/etc/heimdall-collect/coll
 | `heimdall-collect --print` | Write a snapshot to stdout, to review or to save for `heimdall import` |
 | `heimdall-collect --push` | Send a snapshot to the hub |
 | `heimdall-collect --site-repos` | Print the site repositories a push would send (see [Site repositories](#site-repositories)) |
+| `heimdall-collect --site-branches` | Print the sites' checked-out branches a push would send (see [Site branches](#site-branches)) |
 | `heimdall-collect --deploy-watches` | Print the site paths watched for deploys (see [What's watched automatically](#whats-watched-automatically)) |
 | `heimdall-collect deployed` | Ask for a report in about a minute, from a deploy script, as any user; always exits `0` (see [`heimdall-collect deployed`](#heimdall-collect-deployed)) |
 | `heimdall-collect --version` | Print the collector version |
@@ -377,7 +378,7 @@ On the hub's own box the collector's settings are in `/etc/heimdall-collect/coll
 | `HEIMDALL_CA_FILE` | none | CA bundle to pin the hub's certificate |
 | `HEIMDALL_SITES` | none | Extra app roots to inventory, space-separated (e.g. queue workers with no vhost) |
 | `HEIMDALL_DISCOVER_SITES` | `1` | Set to `0` to skip reading nginx/Apache vhost files |
-| `HEIMDALL_DETECT_REPOS` | `1` | Set to `0` to stop reading sites' `.git/config` (see [Site repositories](#site-repositories)) |
+| `HEIMDALL_DETECT_REPOS` | `1` | Set to `0` to stop reading sites' `.git/config` and `.git/HEAD` (see [Site repositories](#site-repositories) and [Site branches](#site-branches)) |
 
 **Without installing anything** (import mode), from your own machine:
 
@@ -493,6 +494,34 @@ sudo setfacl -d -m u:heimdall:rX /home/forge/example.com/releases
 ```
 
 **How it's sent:** in a request header, `X-Heimdall-Site-Repos: v1 <root> <url>,<root> <url>` (just `v1` when none are known), at most about 4 KB. It's a header, not a snapshot field, for the same reason as the privilege watch's: the hub rejects snapshots with unknown fields, so a new field would make an older hub refuse a newer collector's push, while every hub ignores a header it doesn't know. A push without the header (an older collector) leaves the hub's stored repositories alone. `heimdall-collect --site-repos` prints the value; `HEIMDALL_DETECT_REPOS=0` sends `v1` (none).
+
+### Site branches
+
+So a hand-off can target the branch each site deploys from (see [Every site on the repository](deployment.md#every-site-on-the-repository-and-where-the-pull-request-goes)), the collector reports each site's checked-out branch. It reads **only `.git/HEAD`**, the first line of it, and nothing else in `.git` (the remote comes from `.git/config`, above). git is never run. `ref: refs/heads/<branch>` gives the branch; a bare commit hash is a detached checkout, reported as that commit with no branch. Anything else (another kind of ref, junk, an empty or oversized file) is left out. A branch name is sent only if it's at most 200 characters of letters, digits, `.`, `_`, `-` and `/` and follows git's rules (no `..`, `//`, leading `-` or `.`, or trailing `/`, `.` or `.lock`); the hub checks it again.
+
+It looks, in order, first match wins:
+
+1. `<app root>/.git`, through the root's symlinks (so for `<base>/current` it's the release's `.git`).
+2. For a release layout (`<base>/current` or `<base>/releases/<n>`): `<base>/.git`, beside `releases/`.
+3. Either of those can be a `.git` *file* holding `gitdir: <path>` (a worktree or a submodule): the `HEAD` it points to is read, if that's inside the site's tree.
+
+It never leaves the site's own tree: the app root, or `<base>` for a release layout, with every symlink resolved. A `current` that points outside `<base>`, a `.git` symlink or `gitdir:` pointer that leads outside, and a `HEAD` that is itself a symlink are all ignored. The repository caches (`<base>/repo`, `<base>/.dep/repo`) aren't read for this: their `HEAD` is the remote's default branch, not what's deployed.
+
+**Zero-downtime deploys:**
+
+| Layout | Branch reported |
+|---|---|
+| `current` → `releases/<n>`, and the release kept its `.git` | The release's branch, or its commit if it was checked out detached |
+| `current` → `releases/<n>` with no `.git`, and a `<base>/.git` beside `releases/` | `<base>/.git/HEAD`'s branch |
+| `current` → `releases/<n>`, no `.git` anywhere | Nothing: the branch is unknown |
+
+**Unknown is normal,** not an error: a push never fails over it, and the site page says "Branch: unknown (no git checkout found, common with zero-downtime deploys)". An operator can set the branch there (**Branch**, "set"), and the manual value wins over what the collector finds. The same permissions as `.git/config` apply: the `heimdall` user needs to enter `.git` and read `HEAD`:
+
+```sh
+sudo setfacl -m u:heimdall:r /home/forge/example.com/.git/HEAD
+```
+
+**How it's sent:** in a request header, `X-Heimdall-Site-Branches: v1 <root> branch:<name>,<root> commit:<sha>` (just `v1` when none are known), at most about 4 KB, for the same reason as the repositories' header: a snapshot field would make an older hub refuse the push. A push without it (an older collector) leaves the hub's stored branches alone, and an older hub ignores it. `heimdall-collect --site-branches` prints the value; `HEIMDALL_DETECT_REPOS=0` turns it off too.
 
 **Known limitations**
 - `include` lines aren't followed, so `server_name`/`root`/`fastcgi_pass` must be in the vhost file itself. That's true for Forge, Ploi and most hand-written configs.
