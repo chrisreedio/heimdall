@@ -232,7 +232,7 @@ Zones aren't owned by an org, so the UI shows a record only to people who can se
 - **`events:no` / "not on this plan"**: the plan doesn't include the dataset in the API (common on Free); Heimdall uses sampled raw events if it can.
 - **"no permission" for security events**: add Zone > Analytics > Read.
 - **Radar: no permission**: add Account > Radar > Read (and, if that's not enough, User Details Read), or set `radar = false`.
-- **IP lists: "the token can't read IP lists"**: add Account > Account Filter Lists > Read to the read-only token (no Edit), then save the mapping or wait for the hourly sync.
+- **IP lists: "the token can't read IP lists"**: add Account > Account Filter Lists > Read to the read-only token (no Edit), and make sure the token's **Account Resources** include the account the lists are in. Then save the mapping or wait for the hourly sync. Heimdall finds the accounts from the zones the token reads, so the token doesn't need Account Settings: Read (before v0.4.50 it did, and without it the lists were never read).
 - **A record shows as dangling but it's yours**: label the address (it's then known), or check that the server reports from that address. A host that reports over IPv6 or through NAT has a different report address than its A record.
 - **Report addresses all show Cloudflare**: turn on `ingest.behind_proxy` and check `status` says "CF-Connecting-IP trusted only from Cloudflare's edge".
 

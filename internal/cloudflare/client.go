@@ -226,7 +226,10 @@ type Zone struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Status string `json:"status"`
-	Plan   struct {
+	// Account is the zone's account, so a token without Account
+	// Settings: Read (which /accounts needs) still finds its accounts.
+	Account Account `json:"account"`
+	Plan    struct {
 		Name     string `json:"name"`      // "Free Website", "Pro Website", ...
 		LegacyID string `json:"legacy_id"` // free, pro, business, enterprise
 	} `json:"plan"`

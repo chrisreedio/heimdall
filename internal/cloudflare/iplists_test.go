@@ -26,6 +26,9 @@ type fakeLists struct {
 	lists []IPList
 	items map[string][][]map[string]any // list ID → pages of items
 	deny  bool
+	// noAccounts: /accounts lists none (a token without Account
+	// Settings: Read); the zone still names the account.
+	noAccounts bool
 }
 
 func (f *fakeLists) handler() http.Handler {
@@ -43,8 +46,12 @@ func (f *fakeLists) handler() http.Handler {
 		}
 		base := "/accounts/" + testAccount + "/rules/lists"
 		switch {
+		case r.URL.Path == "/accounts" && f.noAccounts:
+			env(w, []Account{}, "")
 		case r.URL.Path == "/accounts":
 			env(w, []Account{{ID: testAccount, Name: "Acme"}}, "")
+		case r.URL.Path == "/zones":
+			env(w, []map[string]any{{"id": "z1", "name": "example.com", "status": "active", "account": map[string]string{"id": testAccount, "name": "Acme"}}}, "")
 		case f.deny && strings.HasPrefix(r.URL.Path, base):
 			w.WriteHeader(http.StatusForbidden)
 			io.WriteString(w, `{"success":false,"errors":[{"code":10000,"message":"Authentication error"}]}`)
@@ -185,6 +192,22 @@ func TestListSyncer(t *testing.T) {
 	}
 	if r.Resolve(ctx, 0, "203.0.113.4", "", now).Kind() != store.IPKindOffice {
 		t.Error("labels lost to a failed sync")
+	}
+}
+
+// A token that can't list accounts (no Account Settings: Read) still
+// reads the lists of its zones' account.
+func TestListSyncerAccountFromZones(t *testing.T) {
+	f := &fakeLists{noAccounts: true, lists: []IPList{{ID: "offices01", Name: "offices", Kind: "ip", NumItems: 1}}}
+	srv := httptest.NewTLSServer(f.handler())
+	t.Cleanup(srv.Close)
+	st := storetest.New(t)
+	sy := &ListSyncer{Client: &Client{Base: srv.URL, Token: testToken, HTTP: srv.Client()}, Store: st, Now: func() time.Time { return now }}
+	if err := sy.Sync(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if lists, err := st.CloudflareIPLists(t.Context()); err != nil || len(lists) != 1 || lists[0].AccountID != testAccount {
+		t.Errorf("lists: %+v %v", lists, err)
 	}
 }
 
