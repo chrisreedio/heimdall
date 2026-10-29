@@ -45,7 +45,29 @@ type aiView struct {
 	// Handoffs are "Hand off to agent" buttons per action index, on
 	// Composer steps only (see aiHandoffs).
 	Handoffs map[int][]handoffLink
-	Links    *aiLinker // links the org's hosts and sites in the text
+	// HandoffAll is a step's "All N" button, when it has several
+	// (handoffBatchLink).
+	HandoffAll map[int]handoffLink
+	Links      *aiLinker // links the org's hosts and sites in the text
+}
+
+// aiHandoffRow is a step's hand-off buttons for the "aihandoff" partial.
+type aiHandoffRow struct {
+	Links []handoffLink
+	All   *handoffLink
+}
+
+// HandoffRow is step i's hand-off buttons, or nil for none.
+func (v aiView) HandoffRow(i int) *aiHandoffRow {
+	links := v.Handoffs[i]
+	if len(links) == 0 {
+		return nil
+	}
+	row := &aiHandoffRow{Links: links}
+	if all, ok := v.HandoffAll[i]; ok {
+		row.All = &all
+	}
+	return row
 }
 
 // aiCmds is a step's commands for the "aicmds" partial; ID prefixes their

@@ -933,7 +933,7 @@ dl.conn dd { margin: 0; min-width: 0; }
    plan steps): the button, the site's repository and the confirm step. ── */
 .section-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .section-head h2 { margin-right: auto; }
-a.button.handoff-btn { padding: 5px 12px; font-size: 13px; }
+a.button.handoff-btn, a.button.handoff-all { padding: 5px 12px; font-size: 13px; }
 .site-handoff { margin: 0 0 12px; }
 .ai-handoff { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .repo-row { gap: 6px 10px; }
@@ -966,6 +966,9 @@ details.repo-pick form { flex-wrap: wrap; align-items: flex-end; max-width: 560p
 .handoff-note p { margin: 0; max-width: 95ch; }
 .handoff-send { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0; }
 .handoff-sites td { overflow-wrap: anywhere; }
+.handoff-item { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.handoff-item .handoff-h { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.handoff-item.limited { opacity: .65; }
 .handoff-sites .site-label { white-space: nowrap; }
 .handoff-sites tr.targeted td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
 .handoff-target { display: grid; gap: 8px; justify-items: start; margin: 0; }

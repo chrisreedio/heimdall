@@ -1,0 +1,87 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<nav class="crumbs" aria-label="Breadcrumb"><a href="{{.Back}}">{{if eq .Back "/"}}Dashboard{{else}}Back{{end}}</a> <span aria-hidden="true">/</span> Hand off</nav>
+<div class="head">
+  <h1>Hand off to agent{{if not .Sent}}: {{len .Items}} {{if eq (len .Items) 1}}repository{{else}}repositories{{end}}{{end}}</h1>
+</div>
+{{if .Sent}}
+<p class="notice{{if or .Fails .Skipped}} notice-bad{{end}}" role="status">Posted {{.SentN}} of {{len .Items}}.{{if .Fails}} {{.Fails}} couldn't be posted to Discord; the hub log has the details.{{end}}{{if .Skipped}} {{.Skipped}} skipped: handed to {{.Agent}} in the last few minutes.{{end}}</p>
+<section class="card handoff-card">
+  <div class="scroll"><table class="handoff-sites">
+    <thead><tr><th>Repository</th><th>Sites</th><th>Result</th></tr></thead>
+    <tbody>{{range $it := .Items}}<tr>
+      <td>{{with .RepoWeb}}<a href="{{.}}" rel="noopener noreferrer"><code class="path">{{$it.Short}}</code></a>{{else}}<code class="path">{{.Short}}</code>{{end}}</td>
+      <td class="small">{{len .Sites}}</td>
+      <td>{{if eq .Result "sent"}}<span class="pill ok">posted</span>{{else if eq .Result "failed"}}<span class="pill bad">not posted</span>{{else}}<span class="pill muted">skipped</span>{{end}}</td>
+    </tr>{{end}}</tbody>
+  </table></div>
+  <p><a class="button secondary" href="{{.Back}}">Done</a></p>
+</section>
+{{else}}
+<p class="muted handoff-lead">Ask a coding agent to open one pull request per repository below, each updating that repository's vulnerable packages. Each one is the same message its own button would post; check them below.</p>
+{{with .Notice}}<p class="notice notice-bad" role="alert">{{.}}</p>{{end}}
+
+<section class="card handoff-card">
+  <dl class="handoff-facts">
+    <div><dt>Agent</dt><dd>{{if gt (len .Agents) 1}}<form method="get" action="" class="handoff-agent">
+      {{range .Query}}<input type="hidden" name="o" value="{{.Org}}"><input type="hidden" name="h" value="{{.Host}}"><input type="hidden" name="r" value="{{.Root}}">{{end}}
+      <input type="hidden" name="back" value="{{.Back}}"><input type="hidden" name="target" value="{{.Target}}">
+      <select name="agent" aria-label="Agent" data-autosubmit>{{range .Agents}}<option value="{{.}}"{{if eq . $.Body.Agent}} selected{{end}}>{{.}}</option>{{end}}</select>
+      <button type="submit" class="secondary" data-autosubmit-hide>Show messages</button>
+    </form>{{else}}<strong>{{.Agent}}</strong>{{end}}</dd></div>
+    <div><dt>Pull requests</dt><dd>{{len .Items}}, one per repository</dd></div>
+  </dl>
+
+  <form method="get" action="" class="handoff-target">
+    {{range .Query}}<input type="hidden" name="o" value="{{.Org}}"><input type="hidden" name="h" value="{{.Host}}"><input type="hidden" name="r" value="{{.Root}}">{{end}}
+    <input type="hidden" name="back" value="{{.Back}}"><input type="hidden" name="agent" value="{{.Agent}}">
+    <fieldset>
+      <legend>Where the pull requests go</legend>
+      <label class="handoff-opt"><input type="radio" name="target" value="default"{{if eq .Target "default"}} checked{{end}} data-autosubmit>
+        <span><strong>Default branch</strong> <span class="muted small">One pull request per repository, against its default branch.</span></span></label>
+      <label class="handoff-opt"><input type="radio" name="target" value="each"{{if eq .Target "each"}} checked{{end}} data-autosubmit>
+        <span><strong>Each branch</strong> <span class="muted small">For a repository whose sites' branches are known, one pull request per branch, each changing only that branch's lock file. The others go to their default branch.</span></span></label>
+    </fieldset>
+    <button type="submit" class="secondary" data-autosubmit-hide>Show messages</button>
+  </form>
+
+  {{range $i, $it := .Items}}
+  <section class="handoff-item{{if .Limited}} limited{{end}}">
+    <h2 class="handoff-h">{{with .RepoWeb}}<a href="{{.}}" rel="noopener noreferrer"><code class="path">{{$it.Short}}</code></a>{{else}}<code class="path">{{.Short}}</code>{{end}}
+      <span class="muted small">{{len .Sites}} site{{if gt (len .Sites) 1}}s{{end}} · {{.Packages}} package{{if ne .Packages 1}}s{{end}}{{if eq .Target "each"}} · each branch{{end}}</span>
+      {{if not .Repo}}<span class="pill warn">repo unknown</span>{{end}}
+      {{if .Limited}}<span class="pill muted">skipped: handed to {{$.Body.Agent}} in the last few minutes</span>{{end}}</h2>
+    <div class="scroll"><table class="handoff-sites">
+      <thead><tr><th>Site</th><th>Branch</th><th>Installed</th>{{if ne .Target "default"}}<th>Pull request</th>{{end}}</tr></thead>
+      <tbody>{{range .Sites}}<tr{{if .Targeted}} class="targeted"{{end}}>
+        <td><a href="{{.URL}}">{{.Name}}</a>{{with .Label}} <span class="site-label label-{{.}}">{{.}}</span>{{end}}<br><span class="muted small">on {{.Host}}</span></td>
+        <td>{{if .Branch}}<code>{{.Branch}}</code>{{else}}<span class="pill muted">branch unknown</span>{{end}}</td>
+        <td class="small">{{.Versions}}</td>
+        {{if ne $it.Target "default"}}<td class="small">{{.Gets}}</td>{{end}}
+      </tr>{{end}}</tbody>
+    </table></div>
+    <details class="handoff-file">
+      <summary>The message{{if .Omitted}} <span class="muted small">({{.Omitted}} packages didn't fit; the attached file lists them all)</span>{{end}}</summary>
+      <pre class="handoff-msg">{{.Content}}</pre>
+      <p class="muted small">Attached file: <code>{{.FileName}}</code></p>
+    </details>
+  </section>
+  {{end}}
+
+  <div class="handoff-note small">
+    <p><strong>What this shares:</strong> for each repository, what its own hand-off shares: the package names, installed and fixed versions and advisories (in the attached files: with their CVEs, severity and known-exploited status), each site's host, name, path, branch, framework and PHP versions, the repository, and your display name. Everyone and every bot in that Discord channel can read it.</p>
+    <p><strong>Who it pings:</strong> only {{.Agent}}, once per repository. The messages allow no other mentions.</p>
+    <p><strong>The agent acts on them.</strong> The wording is fixed and every value comes from Heimdall's own data, never from the AI triage text.</p>
+  </div>
+
+  <form method="post" action="" class="actions handoff-send">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    {{range $i, $q := .Query}}<input type="hidden" name="o" value="{{$q.Org}}"><input type="hidden" name="h" value="{{$q.Host}}"><input type="hidden" name="r" value="{{$q.Root}}">{{with index $.Body.Items $i}}<input type="hidden" name="request_id" value="{{.RequestID}}"><input type="hidden" name="digest" value="{{.Digest}}">{{end}}{{end}}
+    <input type="hidden" name="back" value="{{.Back}}">
+    <input type="hidden" name="agent" value="{{.Agent}}">
+    <input type="hidden" name="target" value="{{.Target}}">
+    <button type="submit">Post {{len .Items}} to Discord</button>
+    <a class="button secondary" href="{{.Back}}">Cancel</a>
+  </form>
+</section>
+{{end}}
+{{end}}{{end}}
