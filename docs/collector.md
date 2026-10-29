@@ -365,6 +365,7 @@ On the hub's own box the collector's settings are in `/etc/heimdall-collect/coll
 | `heimdall-collect --push` | Send a snapshot to the hub |
 | `heimdall-collect --site-repos` | Print the site repositories a push would send (see [Site repositories](#site-repositories)) |
 | `heimdall-collect --site-branches` | Print the sites' checked-out branches a push would send (see [Site branches](#site-branches)) |
+| `heimdall-collect --php` | Print the PHP versions in use a push would send: the command line's and the running PHP-FPMs' (see [PHP in use](#php-in-use)) |
 | `heimdall-collect --deploy-watches` | Print the site paths watched for deploys (see [What's watched automatically](#whats-watched-automatically)) |
 | `heimdall-collect deployed` | Ask for a report in about a minute, from a deploy script, as any user; always exits `0` (see [`heimdall-collect deployed`](#heimdall-collect-deployed)) |
 | `heimdall-collect --version` | Print the collector version |
@@ -558,6 +559,18 @@ sudo setfacl -m u:heimdall:r /home/forge/example.com/.git/HEAD
 ```
 
 **How it's sent:** in a request header, `X-Heimdall-Site-Branches: v1 <root> branch:<name>,<root> commit:<sha>` (just `v1` when none are known), at most about 4 KB, for the same reason as the repositories' header: a snapshot field would make an older hub refuse the push. A push without it (an older collector) leaves the hub's stored branches alone, and an older hub ignores it. `heimdall-collect --site-branches` prints the value; `HEIMDALL_DETECT_REPOS=0` turns it off too.
+
+
+### PHP in use
+
+To tell an installed PHP version that nothing uses, the hub needs more than the sites' PHP-FPM sockets, so each push also says (Debian and Ubuntu):
+
+- **The command line's version:** where `/usr/bin/php` leads (the alternatives link), the `php` that cron jobs, `artisan` and queue workers run.
+- **Running PHP-FPMs:** each `/run/php/phpX.Y-fpm.pid` whose process exists, so a pool serving something Heimdall doesn't know about still counts as in use.
+
+`heimdall-collect --php` prints it: `v1 cli=8.4 fpm=8.3,8.4` (`-` for none), sent as `X-Heimdall-PHP` (a header, like the branches, so older hubs still accept the push). It reads two paths and changes nothing.
+
+On the hub, an installed PHP version is **not used** when no site's PHP-FPM runs it and its PHP-FPM isn't running. The host page marks it "not used" and its **Unused PHP** card gives, in order: a check that no cron, supervisor or systemd job calls `phpX.Y` by name (which Heimdall can't see), a dry run (`sudo apt-get purge -s …`, listing every package that would go, unversioned ones such as `php-cli` or `php-redis` included when they depend on it), and the removal. The removal lists that version's own packages (`phpX.Y`, `phpX.Y-*`). When the unused version is the command line's, it first points `php` at one that stays (`sudo update-alternatives --set php /usr/bin/php8.4`): one the sites use, else the newest other, which is then kept. The only PHP installed is never suggested. The daily brief and host explanation can suggest the same commands. Until a server's collector is 0.4.48 or newer, nothing is suggested for it.
 
 **Known limitations**
 - `include` lines aren't followed, so `server_name`/`root`/`fastcgi_pass` must be in the vhost file itself. That's true for Forge, Ploi and most hand-written configs.

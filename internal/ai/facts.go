@@ -433,6 +433,7 @@ func (d hostData) commands(full bool) ([]commandFact, report.Upgrade) {
 		}
 	}
 	out = append(out, oldKernelCommand(d.pm, d.rep.OldKernels, notRunning)...)
+	out = append(out, unusedPHPCommands(d.pm, d.rep.Runtimes)...)
 	if !rebootFirst {
 		out = append(out, rebootCommand(reboot, u.Kernel && cmd != "", u.RebootFindings > 0 && d.rep.NewerKernel != "")...)
 	}
@@ -636,6 +637,32 @@ func oldKernelCommand(pm string, pkgs []string, findings int) []commandFact {
 	}
 	return []commandFact{{Label: "Remove the older kernels that are installed but not running (their findings clear; no reboot needed, " +
 		"but afterwards there's no older kernel to boot)", Command: kernel.PurgePrefix + " " + strings.Join(names, " ")}}
+}
+
+// unusedPHPCommands remove the installed PHP versions nothing uses (no
+// site's PHP-FPM, no running PHP-FPM; report.PHPUse), pointing the command
+// line's php elsewhere first when it's one of them.
+func unusedPHPCommands(pm string, rts []report.Runtime) []commandFact {
+	if pm != "dpkg" {
+		return nil
+	}
+	var out []commandFact
+	seen := map[string]bool{}
+	for _, rt := range rts {
+		u := rt.Use
+		if u == nil || !u.Unused || seen[u.Minor] || len(u.Commands) == 0 {
+			continue
+		}
+		seen[u.Minor] = true
+		if u.CLITo != "" {
+			out = append(out, commandFact{Label: clip(fmt.Sprintf("Point the command line's php (cron, artisan, queue workers) at PHP %s, before removing PHP %s, which it runs now", u.CLITo, u.Minor), 300),
+				Command: report.PHPCLICommand(u.CLITo)})
+		}
+		out = append(out, commandFact{Label: clip(fmt.Sprintf("Remove PHP %s: installed, but no site's PHP-FPM uses it and its PHP-FPM isn't running "+
+			"(first check that no cron, supervisor or systemd job calls php%s by name, and see the list with apt-get purge -s)", u.Minor, u.Minor), 300),
+			Command: u.Commands[len(u.Commands)-1]})
+	}
+	return out
 }
 
 // rebootCommand is the reboot suggestion, when one is or will be needed.
