@@ -67,6 +67,8 @@ The installer sets up two scheduled tasks running as **`NT AUTHORITY\LocalServic
 
 **Upgrading:** download the new release's `install-windows.ps1`, `collect.ps1`, `SHA256SUMS` and `SHA256SUMS.sigstore.json` and run the installer again, the same way. It replaces `collect.ps1` and both tasks (an install from before v0.4.14 has its daily task replaced by the hourly one) and keeps the hub URL; press Enter at the token prompt to keep the current token. There's no `heimdall-collect upgrade` on Windows yet. When the hub runs a newer release, `collect.ps1 -Push` says so on stderr.
 
+**Changing the hub address:** `& 'C:\Program Files\Heimdall\collect.ps1' -SetHub https://new-ingest.example.com`, as Administrator. See [Moving to a new hub address](#moving-to-a-new-hub-address).
+
 **Try it without installing:** `powershell -File collect.ps1 -Print` shows exactly what would be sent.
 
 #### When Windows reports
@@ -366,6 +368,7 @@ On the hub's own box the collector's settings are in `/etc/heimdall-collect/coll
 | `heimdall-collect --deploy-watches` | Print the site paths watched for deploys (see [What's watched automatically](#whats-watched-automatically)) |
 | `heimdall-collect deployed` | Ask for a report in about a minute, from a deploy script, as any user; always exits `0` (see [`heimdall-collect deployed`](#heimdall-collect-deployed)) |
 | `heimdall-collect --version` | Print the collector version |
+| `sudo heimdall-collect set-hub https://…` | Report to another hub address from now on, once a test report there works (see [Moving to a new hub address](#moving-to-a-new-hub-address)) |
 
 **Send a report now:** `sudo systemctl start heimdall-collect.service` (with systemd), or `sudo -u heimdall heimdall-collect --push`. Run by hand without `HEIMDALL_URL` set, `--push` loads the installed `/etc/heimdall/collect.env` (or `/etc/heimdall-collect/collect.env`) the way the systemd unit does, if it's readable, owned by root and writable by nobody else. It still refuses to run as root. On a terminal, when it finds no settings, it says how to send one.
 
@@ -395,6 +398,39 @@ sudo heimdall-collect upgrade          # to the release the hub runs
 sudo heimdall-collect upgrade v0.4.12  # or a release you choose
 ```
 It runs as root (it replaces `/usr/local/bin/heimdall-collect`), reads the hub URL, token path and site settings from `collect.env` without executing it, asks the hub for its release with the server's token, downloads that release's `install.sh` from GitHub and checks it against `SHA256SUMS` before running it. Nothing runs automatically: like the hub, the collector never updates itself.
+
+## Moving to a new hub address
+
+To rename the hub's ingest hostname (say `ingest.example.com` to `new-ingest.example.com`):
+
+1. **Add the new name in front of the hub first:** DNS, the proxy or tunnel route, its certificate, and any firewall or allowlist rule. Keep the old name working.
+2. **On each server**, point the collector at the new name:
+
+   ```sh
+   sudo heimdall-collect set-hub https://new-ingest.example.com
+   ```
+
+   It sends a real report to the new address first, as the `heimdall` user with the server's own token and settings, the way the timer does. Only if the hub answers is `HEIMDALL_URL` changed in `collect.env` (written to a new file in the same directory and renamed over it, keeping its owner and mode; nothing else in the file changes). The timer, path units and cron job read `collect.env` on every run, and `upgrade` reads the hub from it, so there's nothing to restart.
+
+   ```
+   heimdall-collect: sending a test report to https://new-ingest.example.com
+   heimdall-collect: hub changed: https://ingest.example.com -> https://new-ingest.example.com (in /etc/heimdall/collect.env)
+   ```
+
+   If the new address doesn't answer 2xx, nothing changes, and it says what the hub there answered:
+
+   ```
+   heimdall-collect: sending a test report to https://new-ingest.example.com
+   heimdall-collect: hub rejected the token (HTTP 401); check /etc/heimdall/token
+   heimdall-collect: the hub at https://new-ingest.example.com doesn't know this server's token; is it the same hub?
+   heimdall-collect: not changed; still reporting to https://ingest.example.com
+   ```
+
+   A `401` means a hub answered but doesn't know this server's token: the name probably points at another hub. A `403` is usually something in front of the hub (a firewall, WAF or proxy rule), or the hub's `[ingest] allow_cidrs`. `could not reach` is DNS, routing or TLS. The same address as now is a no-op (`already reporting to …; nothing to change`). It runs as root and takes an `https://` URL only: a host, an optional port and path.
+
+   On Windows, as Administrator: `& 'C:\Program Files\Heimdall\collect.ps1' -SetHub https://new-ingest.example.com`. It does the same test first and then replaces `C:\ProgramData\Heimdall\hub-url`, which both scheduled tasks read. The test report runs as the Administrator, not LocalService; the next scheduled report is the usual one. Re-running `install-windows.ps1` later writes its `-HubUrl` again, so give it the new address.
+3. **Keep the old name** until every server reports on the new one: until `set-hub` has run on all of them (an ssh loop works, as for [enrollment](#many-servers-enrollment-keys)), and the old name's proxy or tunnel log has gone quiet.
+4. **Then set the hub's `[ingest] public_url`** in `heimdall.toml` to the new name and `sudo heimdall restart`, so the install commands on Add servers show it. After that, retire the old name.
 
 ## Privilege watch
 
@@ -556,6 +592,7 @@ sudo setfacl -m u:heimdall:r /home/forge/example.com/.git/HEAD
 | `hub returned HTTP N: …` | The hub answered with an error; the rest of the line is the first line of its reply. Check the hub's log (`journalctl -u heimdall`) at that time |
 | `rate limited by the hub (HTTP 429)` | It's running too often. The default limit is 30 per hour per host (`[ingest] rate_per_host`). |
 | `curl is required for --push` | Install curl |
+| `not changed; still reporting to https://…` (set-hub) | The test report to the new address failed; the lines before say what it answered. See [Moving to a new hub address](#moving-to-a-new-hub-address) |
 
 ## Testing changes to the collector
 

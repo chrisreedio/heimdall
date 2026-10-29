@@ -5,7 +5,8 @@
 #   heimdall-collect --print     write a snapshot (JSON) to stdout
 #   heimdall-collect --push      send a snapshot to the hub
 #
-# Read-only and unprivileged: it refuses to run as root, never changes the
+# Read-only and unprivileged: it refuses to run as root (except `upgrade`
+# and `set-hub`, which change only the collector itself), never changes the
 # system, makes one HTTPS request in --push mode, and ignores everything in
 # the hub's response except the status code.
 #
@@ -27,7 +28,7 @@ export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
-VERSION=0.4.44
+VERSION=0.4.45
 FORMAT=heimdall.snapshot/v4
 
 die() { printf 'heimdall-collect: %s\n' "$*" >&2; exit 1; }
@@ -1471,6 +1472,65 @@ upgrade() {
 	sh "$work/install.sh" "$@"
 }
 
+# set_hub URL: point this server at another hub address (a renamed ingest
+# hostname). A real report goes to URL first, as the heimdall user with the
+# installed settings and token, the way the timer sends one; only when the
+# hub there answers 2xx is HEIMDALL_URL rewritten in collect.env (a new file
+# in the same directory, renamed over it). The units and cron job read
+# collect.env on every run, and `upgrade` reads the hub from it, so nothing
+# else changes. Root only: collect.env is root's.
+set_hub() {
+	new=${1%/}
+	case $new in
+	https://* | http://127.0.0.1[:/]* | http://localhost[:/]*) ;; # as install.sh --hub
+	*) die "set-hub needs an https:// URL, like https://ingest.example.com" ;;
+	esac
+	# It goes into a file that's sourced: a host, an optional port and
+	# path, nothing else (no spaces, quotes, credentials or query).
+	if [ "$(printf '%s' "$new" | wc -l)" -ne 0 ] ||
+		! printf '%s\n' "$new" | grep -Eqx 'https?://([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(:[0-9]{1,5})?(/[A-Za-z0-9._~%/-]*)?'; then
+		die "not a hub URL: $1 (want https://host[:port][/path])"
+	fi
+	[ "$(id -u)" -eq 0 ] || die "run it as root: sudo heimdall-collect set-hub $new"
+	env_file=
+	for f in /etc/heimdall/collect.env /etc/heimdall-collect/collect.env; do
+		[ ! -r "$f" ] || { env_file=$f; break; }
+	done
+	[ -n "$env_file" ] || die "no collect.env found; install the collector with install.sh first"
+	old=$(sed -n 's/^HEIMDALL_URL=//p' "$env_file" | tail -n 1 | sed "s/^'\(.*\)'\$/\1/")
+	[ -n "$old" ] || die "$env_file doesn't name a hub; install the collector with install.sh first"
+	if [ "${old%/}" = "$new" ]; then
+		echo "heimdall-collect: already reporting to $new; nothing to change" >&2
+		return 0
+	fi
+	id heimdall >/dev/null 2>&1 || die "no heimdall user; install the collector with install.sh first"
+	case $0 in /*) self=$0 ;; *) self=$(pwd)/$0 ;; esac
+	case $self$env_file in *\'*) die "can't run $self as heimdall (a quote in its path)" ;; esac
+
+	echo "heimdall-collect: sending a test report to $new" >&2
+	rc=0
+	out=$(su -s /bin/sh heimdall -c "set -a; . '$env_file'; set +a; HEIMDALL_URL='$new'; export HEIMDALL_URL; exec /bin/sh '$self' --push" 2>&1) || rc=$?
+	[ -z "$out" ] || printf '%s\n' "$out" >&2
+	if [ "$rc" -ne 0 ]; then
+		case $out in
+		*'(HTTP 401)'*) echo "heimdall-collect: the hub at $new doesn't know this server's token; is it the same hub?" >&2 ;;
+		*'(HTTP 403)'*) echo "heimdall-collect: something at $new refused the report: a firewall or proxy in front of the hub, or the hub's [ingest] allow_cidrs" >&2 ;;
+		esac
+		die "not changed; still reporting to $old"
+	fi
+
+	dir=$(dirname "$env_file")
+	tmpf=$(mktemp "$dir/.collect.env.XXXXXX") || die "can't write in $dir"
+	trap 'rm -f "$tmpf"' EXIT
+	if ! { awk -v url="$new" '/^HEIMDALL_URL=/ { print "HEIMDALL_URL=" url; next } { print }' "$env_file" >"$tmpf" &&
+		chown "$(stat -c %u:%g "$env_file")" "$tmpf" &&
+		chmod "$(stat -c %a "$env_file")" "$tmpf" &&
+		mv -f "$tmpf" "$env_file"; }; then
+		die "couldn't update $env_file; still reporting to $old"
+	fi
+	echo "heimdall-collect: hub changed: $old -> $new (in $env_file)" >&2
+}
+
 # ── Main ────────────────────────────────────────────────────────────────────
 
 usage() {
@@ -1482,6 +1542,7 @@ usage: heimdall-collect --print | --push | --site-repos | --site-branches |
                                      --watch-privilege | --no-watch-privilege]
                                      [--watch-logins | --no-watch-logins]
                                      [--skip-signature-check]
+       sudo heimdall-collect set-hub https://NEW-HUB-ADDRESS
 
   --print       write a snapshot to stdout (for review or 'heimdall import')
   --push        send a snapshot to $HEIMDALL_URL using $HEIMDALL_TOKEN_FILE
@@ -1501,10 +1562,17 @@ usage: heimdall-collect --print | --push | --site-repos | --site-branches |
                 release's signed SHA256SUMS. A privilege or login watch option
                 changes it (see install.sh --help), even when already up
                 to date
+  set-hub       report to another hub address from now on: sends a report
+                there first, and changes HEIMDALL_URL in collect.env only
+                if the hub answers
 EOF
 	exit 2
 }
 
+if [ "${1:-}" = set-hub ] && [ $# -eq 2 ]; then
+	set_hub "$2"
+	exit 0
+fi
 if [ "${1:-}" = upgrade ] && [ $# -le 5 ]; then
 	shift
 	upgrade "$@"

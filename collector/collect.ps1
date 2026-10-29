@@ -12,6 +12,10 @@
             has been logged for 60 seconds, so a burst of them is one report
             (the "Heimdall collector (changes)" task runs this)
   -Version  print the collector version
+  -SetHub https://NEW-HUB-ADDRESS
+            report to another hub address from now on (as Administrator):
+            sends a report there first, and changes the hub URL in
+            C:\ProgramData\Heimdall\hub-url only if the hub answers
 
   Read-only and unprivileged (install-windows.ps1 runs it as LocalService):
   it reads the Uninstall registry keys, OS details, pending Windows updates,
@@ -29,12 +33,13 @@ param(
     [Parameter(ParameterSetName = 'Print')][switch]$Print,
     [Parameter(ParameterSetName = 'Push')][switch]$Push,
     [Parameter(ParameterSetName = 'Push')][switch]$AfterChanges,
-    [Parameter(ParameterSetName = 'Version')][switch]$Version
+    [Parameter(ParameterSetName = 'Version')][switch]$Version,
+    [Parameter(ParameterSetName = 'SetHub')][string]$SetHub
 )
 
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
-$script:CollectorVersion = '0.4.44'
+$script:CollectorVersion = '0.4.45'
 $script:Format = 'heimdall.snapshot/v3'
 
 # Drop control characters, quotes and backslashes; cap the length. The hub
@@ -375,10 +380,13 @@ function Get-WindowsInventory {
     }
 }
 
-function Send-HeimdallSnapshot([string]$json) {
-    $url = $env:HEIMDALL_URL
-    $urlFile = 'C:\ProgramData\Heimdall\hub-url' # written by install-windows.ps1
-    if (-not $url -and (Test-Path -LiteralPath $urlFile)) { $url = (Get-Content -LiteralPath $urlFile -Raw).Trim() }
+$script:HubUrlFile = 'C:\ProgramData\Heimdall\hub-url' # written by install-windows.ps1
+
+# Sends a snapshot to $Url, or else $env:HEIMDALL_URL, or else the hub-url file.
+function Send-HeimdallSnapshot([string]$json, [string]$Url = '') {
+    $url = $Url
+    if (-not $url) { $url = $env:HEIMDALL_URL }
+    if (-not $url -and (Test-Path -LiteralPath $script:HubUrlFile)) { $url = (Get-Content -LiteralPath $script:HubUrlFile -Raw).Trim() }
     # Plain http only to this machine (a local proxy or tests), as on Linux.
     if (-not $url -or -not ($url.StartsWith('https://') -or $url -match '^http://(127\.0\.0\.1|localhost|\[::1\])([:/]|$)')) {
         throw 'HEIMDALL_URL must be an https:// URL'
@@ -442,6 +450,60 @@ function Send-HeimdallSnapshot([string]$json) {
     }
 }
 
+# -SetHub URL: point this server at another hub address (a renamed ingest
+# hostname). A real report goes to URL first, with the server's token; only
+# when the hub there answers 2xx is the hub-url file replaced (a new file in
+# the same folder, swapped in with File.Replace, which keeps the old one's
+# permissions). The scheduled tasks read hub-url on every run. $Send sends
+# the test report (tests pass their own).
+function Set-HeimdallHub {
+    param(
+        [string]$Url,
+        [string]$UrlFile = $script:HubUrlFile,
+        [scriptblock]$Send = { param($u) Send-HeimdallSnapshot (ConvertTo-HeimdallJson (ConvertTo-HeimdallSnapshot (Get-WindowsInventory))) $u }
+    )
+    $new = $Url
+    if ($new.EndsWith('/')) { $new = $new.Substring(0, $new.Length - 1) }
+    if (-not ($new.StartsWith('https://') -or $new -match '\Ahttp://(127\.0\.0\.1|localhost)([:/]|\z)')) {
+        throw 'set-hub needs an https:// URL, like https://ingest.example.com'
+    }
+    # A host, an optional port and path, nothing else (no spaces, quotes,
+    # credentials or query), as on Linux.
+    if ($new -cnotmatch '\Ahttps?://([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(:[0-9]{1,5})?(/[A-Za-z0-9._~%/-]*)?\z') {
+        throw "not a hub URL: $Url (want https://host[:port][/path])"
+    }
+    if (-not (Test-Path -LiteralPath $UrlFile)) { throw "no $UrlFile; install the collector with install-windows.ps1 first" }
+    $old = (Get-Content -LiteralPath $UrlFile -Raw)
+    if ($null -eq $old) { $old = '' }
+    $old = $old.Trim()
+    if ($old.TrimEnd('/') -eq $new) {
+        [Console]::Error.WriteLine("heimdall-collect: already reporting to $new; nothing to change")
+        return
+    }
+    [Console]::Error.WriteLine("heimdall-collect: sending a test report to $new")
+    try {
+        & $Send $new
+    } catch {
+        $msg = $_.Exception.Message
+        [Console]::Error.WriteLine("heimdall-collect: $msg")
+        if ($msg -like '*(HTTP 401)*') {
+            [Console]::Error.WriteLine("heimdall-collect: the hub at $new doesn't know this server's token; is it the same hub?")
+        } elseif ($msg -like '*(HTTP 403)*') {
+            [Console]::Error.WriteLine("heimdall-collect: something at $new refused the report: a firewall or proxy in front of the hub, or the hub's [ingest] allow_cidrs")
+        }
+        throw "not changed; still reporting to $old"
+    }
+    $tmp = Join-Path (Split-Path -Parent $UrlFile) ('.hub-url.' + [guid]::NewGuid().ToString('N'))
+    try {
+        Set-Content -LiteralPath $tmp -Value $new -NoNewline -Encoding ASCII
+        [System.IO.File]::Replace($tmp, $UrlFile, [NullString]::Value)
+    } catch {
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+        throw "couldn't update ${UrlFile}: $($_.Exception.Message); still reporting to $old"
+    }
+    [Console]::Error.WriteLine("heimdall-collect: hub changed: $old -> $new (in $UrlFile)")
+}
+
 # -Push -AfterChanges: report once installs have settled, and again if more
 # were logged while that report ran (up to 3 reports). If the logs can't be
 # read, wait a minute and report once.
@@ -470,7 +532,13 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
     exit 1
 }
 try {
-    if ($Push -and $AfterChanges) {
+    if ($PSCmdlet.ParameterSetName -eq 'SetHub') {
+        if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
+                [Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            throw "run it as Administrator: collect.ps1 -SetHub $SetHub"
+        }
+        Set-HeimdallHub $SetHub
+    } elseif ($Push -and $AfterChanges) {
         Send-HeimdallAfterChanges
     } else {
         $json = ConvertTo-HeimdallJson (ConvertTo-HeimdallSnapshot (Get-WindowsInventory))
