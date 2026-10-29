@@ -26,11 +26,11 @@ type tailnetView struct {
 	UpdateAvailable bool
 	Online          bool
 	LastSeen        *time.Time
-	SeenAgo         string // "3 days ago"
+	SeenAgo         template.HTML // "3 days ago"
 	KeyExpiry       *time.Time
 	KeyExpired      bool
-	KeyExpiresSoon  bool   // within keySoon
-	KeyDate         string // "Oct 30, 2026"
+	KeyExpiresSoon  bool          // within keySoon
+	KeyDate         template.HTML // "Oct 30, 2026", in the viewer's time zone
 	SyncedAt        *time.Time
 }
 
@@ -60,10 +60,10 @@ func (s *server) tailnetFor(ctx context.Context, hostID int64, name string) (*ta
 	v.On, v.Name, v.DNSName, v.Person = true, tailscale.DeviceName(d), d.Name, d.User
 	v.Addresses, v.Tags, v.OS, v.ClientVersion, v.UpdateAvailable, v.Online = d.Addresses, d.Tags, d.OS, d.ClientVersion, d.UpdateAvailable, d.Online
 	if !d.LastSeen.IsZero() {
-		v.LastSeen, v.SeenAgo = &d.LastSeen, dayAgo(&d.LastSeen, s.now())
+		v.LastSeen, v.SeenAgo = &d.LastSeen, dayAgoHTML(&d.LastSeen, s.now())
 	}
 	if !d.KeyExpiry.IsZero() {
-		v.KeyExpiry, v.KeyDate = &d.KeyExpiry, d.KeyExpiry.Local().Format("Jan 2, 2006")
+		v.KeyExpiry, v.KeyDate = &d.KeyExpiry, dateHTML(d.KeyExpiry)
 		left := d.KeyExpiry.Sub(s.now())
 		v.KeyExpired, v.KeyExpiresSoon = left <= 0, left > 0 && left < keySoon
 	}

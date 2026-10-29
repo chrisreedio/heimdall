@@ -576,12 +576,11 @@ var funcs = template.FuncMap{
 	// their partials (templates/ai.html).
 	"aicmds":  func(v aiView, a ai.Action, id string) aiCmds { return aiCmds{V: v, A: a, ID: id} },
 	"ainotes": func(l *aiLinker, n ai.Notes) aiNotes { return aiNotes{Links: l, Notes: n} },
-	"time": func(t time.Time) string {
-		if t.IsZero() {
-			return "never"
-		}
-		return t.Local().Format("Jan 2, 2006 3:04 PM")
-	},
+	// time is an instant in UTC, for tooltips; ts shows it in the viewer's
+	// time zone (times.go), iso is its datetime attribute.
+	"time": utcText,
+	"ts":   tsHTML,
+	"iso":  func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
 	"day": func(t time.Time) string {
 		if t.IsZero() {
 			return ""
@@ -625,8 +624,10 @@ var funcs = template.FuncMap{
 		}
 		return asDay(*t).Format("Monday, January 2, 2006")
 	},
-	"dayAgo": func(t *time.Time) string { return dayAgo(t, time.Now()) },
-	"ago":    ago,
+	"dayAgo": func(t *time.Time) template.HTML { return dayAgoHTML(t, time.Now()) },
+	// dayAgoText is dayAgo in UTC, for attributes.
+	"dayAgoText": func(t *time.Time) string { return dayAgo(t, time.Now()) },
+	"ago":        ago,
 	// sev maps a severity to a CSS class suffix from a fixed set.
 	"sev": func(s string) string {
 		if severities[s] {
@@ -757,15 +758,16 @@ func agoAt(t, now time.Time) string {
 	return fmt.Sprintf("%dd ago", int(d.Hours()/24))
 }
 
-// dayAgo describes a date relative to today: "Today 2:01 PM (3h ago)" and
-// "Yesterday 4:10 PM" for timestamps ("today" and "yesterday" for plain
+// dayAgo describes a date relative to today, in UTC (app.js redraws it in
+// the viewer's time zone: dayAgoHTML): "Today 2:01 PM UTC (3h ago)" and
+// "Yesterday 4:10 PM UTC" for timestamps ("today" and "yesterday" for plain
 // dates), "3 days ago", then "Oct 23, 2026" once it's a month or more back.
 func dayAgo(t *time.Time, now time.Time) string {
 	if t == nil {
 		return ""
 	}
 	y1, m1, d1 := asDay(*t).Date()
-	y2, m2, d2 := now.Local().Date()
+	y2, m2, d2 := now.UTC().Date()
 	days := int(time.Date(y2, m2, d2, 0, 0, 0, 0, time.UTC).Sub(time.Date(y1, m1, d1, 0, 0, 0, 0, time.UTC)).Hours() / 24)
 	switch {
 	case days < 0:
@@ -773,26 +775,21 @@ func dayAgo(t *time.Time, now time.Time) string {
 	case days == 0 && isPlainDate(*t):
 		return "today"
 	case days == 0:
-		return "Today " + t.Local().Format("3:04 PM") + " (" + agoAt(*t, now) + ")"
+		return "Today " + t.UTC().Format("3:04 PM") + " UTC (" + agoAt(*t, now) + ")"
 	case days == 1 && isPlainDate(*t):
 		return "yesterday"
 	case days == 1:
-		return "Yesterday " + t.Local().Format("3:04 PM")
+		return "Yesterday " + t.UTC().Format("3:04 PM") + " UTC"
 	case days < 30:
 		return fmt.Sprintf("%d days ago", days)
 	}
 	return t.Format("Jan 2, 2006")
 }
 
-// asDay is t in the viewer's time zone, except plain dates (lifecycle
-// dates, stored as midnight UTC), which would otherwise shift to the day
-// before for anyone west of UTC.
-func asDay(t time.Time) time.Time {
-	if isPlainDate(t) {
-		return t.UTC()
-	}
-	return t.Local()
-}
+// asDay is the day t falls on in UTC, as the server writes it: plain dates
+// (lifecycle dates, stored as midnight UTC) are that day everywhere, and
+// app.js moves instants to the viewer's day (times.go).
+func asDay(t time.Time) time.Time { return t.UTC() }
 
 // isPlainDate reports whether t is a date without a time (midnight UTC).
 func isPlainDate(t time.Time) bool {

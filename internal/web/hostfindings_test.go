@@ -164,9 +164,9 @@ func TestFixCommandKernel(t *testing.T) {
 }
 
 func TestDayAgo(t *testing.T) {
-	now := time.Date(2026, 10, 25, 15, 0, 0, 0, time.Local)
+	now := time.Date(2026, 10, 25, 15, 0, 0, 0, time.UTC)
 	at := func(y int, m time.Month, d int) *time.Time {
-		v := time.Date(y, m, d, 9, 0, 0, 0, time.Local)
+		v := time.Date(y, m, d, 9, 0, 0, 0, time.UTC)
 		return &v
 	}
 	plain := func(y int, m time.Month, d int) *time.Time { // a date without a time
@@ -176,7 +176,7 @@ func TestDayAgo(t *testing.T) {
 	for _, c := range []struct {
 		t    *time.Time
 		want string
-	}{{at(2026, 10, 25), "Today 9:00 AM (6h ago)"}, {at(2026, 10, 24), "Yesterday 9:00 AM"}, {at(2026, 10, 22), "3 days ago"},
+	}{{at(2026, 10, 25), "Today 9:00 AM UTC (6h ago)"}, {at(2026, 10, 24), "Yesterday 9:00 AM UTC"}, {at(2026, 10, 22), "3 days ago"},
 		{plain(2026, 10, 25), "today"}, {plain(2026, 10, 24), "yesterday"},
 		{at(2026, 9, 1), "Sep 1, 2026"}, {at(2026, 11, 2), "Nov 2, 2026"}, {nil, ""}} {
 		if got := dayAgo(c.t, now); got != c.want {
@@ -233,5 +233,25 @@ func TestHostPageCalm(t *testing.T) {
 	}
 	if hosts := e.get("/hosts?only=watch", signedIn(e)).Body.String(); !strings.Contains(hosts, `href="/hosts/acme/web-01"`) || !strings.Contains(hosts, `data-label="To watch"><span class="sub-warn">1</span>`) {
 		t.Error("the host list should show web-01 to watch")
+	}
+}
+
+// Instants carry their UTC time for app.js to redraw in the viewer's time
+// zone, with UTC as the tooltip; plain dates and attributes stay text.
+func TestLocalTimes(t *testing.T) {
+	at := time.Date(2026, 10, 29, 19, 14, 0, 0, time.UTC)
+	if got, want := string(tsHTML(at)), `<time datetime="2026-10-29T19:14:00Z" data-ts="datetime" title="Oct 29, 2026 7:14 PM UTC">Oct 29, 2026 7:14 PM UTC</time>`; got != want {
+		t.Errorf("tsHTML = %s\nwant %s", got, want)
+	}
+	if got := tsHTML(time.Time{}); got != "never" {
+		t.Errorf("zero = %s", got)
+	}
+	now := at.Add(3 * time.Hour)
+	if got := string(dayAgoHTML(&at, now)); !strings.Contains(got, `data-ts="dayago"`) || !strings.Contains(got, ">Today 7:14 PM UTC (3h ago)<") {
+		t.Errorf("dayAgoHTML = %s", got)
+	}
+	plain := time.Date(2026, 10, 29, 0, 0, 0, 0, time.UTC)
+	if got := dayAgoHTML(&plain, now); got != "today" {
+		t.Errorf("plain date = %s", got)
 	}
 }

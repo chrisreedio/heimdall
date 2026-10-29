@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html/template"
 	"net/http"
 	"slices"
 	"strconv"
@@ -55,8 +56,8 @@ type banRow struct {
 	Hosts     []bans.Host // the viewer's
 	HostsMore int         // other orgs' hosts, counted only
 	Days      int
-	Until     string // "Nov 1, 2026"
-	Left      string // "in 3 days"
+	Until     template.HTML // "Nov 1, 2026", in the viewer's time zone
+	Left      string        // "in 3 days"
 }
 
 func (s *server) banRow(v *auth.Viewer, b store.Ban) banRow {
@@ -67,7 +68,7 @@ func (s *server) banRow(v *auth.Viewer, b store.Ban) banRow {
 	}
 	r.Hosts, r.HostsMore = visibleHosts(v, ev.Hosts)
 	if !b.ExpiresAt.IsZero() {
-		r.Until = b.ExpiresAt.Local().Format("Jan 2, 2006")
+		r.Until = dateHTML(b.ExpiresAt)
 		r.Left = untilText(b.ExpiresAt.Sub(s.now()))
 	}
 	return r

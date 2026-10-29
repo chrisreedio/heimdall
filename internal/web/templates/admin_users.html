@@ -18,10 +18,10 @@
         <span class="badge">{{.OrgSlug}}: {{.Role}}{{if eq .Source "entra_app_role"}} (app role){{end}}</span>
         {{if ne .Source "entra_app_role"}}<button type="submit" class="link">revoke</button>{{end}}
       </form>{{else}}<span class="muted">none</span>{{end}}</td>
-    <td>{{time .LastLoginAt}}</td>
+    <td>{{ts .LastLoginAt}}</td>
     {{if $.Body.MCP}}<td>{{$uid := .ID}}{{range .Tokens}}<form method="post" action="/admin/users/mcp-revoke" class="inline">
         <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="user" value="{{$uid}}"><input type="hidden" name="id" value="{{.ID}}">
-        <span class="badge" title="{{if .Threats}}Threat list. {{end}}Last used: {{if .LastUsed}}{{dayAgo .LastUsed}}{{else}}never{{end}}">{{.Name}}{{if .Threats}} (threat list){{end}}</span>
+        <span class="badge" title="{{if .Threats}}Threat list. {{end}}Last used: {{if .LastUsed}}{{dayAgoText .LastUsed}}{{else}}never{{end}}">{{.Name}}{{if .Threats}} (threat list){{end}}</span>
         <button type="submit" class="link" aria-label="Revoke token {{.Name}}">revoke</button>
       </form>{{else}}<span class="muted">none</span>{{end}}</td>{{end}}
     <td><div class="user-status"><span>{{if .Disabled}}disabled{{else}}active{{end}}</span>

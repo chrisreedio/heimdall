@@ -272,3 +272,53 @@ document.addEventListener("DOMContentLoaded", function () {
   }
   update();
 });
+
+// Times: the server writes instants in UTC (<time data-ts>, and snapshot
+// <option>s with data-at); show them in this browser's time zone, named
+// ("Oct 29, 2026 2:14 PM CDT"). Their tooltips keep UTC. data-ts is
+// "datetime", "date", or "dayago" (web.dayAgo's wording, with today and
+// yesterday as they are here). Without JavaScript the UTC text stands.
+document.addEventListener("DOMContentLoaded", function () {
+  if (!window.Intl || !Intl.DateTimeFormat.prototype.formatToParts) return;
+  var opts = { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" };
+  var fmt;
+  try { fmt = new Intl.DateTimeFormat("en-US", opts); } catch (e) { return; }
+  function parts(d) {
+    var p = {};
+    fmt.formatToParts(d).forEach(function (x) { p[x.type] = x.value; });
+    return p;
+  }
+  function date(p) { return p.month + " " + p.day + ", " + p.year; }
+  function clock(p) { return p.hour + ":" + p.minute + " " + p.dayPeriod + " " + p.timeZoneName; }
+  function ago(d, now) {
+    var m = Math.floor((now - d) / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return m + "m ago";
+    if (m < 48 * 60) return Math.floor(m / 60) + "h ago";
+    return Math.floor(m / 1440) + "d ago";
+  }
+  // dayNumber counts days in this time zone, so their difference is how
+  // many midnights apart two instants are here.
+  function dayNumber(d) { return Math.round(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / 864e5); }
+  function text(kind, d, now) {
+    var p = parts(d);
+    if (kind === "date") return date(p);
+    if (kind === "dayago") {
+      var days = dayNumber(now) - dayNumber(d);
+      if (days === 0) return "Today " + clock(p) + " (" + ago(d, now) + ")";
+      if (days === 1) return "Yesterday " + clock(p);
+      if (days > 1 && days < 30) return days + " days ago";
+      return date(p);
+    }
+    return date(p) + " " + clock(p);
+  }
+  var now = new Date();
+  document.querySelectorAll("time[data-ts]").forEach(function (el) {
+    var d = new Date(el.getAttribute("datetime"));
+    if (!isNaN(d)) el.textContent = text(el.getAttribute("data-ts"), d, now);
+  });
+  document.querySelectorAll("option[data-at]").forEach(function (el) {
+    var d = new Date(el.getAttribute("data-at"));
+    if (!isNaN(d)) el.textContent = (el.getAttribute("data-prefix") || "") + text(el.getAttribute("data-ts"), d, now);
+  });
+});

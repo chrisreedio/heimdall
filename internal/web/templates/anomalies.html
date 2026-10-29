@@ -19,7 +19,7 @@
   <thead><tr>{{if $bulk}}<th class="sel"><input type="checkbox" data-bulk-all hidden aria-label="Select every anomaly you can triage" title="Select all"></th>{{end}}<th>Detected</th><th>Host</th><th>Severity</th><th>Signal</th><th>Summary</th><th>Triage</th></tr></thead>
   <tbody>{{range .Items}}<tr>
     {{if $bulk}}<td class="sel" data-label="">{{if .CanOperate}}<input type="checkbox" name="id" value="{{.ID}}" form="bulk" data-bulk-row aria-label="Select {{.Rule}} on {{.Host.Name}}">{{end}}</td>{{end}}
-    <td>{{time .DetectedAt}}</td>
+    <td>{{ts .DetectedAt}}</td>
     <td><a href="{{hostURL .Host.OrgSlug .Host.Name}}">{{.Host.Name}}</a></td>
     <td><span class="badge sev-{{sev .Severity}}">{{.Severity}}</span></td>
     <td>{{.Rule}}</td>

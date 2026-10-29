@@ -37,7 +37,7 @@ func TestHostPageTailnet(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := page()
-	for _, want := range []string{`id="tailnet"`, `title="web-01.tail1234.ts.net">web-01`, "last seen 3 days ago", ">tag:server</span>",
+	for _, want := range []string{`id="tailnet"`, `title="web-01.tail1234.ts.net">web-01`, `last seen <time datetime=`, `>3 days ago</time>`, ">tag:server</span>",
 		"Tailscale 1.88.0", "node key expires", "<code>100.64.0.5</code> · <code>fd7a:115c:a1e0::5</code>"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("host page missing %q", want)

@@ -4,6 +4,7 @@ package web
 
 import (
 	"fmt"
+	"html/template"
 	"net/http"
 	"strconv"
 	"strings"
@@ -26,8 +27,8 @@ var enrollTTLs = []struct {
 
 type enrollRow struct {
 	store.EnrollKey
-	Status  string // active, expired, used up, revoked
-	Expires string // "in 23 hours", "Oct 31, 2026"
+	Status  string        // active, expired, used up, revoked
+	Expires template.HTML // "in 23 hours", "Oct 31, 2026"
 }
 
 type enrollBody struct {
@@ -216,15 +217,15 @@ func (s *server) enrollDecide(approve bool) func(http.ResponseWriter, *http.Requ
 
 // expiresIn is when a key stops working, for people: "in 40 minutes",
 // "in 23 hours", or a date further out (or for one already past).
-func expiresIn(t, now time.Time) string {
+func expiresIn(t, now time.Time) template.HTML {
 	d := t.Sub(now)
 	switch {
 	case d <= 0:
-		return t.Local().Format("Jan 2, 2006")
+		return dateHTML(t)
 	case d < time.Hour:
-		return "in " + plural(int(d.Minutes())+1, "minute", "minutes")
+		return template.HTML("in " + plural(int(d.Minutes())+1, "minute", "minutes"))
 	case d < 48*time.Hour:
-		return "in " + plural(int(d.Hours()), "hour", "hours")
+		return template.HTML("in " + plural(int(d.Hours()), "hour", "hours"))
 	}
-	return t.Local().Format("Jan 2, 2006")
+	return dateHTML(t)
 }

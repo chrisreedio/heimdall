@@ -47,7 +47,7 @@ several an "All N" button for them all (handoffbatch.go). */}}
   {{template "ainotes" (ainotes $v.Links .Notes)}}
   {{end}}
   {{template "aistatus" .}}
-  {{with .At}}<p class="muted small ai-foot">Generated {{time .}} by {{$v.Deployment}} · advisory only, check before acting</p>{{end}}
+  {{with .At}}<p class="muted small ai-foot">Generated {{ts .}} by {{$v.Deployment}} · advisory only, check before acting</p>{{end}}
 </section>
 {{end}}{{end}}{{end}}
 
