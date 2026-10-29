@@ -38,23 +38,29 @@ type handoffLimiter struct {
 	last map[string]time.Time
 }
 
-// allow records an attempt for key unless one was made within handoffEvery.
-func (l *handoffLimiter) allow(key string, now time.Time) bool {
+// allow records an attempt for every key unless one of them had one
+// within handoffEvery. It returns the index of the first key that did, or
+// -1 when the attempt is allowed (and recorded for all of them).
+func (l *handoffLimiter) allow(now time.Time, keys ...string) int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.last == nil {
 		l.last = map[string]time.Time{}
 	}
-	if t, ok := l.last[key]; ok && now.Sub(t) < handoffEvery {
-		return false
+	for i, key := range keys {
+		if t, ok := l.last[key]; ok && now.Sub(t) < handoffEvery {
+			return i
+		}
 	}
 	for k, t := range l.last {
 		if now.Sub(t) >= handoffEvery {
 			delete(l.last, k)
 		}
 	}
-	l.last[key] = now
-	return true
+	for _, key := range keys {
+		l.last[key] = now
+	}
+	return -1
 }
 
 // handoffNotices are the fixed messages the site page can show after one.
@@ -134,32 +140,86 @@ func siteName(site report.Site) string {
 	return ""
 }
 
-// handoffLink is a "Hand off to agent" button for one site.
+// handoffLink is a "Hand off to agent" button: for one site, or for a
+// repository that several of the step's sites deploy.
 type handoffLink struct {
 	Host string
-	Site string // the button's label when a step covers several sites: the site's name (with its host when another host has one of that name)
-	URL  string
+	// Site is the button's label when there are several, or when it's a
+	// repository's: the repository's short name ("acme/app"), or the
+	// site's name (with its host when another host has one of that name).
+	Site  string
+	Title string // the tooltip: which sites a repository's button covers
+	URL   string
 }
 
 // handoffHost is a host of an AI plan that the viewer may hand off from:
-// its own org's slug (so the links never assume one org) and its report.
+// its own org's slug (so the links never assume one org), its report, and
+// its sites' repositories and labels by root.
 type handoffHost struct {
-	Org  string
-	Host report.Host
+	Org    string
+	Host   report.Host
+	Repos  map[string]string // root → repository (store.SiteRepo.Repo); absent when unknown
+	Labels map[string]string // root → production, staging or development
 }
 
-// aiHandoffs adds hand-off buttons to the AI plan's Composer steps: one
-// per (host, site) that has a fixable finding in a package the step's
-// (allowlisted) composer update command for that host names. A command
-// that knows its sites (ai.Command.Sites) offers only those. hosts are the
+// handoffHostsOf builds aiHandoffs' hosts for an org's report: each host's
+// site repositories and labels (set, or suggested from the names).
+func (s *server) handoffHostsOf(ctx context.Context, orgID int64, hosts []report.Host) (map[string]handoffHost, error) {
+	repos, err := s.st.SiteReposByOrg(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	labels, err := s.st.SiteLabelsByName(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]handoffHost{}
+	for _, h := range hosts {
+		hh := handoffHost{Org: h.Org, Host: h, Repos: map[string]string{}, Labels: map[string]string{}}
+		for _, site := range h.Sites {
+			key := store.SiteLabelKey(h.Org, h.Name, site.Root)
+			if r := repos[key].Repo(); r != "" {
+				hh.Repos[site.Root] = r
+			}
+			if l, ok := labels[key]; ok {
+				hh.Labels[site.Root] = l
+			} else {
+				hh.Labels[site.Root] = suggestSiteLabel(site.ServerNames)
+			}
+		}
+		out[h.Name] = hh
+	}
+	return out, nil
+}
+
+// handoffCand is a site a Composer step can be handed off for.
+type handoffCand struct {
+	link        handoffLink
+	host, root  string
+	name, label string
+	repo        string // handoff.RepoKey of its repository, "" when unknown
+	short       string // handoff.RepoShort
+	hits        int    // its fixable findings in the step's packages
+	versions    string // those findings' packages and installed versions
+}
+
+// aiHandoffs adds hand-off buttons to the AI plan's Composer steps. A site
+// is offered when it has a fixable finding in a package the step's
+// (allowlisted) composer update command for its host names; a command that
+// knows its sites (ai.Command.Sites) offers only those. hosts are the
 // plan's hosts the viewer may hand off from; others get no button. OS
 // patching and reboots aren't pull requests, so they never get one.
+//
+// The agent opens a pull request against a repository, so sites that
+// deploy the same one (staging and production, say) share one button,
+// labelled by the repository and opening its representative site (see
+// handoffRep). A site with no known repository keeps its own button.
 func aiHandoffs(view *aiView, hosts map[string]handoffHost) {
 	if view == nil || view.Result == nil || len(hosts) == 0 {
 		return
 	}
 	for i, a := range view.Result.Actions {
-		var links, named []handoffLink
+		var cands, named []handoffCand
 		text := strings.ToLower(a.Title + " " + a.Why)
 		seen := map[string]bool{}
 		for _, c := range a.Commands {
@@ -183,47 +243,140 @@ func aiHandoffs(view *aiView, hosts map[string]handoffHost) {
 					if (len(only) > 0 && !slices.Contains(only, label) && !slices.Contains(only, site.Root)) || seen[name+"\x00"+site.Root] {
 						continue
 					}
-					hit := slices.ContainsFunc(handoffFindings(hh.Host, site.Root), func(f handoff.Finding) bool {
-						return f.Ecosystem == "composer" && slices.Contains(pkgs, f.Package)
-					})
-					if !hit {
+					var versions []string
+					for _, f := range handoffFindings(hh.Host, site.Root) {
+						if f.Ecosystem == "composer" && slices.Contains(pkgs, f.Package) {
+							versions = append(versions, f.Package+"@"+f.Installed)
+						}
+					}
+					if len(versions) == 0 {
 						continue
 					}
+					slices.Sort(versions)
 					seen[name+"\x00"+site.Root] = true
-					l := handoffLink{Host: name, Site: label, URL: handoffURL(hh.Org, name, site.Root, "")}
-					links = append(links, l)
+					repo := hh.Repos[site.Root]
+					cand := handoffCand{link: handoffLink{Host: name, Site: label, URL: handoffURL(hh.Org, name, site.Root, "")},
+						host: name, root: site.Root, name: label, label: hh.Labels[site.Root],
+						repo: handoff.RepoKey(repo), short: handoff.RepoShort(repo),
+						hits: len(versions), versions: strings.Join(slices.Compact(versions), " ")}
+					cands = append(cands, cand)
 					// A step about one site names it (its domain or root): offer only that one.
 					if n := strings.ToLower(siteName(site)); (n != "" && strings.Contains(text, n)) || strings.Contains(text, strings.ToLower(site.Root)) {
-						named = append(named, l)
+						named = append(named, cand)
 					}
 				}
 			}
 		}
 		if len(named) > 0 {
-			links = named
+			// Its repository's other sites stay: one pull request covers them.
+			cands = slices.DeleteFunc(cands, func(c handoffCand) bool {
+				return !slices.ContainsFunc(named, func(n handoffCand) bool {
+					return n.host == c.host && n.root == c.root || n.repo != "" && n.repo == c.repo
+				})
+			})
 		}
-		switch {
-		case len(links) == 1:
-			links[0].Site = ""
-		case len(links) > 1:
-			// Two hosts can serve a site of the same name: say which host.
-			clash := map[string]bool{}
-			for _, l := range links {
-				clash[l.Site] = clash[l.Site] || slices.ContainsFunc(links, func(o handoffLink) bool { return o.Site == l.Site && o.Host != l.Host })
-			}
-			for j := range links {
-				if clash[links[j].Site] {
-					links[j].Site = links[j].Host + " · " + links[j].Site
-				}
-			}
-		}
-		if len(links) > 0 {
+		if links := handoffLinks(cands); len(links) > 0 {
 			if view.Handoffs == nil {
 				view.Handoffs = map[int][]handoffLink{}
 			}
 			view.Handoffs[i] = links
 		}
 	}
+}
+
+// handoffLinks turns a step's sites into its buttons: one per repository,
+// then one per site with none, each in the order its first site came.
+func handoffLinks(cands []handoffCand) []handoffLink {
+	groups := map[string][]handoffCand{}
+	var repos []string // keys, in order
+	var sites []handoffLink
+	for _, c := range cands {
+		switch {
+		case c.repo == "":
+			sites = append(sites, c.link)
+		case groups[c.repo] == nil:
+			repos = append(repos, c.repo)
+			fallthrough
+		default:
+			groups[c.repo] = append(groups[c.repo], c)
+		}
+	}
+	// Two repositories with one short name (github.com/acme/app and
+	// gitlab.com/acme/app): label those by their full key.
+	shorts := map[string]int{}
+	for _, key := range repos {
+		shorts[groups[key][0].short]++
+	}
+	var links []handoffLink
+	for _, key := range repos {
+		g := groups[key]
+		rep := handoffRep(g)
+		l := rep.link
+		l.Site = g[0].short
+		if shorts[l.Site] > 1 {
+			l.Site = key
+		}
+		l.Title = handoffRepoTitle(g, rep)
+		links = append(links, l)
+	}
+	if len(links)+len(sites) == 1 && (len(sites) == 1 || len(groups[repos[0]]) == 1) {
+		links = append(links, sites...)
+		links[0].Site = "" // the step's only button, for one site: "Hand off to agent"
+		return links
+	}
+	// Two hosts can serve a site of the same name: say which host.
+	clash := map[string]bool{}
+	for _, l := range sites {
+		clash[l.Site] = clash[l.Site] || slices.ContainsFunc(sites, func(o handoffLink) bool { return o.Site == l.Site && o.Host != l.Host })
+	}
+	for j := range sites {
+		if clash[sites[j].Site] {
+			sites[j].Site = sites[j].Host + " · " + sites[j].Site
+		}
+	}
+	return append(links, sites...)
+}
+
+// handoffRep picks the site a repository's button opens: the one with the
+// most of the step's fixable findings (so the pull request covers the
+// most), then a production site, then by name, host and root.
+func handoffRep(g []handoffCand) handoffCand {
+	return slices.MinFunc(g, func(a, b handoffCand) int {
+		return cmp.Or(
+			cmp.Compare(b.hits, a.hits),
+			cmp.Compare(rank(a.label != "production"), rank(b.label != "production")),
+			cmp.Compare(a.name, b.name), cmp.Compare(a.host, b.host), cmp.Compare(a.root, b.root))
+	})
+}
+
+func rank(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// handoffRepoTitle is a repository button's tooltip: the sites it covers,
+// the one whose findings it sends, and whether the others differ.
+func handoffRepoTitle(g []handoffCand, rep handoffCand) string {
+	name := func(c handoffCand) string { return c.host + " · " + c.name }
+	if len(g) == 1 {
+		return "Opens a pull request on " + g[0].short + " for " + name(rep)
+	}
+	var b strings.Builder
+	b.WriteString("One pull request on " + g[0].short + " for " + strconv.Itoa(len(g)) + " sites: ")
+	for j, c := range g {
+		if j > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(name(c))
+	}
+	b.WriteString(". It sends " + name(rep) + "'s findings")
+	if slices.ContainsFunc(g, func(c handoffCand) bool { return c.versions != rep.versions }) {
+		b.WriteString("; the sites aren't all on the same versions")
+	}
+	b.WriteString(".")
+	return b.String()
 }
 
 // hasComposer reports whether a plan has a Composer step (so a hand-off
@@ -397,9 +550,22 @@ func (s *server) handoffSend(w http.ResponseWriter, r *http.Request, v *auth.Vie
 		s.render(w, r, http.StatusConflict, "handoff", v, "Hand off to agent", "sites", body)
 		return
 	}
-	key := strconv.FormatInt(t.host.ID, 10) + "\x00" + t.site.Root + "\x00" + t.agent.Name
-	if !s.handoffLimit.allow(key, s.now()) {
+	// Per site and agent, and per repository and agent: the sites that
+	// deploy one repository share a button on AI plans, and one pull
+	// request covers them, so another of them can't be sent right after.
+	keys := []string{"site\x00" + strconv.FormatInt(t.host.ID, 10) + "\x00" + t.site.Root + "\x00" + t.agent.Name}
+	repoKey := handoff.RepoKey(t.repo.Repo())
+	if repoKey != "" {
+		keys = append(keys, "repo\x00"+repoKey+"\x00"+t.agent.Name)
+	}
+	switch s.handoffLimit.allow(s.now(), keys...) {
+	case 0:
 		body.Notice = "This site was handed to " + t.agent.Name + " in the last few minutes. Try again later."
+	case 1:
+		body.Notice = "Another site on " + handoff.RepoShort(t.repo.Repo()) + " was handed to " + t.agent.Name +
+			" in the last few minutes, and one pull request covers the repository. Try again later."
+	}
+	if body.Notice != "" {
 		s.render(w, r, http.StatusTooManyRequests, "handoff", v, "Hand off to agent", "sites", body)
 		return
 	}

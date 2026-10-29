@@ -163,3 +163,44 @@ func WebURL(repo string) string {
 	}
 	return "https://" + host + "/" + path
 }
+
+// RepoKey identifies a normalized repository however it's reached: its
+// host (without user or port) and path, lowercased, as in
+// "github.com/acme/app". https://github.com/acme/app and
+// git@github.com:acme/app have the same key. "" for anything else.
+func RepoKey(repo string) string {
+	var host, path string
+	switch {
+	case strings.HasPrefix(repo, "https://"), strings.HasPrefix(repo, "ssh://"):
+		u, err := url.Parse(repo)
+		if err != nil {
+			return ""
+		}
+		host, path = u.Hostname(), u.Path
+	default:
+		m := scpRe.FindStringSubmatch(repo)
+		if m == nil {
+			return ""
+		}
+		host, path = m[2], m[3]
+	}
+	path = strings.Trim(path, "/")
+	if host == "" || !repoPathRe.MatchString(path) {
+		return ""
+	}
+	return strings.ToLower(strings.TrimPrefix(host, "www.") + "/" + path)
+}
+
+// RepoShort is a repository's short name: the last two parts of its path,
+// as in "acme/app" (or the only one). "" when RepoKey is.
+func RepoShort(repo string) string {
+	key := RepoKey(repo)
+	if key == "" {
+		return ""
+	}
+	parts := strings.Split(key, "/")[1:]
+	if len(parts) > 2 {
+		parts = parts[len(parts)-2:]
+	}
+	return strings.Join(parts, "/")
+}

@@ -15,9 +15,10 @@ boxes' id prefix. */}}
   <div class="codebox ai-cmd"><pre id="{{$.ID}}-{{$j}}">{{$c.Command}}</pre><button type="button" class="copy" data-copy="{{$.ID}}-{{$j}}" hidden>Copy</button></div>
 </div>{{end}}{{end}}
 
-{{/* aihandoff: a step's "Hand off to agent" buttons (aiHandoffs), labelled
-by site when there are several. */}}
-{{define "aihandoff"}}{{with .}}<div class="ai-handoff">{{if gt (len .) 1}}<span class="muted small">Hand off to agent:</span>{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}">{{.Site}}</a>{{end}}{{else}}{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}">Hand off to agent</a>{{end}}{{end}}</div>{{end}}{{end}}
+{{/* aihandoff: a step's "Hand off to agent" buttons (aiHandoffs), one per
+repository its sites deploy and one per site with no known repository,
+labelled when there are several or one covers several sites. */}}
+{{define "aihandoff"}}{{with .}}<div class="ai-handoff">{{if or (gt (len .) 1) (index . 0).Site}}<span class="muted small">Hand off to agent:</span>{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}"{{with .Title}} title="{{.}}"{{end}}>{{.Site}}</a>{{end}}{{else}}{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}"{{with .Title}} title="{{.}}"{{end}}>Hand off to agent</a>{{end}}{{end}}</div>{{end}}{{end}}
 
 {{/* ainotes: up to three short notes. */}}
 {{define "ainotes"}}{{with .Notes}}<ul class="muted small ai-notes">{{range .}}<li>{{aitext $.Links .}}</li>{{end}}</ul>{{end}}{{end}}

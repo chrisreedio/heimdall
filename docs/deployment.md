@@ -272,7 +272,7 @@ Messages are one embed, coloured by severity: red for silent hosts, high-severit
 
 If you run a coding agent as a Discord bot (one that reads a channel and can clone a repository and open pull requests), Heimdall can ask it to fix a site's vulnerable dependencies. A **Hand off to agent** button appears on a site's Composer findings, on each site card on the host page, and on AI triage plan steps that are Composer updates. It's for app dependencies only (Composer, and npm from the site's `package-lock.json` or allowlisted ones inside the site; dev dependencies are left out): OS patching, kernel updates and reboots aren't pull requests, so those steps never get one.
 
-It's **off by default** and needs the operator or admin role in the org. Clicking the button opens a confirm step that shows exactly the message that will be posted and, with several agents, lets you pick one. Sending is a POST with the CSRF token, limited to once every 5 minutes per site and agent, and audit-logged as `handoff.send` (actor, agent, host, site, request ID, package count and whether Discord accepted it).
+It's **off by default** and needs the operator or admin role in the org. Clicking the button opens a confirm step that shows exactly the message that will be posted and, with several agents, lets you pick one. Sending is a POST with the CSRF token, limited to once every 5 minutes per site and agent (and per repository and agent, so two sites that deploy one repository don't get two pull requests), and audit-logged as `handoff.send` (actor, agent, host, site, request ID, package count and whether Discord accepted it).
 
 ### Set it up
 

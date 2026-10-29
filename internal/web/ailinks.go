@@ -77,6 +77,13 @@ func wordByte(b byte) bool {
 	return b == '-' || b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
 }
 
+// pathByte joins a name to a path, URL or address around it
+// ("/home/deploy/app.example.com/current", "deploy@web-01", "root=web-01"):
+// a name inside one is part of a larger token, so it stays plain.
+func pathByte(b byte) bool {
+	return b == '/' || b == '\\' || b == '@' || b == '~' || b == '='
+}
+
 // HTML is text, escaped, with the names it knows linked. A nil linker
 // only escapes (AI text without an org, or with linking unavailable). A
 // name followed by a possessive ("web-01's") stays plain: a badge with
@@ -92,9 +99,11 @@ func (l *aiLinker) HTMLExcept(text string, skip []string) template.HTML {
 	last := 0
 	for _, m := range l.re.FindAllStringIndex(text, -1) {
 		i, j := m[0], m[1]
-		before := i > 0 && (wordByte(text[i-1]) || text[i-1] == '.')
+		before := i > 0 && (wordByte(text[i-1]) || text[i-1] == '.' || pathByte(text[i-1]))
 		// A trailing period ends a sentence; one followed by more name doesn't.
-		after := j < len(text) && (wordByte(text[j]) || text[j] == '.' && j+1 < len(text) && wordByte(text[j+1]))
+		after := j < len(text) && (wordByte(text[j]) || pathByte(text[j]) ||
+			// a colon ends a clause ("on web-01: run"), unless more follows ("web-01:/srv", "app.example.com:8443")
+			(text[j] == '.' || text[j] == ':') && j+1 < len(text) && (wordByte(text[j+1]) || pathByte(text[j+1])))
 		if before || after || strings.HasPrefix(text[j:], "'s") || strings.HasPrefix(text[j:], "’s") {
 			continue
 		}

@@ -78,3 +78,22 @@ func TestWebURL(t *testing.T) {
 		}
 	}
 }
+
+func TestRepoKey(t *testing.T) {
+	cases := map[string][2]string{ // key, short
+		"https://github.com/acme/app":        {"github.com/acme/app", "acme/app"},
+		"git@github.com:Acme/App":            {"github.com/acme/app", "acme/app"},
+		"ssh://git@github.com:2222/acme/app": {"github.com/acme/app", "acme/app"},
+		"https://www.github.com/acme/app":    {"github.com/acme/app", "acme/app"},
+		"ssh://git@gitlab.com/group/sub/x":   {"gitlab.com/group/sub/x", "sub/x"},
+		"git@git.example.com:/srv/git/app":   {"git.example.com/srv/git/app", "git/app"},
+		"https://git.example.com/app":        {"git.example.com/app", "app"},
+		"not a url":                          {"", ""},
+		"":                                   {"", ""},
+	}
+	for in, want := range cases {
+		if got := [2]string{RepoKey(in), RepoShort(in)}; got != want {
+			t.Errorf("RepoKey/RepoShort(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

@@ -3,6 +3,7 @@
 package web
 
 import (
+	"html/template"
 	"strings"
 	"testing"
 
@@ -47,5 +48,42 @@ func TestAILinker(t *testing.T) {
 	var none *aiLinker
 	if got := none.HTML("<x> web-01"); got != "&lt;x&gt; web-01" {
 		t.Errorf("nil linker = %q", got)
+	}
+}
+
+// A name inside a path, URL or address is part of a larger token and stays
+// plain; one in a sentence is still linked.
+func TestAILinkerPaths(t *testing.T) {
+	l := newAILinker("acme", []report.Host{
+		{Name: "web-01", Sites: []report.Site{{Root: "/home/deploy/app.example.dev", ServerNames: []string{"app.example.dev"}}}},
+	})
+	cases := []struct {
+		text  string
+		links int
+	}{
+		{"Run the command in /home/deploy/app.example.dev/current", 0},
+		{"Run it in /home/deploy/app.example.dev", 0},
+		{"Run it in /home/deploy/app.example.dev.", 0},
+		{"Look at app.example.dev/current first", 0},
+		{"Open https://app.example.dev/login", 0},
+		{`It lives in C:\sites\app.example.dev\current`, 0},
+		{"ssh deploy@web-01 and run it", 0},
+		{"Copy it to web-01:/srv/app", 0},
+		{"Serve app.example.dev:8443 from root=web-01", 0},
+		{"~/app.example.dev holds it", 0},
+		{"Patch app.example.dev.", 1},
+		{"Patch app.example.dev, and then web-01.", 2},
+		{"On web-01: run the update for app.example.dev", 2},
+		{"(app.example.dev) is behind", 1},
+		{"Run it on web-01 in /home/deploy/app.example.dev/current", 1},
+	}
+	for _, c := range cases {
+		got := string(l.HTML(c.text))
+		if n := strings.Count(got, "<a "); n != c.links {
+			t.Errorf("%q: %d links, want %d:\n%s", c.text, n, c.links, got)
+		}
+		if c.links == 0 && got != template.HTMLEscapeString(c.text) {
+			t.Errorf("%q isn't plain text: %s", c.text, got)
+		}
 	}
 }

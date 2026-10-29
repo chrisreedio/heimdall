@@ -327,8 +327,13 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		s.fail(w, r, v, err)
 		return
 	}
-	if s.canHandoff(v, host.OrgID) {
-		aiHandoffs(body.AI, map[string]handoffHost{host.Name: {Org: host.OrgSlug, Host: body.Report}})
+	if s.canHandoff(v, host.OrgID) && body.AI != nil && hasComposer(body.AI.Result) {
+		hosts, err := s.handoffHostsOf(ctx, host.OrgID, []report.Host{body.Report})
+		if err != nil {
+			s.fail(w, r, v, err)
+			return
+		}
+		aiHandoffs(body.AI, hosts)
 	}
 	body.Surface = s.surfaceLineFor(ctx, v, host.OrgID, host.Name, "")
 	s.render(w, r, http.StatusOK, "host", v, host.Name, "hosts", body)
