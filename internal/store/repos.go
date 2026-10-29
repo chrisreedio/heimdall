@@ -45,7 +45,7 @@ const MaxDetectedRepos = 200
 
 // SiteRepos returns a host's site repositories, keyed by root.
 func (s *Store) SiteRepos(ctx context.Context, hostID int64) (map[string]SiteRepo, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT root, `+siteRepoCols+` FROM site_repos WHERE host_id = ?`, hostID)
+	rows, err := s.rd.QueryContext(ctx, `SELECT root, `+siteRepoCols+` FROM site_repos WHERE host_id = ?`, hostID)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +65,7 @@ func (s *Store) SiteRepos(ctx context.Context, hostID int64) (map[string]SiteRep
 // SiteReposByOrg returns the repositories of an org's sites, keyed by
 // SiteLabelKey (org, host, root).
 func (s *Store) SiteReposByOrg(ctx context.Context, orgID int64) (map[string]SiteRepo, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT o.slug, h.name, r.root, r.detected, r.manual, r.detected_branch, r.detected_commit, r.manual_branch
 		FROM site_repos r
 		JOIN hosts h ON h.id = r.host_id
@@ -106,7 +106,7 @@ type RepoSite struct {
 // known, in every org: the hand-off finds a repository's other sites with
 // it, and keeps only those in orgs the viewer may operate in.
 func (s *Store) RepoSites(ctx context.Context) ([]RepoSite, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.org_id, o.slug, h.name, h.id, r.root, r.detected, r.manual, r.detected_branch, r.detected_commit, r.manual_branch
 		FROM site_repos r
 		JOIN hosts h ON h.id = r.host_id

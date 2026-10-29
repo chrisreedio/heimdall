@@ -131,7 +131,7 @@ func (s *Store) CreateEnrollKey(ctx context.Context, actor, orgSlug, envSlug str
 // ListEnrollKeys returns an org's enrollment keys (all orgs' if orgSlug is
 // empty), newest first.
 func (s *Store) ListEnrollKeys(ctx context.Context, orgSlug string) ([]EnrollKey, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT k.id, k.org_id, o.slug, e.slug, k.label, k.tags, k.max_uses, k.uses, k.require_approval, k.created_by,
 		       k.created_at, k.expires_at, k.revoked_at
 		FROM enroll_keys k JOIN organizations o ON o.id = k.org_id JOIN environments e ON e.id = k.env_id
@@ -159,7 +159,7 @@ func (s *Store) ListEnrollKeys(ctx context.Context, orgSlug string) ([]EnrollKey
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	hosts, err := s.db.QueryContext(ctx, `
+	hosts, err := s.rd.QueryContext(ctx, `
 		SELECT h.enroll_key_id, h.name FROM hosts h JOIN organizations o ON o.id = h.org_id
 		WHERE h.enroll_key_id IS NOT NULL AND (? = '' OR o.slug = ?) ORDER BY h.name`, orgSlug, orgSlug)
 	if err != nil {
@@ -301,7 +301,7 @@ type AwaitingHost struct {
 // AwaitingHosts lists hosts waiting for approval in an org (all orgs' if
 // orgSlug is empty), oldest first.
 func (s *Store) AwaitingHosts(ctx context.Context, orgSlug string) ([]AwaitingHost, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, e.slug, h.name, coalesce(k.id, 0), coalesce(k.label, ''), h.created_at,
 		       coalesce((SELECT a.ip FROM audit_log a WHERE a.action = 'host.add' AND a.org_id = h.org_id
 		                 AND json_extract(a.detail, '$.host_id') = h.id ORDER BY a.id DESC LIMIT 1), ''),

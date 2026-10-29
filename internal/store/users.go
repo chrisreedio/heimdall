@@ -104,16 +104,16 @@ func (s *Store) LocalUserByEmail(ctx context.Context, email string) (User, error
 	if err != nil {
 		return User{}, ErrNotFound
 	}
-	return scanUser(s.db.QueryRowContext(ctx,
+	return scanUser(s.rd.QueryRowContext(ctx,
 		`SELECT `+userColumns+` FROM users WHERE kind = 'local' AND email = ?`, email))
 }
 
 func (s *Store) UserByID(ctx context.Context, id int64) (User, error) {
-	return scanUser(s.db.QueryRowContext(ctx, `SELECT `+userColumns+` FROM users WHERE id = ?`, id))
+	return scanUser(s.rd.QueryRowContext(ctx, `SELECT `+userColumns+` FROM users WHERE id = ?`, id))
 }
 
 func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+userColumns+` FROM users ORDER BY email`)
+	rows, err := s.rd.QueryContext(ctx, `SELECT `+userColumns+` FROM users ORDER BY email`)
 	if err != nil {
 		return nil, err
 	}

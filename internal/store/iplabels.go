@@ -162,7 +162,7 @@ func (s *Store) ReplaceIPLabels(ctx context.Context, orgID int64, source string,
 // IPLabels returns the labels that apply to an org: its own and every
 // org's (orgID 0: only the latter). Small enough to match in memory.
 func (s *Store) IPLabels(ctx context.Context, orgID int64) ([]IPLabel, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT id, COALESCE(org_id, 0), prefix, kind, name, person, source, note, created_by, updated_at
 		FROM ip_labels WHERE org_id IS NULL OR org_id = ? ORDER BY id`, orgID)
 	if err != nil {
@@ -200,7 +200,7 @@ func (s *Store) RecordReportIP(ctx context.Context, hostID int64, ip string) err
 
 // HostsByReportIP names an org's hosts whose last report came from ip.
 func (s *Store) HostsByReportIP(ctx context.Context, orgID int64, ip string) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT name FROM hosts WHERE org_id = ? AND report_ip = ? ORDER BY name`, orgID, ip)
+	rows, err := s.rd.QueryContext(ctx, `SELECT name FROM hosts WHERE org_id = ? AND report_ip = ? ORDER BY name`, orgID, ip)
 	if err != nil {
 		return nil, err
 	}

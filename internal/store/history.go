@@ -23,7 +23,7 @@ type SnapshotInfo struct {
 
 // Snapshots lists a host's snapshots, newest first.
 func (s *Store) Snapshots(ctx context.Context, hostID int64, limit int) ([]SnapshotInfo, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT s.id, s.received_at, s.source, coalesce(s.kernel, ''), coalesce(s.os_pretty, coalesce(s.os_id, '')),
 		       coalesce(s.uptime_seconds, -1),
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id),
@@ -50,10 +50,10 @@ func (s *Store) Snapshots(ctx context.Context, hostID int64, limit int) ([]Snaps
 // the host (so a URL can't read another host's snapshot).
 func (s *Store) SnapshotPackages(ctx context.Context, hostID, snapshotID int64) ([]InventoryPackage, error) {
 	var owner int64
-	if err := s.db.QueryRowContext(ctx, `SELECT host_id FROM snapshots WHERE id = ?`, snapshotID).Scan(&owner); err != nil || owner != hostID {
+	if err := s.rd.QueryRowContext(ctx, `SELECT host_id FROM snapshots WHERE id = ?`, snapshotID).Scan(&owner); err != nil || owner != hostID {
 		return nil, fmt.Errorf("snapshot %d: %w", snapshotID, ErrNotFound)
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT name, version, arch, coalesce(source_name, ''), coalesce(source_version, ''), coalesce(pending_version, ''), pending_security
 		FROM packages WHERE snapshot_id = ? ORDER BY name, arch`, snapshotID)
 	if err != nil {
@@ -75,7 +75,7 @@ func (s *Store) SnapshotPackages(ctx context.Context, hostID, snapshotID int64) 
 
 // HostsTagged lists hosts with a tag that have reported.
 func (s *Store) HostsTagged(ctx context.Context, tag string) ([]IngestHost, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, h.name FROM hosts h
 		JOIN organizations o ON o.id = h.org_id
 		JOIN host_tags t ON t.host_id = h.id
@@ -97,7 +97,7 @@ func (s *Store) HostsTagged(ctx context.Context, tag string) ([]IngestHost, erro
 
 // Tags lists every tag in use with its host count.
 func (s *Store) Tags(ctx context.Context) (map[string]int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT tag, count(*) FROM host_tags GROUP BY tag ORDER BY tag`)
+	rows, err := s.rd.QueryContext(ctx, `SELECT tag, count(*) FROM host_tags GROUP BY tag ORDER BY tag`)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (s *Store) CountRows(ctx context.Context, table string) (int, error) {
 		return 0, fmt.Errorf("can't count %q", table)
 	}
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM `+table).Scan(&n)
+	err := s.rd.QueryRowContext(ctx, `SELECT count(*) FROM `+table).Scan(&n)
 	return n, err
 }
 

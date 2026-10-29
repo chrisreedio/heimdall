@@ -123,7 +123,7 @@ func (s *Store) AIRuns(ctx context.Context, orgID, hostID int64, limit int) ([]A
 	if hostID != 0 {
 		kind = AIHost
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, org_id, coalesce(host_id, 0), kind, status, created_at, finished_at,
+	rows, err := s.rd.QueryContext(ctx, `SELECT id, org_id, coalesce(host_id, 0), kind, status, created_at, finished_at,
 		requested_by, deployment, model, input_tokens, output_tokens, error, result
 		FROM ai_runs WHERE org_id = ? AND kind = ? AND coalesce(host_id, 0) = ? ORDER BY id DESC LIMIT ?`,
 		orgID, kind, hostID, limit)
@@ -149,7 +149,7 @@ func (s *Store) AIRuns(ctx context.Context, orgID, hostID int64, limit int) ([]A
 // LastAIBrief returns when the org's last brief run started (zero if never).
 func (s *Store) LastAIBrief(ctx context.Context, orgID int64) (time.Time, error) {
 	var at sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT max(created_at) FROM ai_runs WHERE org_id = ? AND kind = 'brief'`, orgID).Scan(&at)
+	err := s.rd.QueryRowContext(ctx, `SELECT max(created_at) FROM ai_runs WHERE org_id = ? AND kind = 'brief'`, orgID).Scan(&at)
 	return parseNullTime(at), err
 }
 
@@ -160,7 +160,7 @@ type FindingChange struct{ New, Resolved int }
 // FindingChanges returns per-host finding changes in an org since t.
 func (s *Store) FindingChanges(ctx context.Context, orgID int64, since time.Time) (map[int64]FindingChange, error) {
 	ts := since.UTC().Format(timeLayout)
-	rows, err := s.db.QueryContext(ctx, `SELECT f.host_id,
+	rows, err := s.rd.QueryContext(ctx, `SELECT f.host_id,
 		sum(CASE WHEN f.first_seen_at >= ? THEN 1 ELSE 0 END),
 		sum(CASE WHEN f.resolved_at >= ? THEN 1 ELSE 0 END)
 		FROM findings f JOIN hosts h ON h.id = f.host_id

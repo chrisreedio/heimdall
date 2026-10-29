@@ -44,7 +44,7 @@ func (s *Store) RecordFeedRun(ctx context.Context, feed string, at time.Time, ru
 }
 
 func (s *Store) FeedStates(ctx context.Context) ([]FeedState, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.rd.QueryContext(ctx,
 		`SELECT feed, last_attempt_at, last_success_at, coalesce(last_error, '') FROM feed_state ORDER BY feed`)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ type OSVKey struct{ Ecosystem, Name, Version string }
 // Keys missing from the result need a fresh query.
 func (s *Store) OSVCached(ctx context.Context, keys []OSVKey, since time.Time) (map[OSVKey][]string, error) {
 	out := make(map[OSVKey][]string, len(keys))
-	stmt, err := s.db.PrepareContext(ctx,
+	stmt, err := s.rd.PrepareContext(ctx,
 		`SELECT vuln_ids FROM osv_query_cache WHERE ecosystem = ? AND name = ? AND version = ? AND checked_at >= ?`)
 	if err != nil {
 		return nil, err
@@ -124,7 +124,7 @@ func (s *Store) PutOSVResults(ctx context.Context, results map[OSVKey][]string, 
 // AdvisoryModified returns the stored modified time of each known advisory.
 func (s *Store) AdvisoryModified(ctx context.Context, ids []string) (map[string]time.Time, error) {
 	out := make(map[string]time.Time, len(ids))
-	stmt, err := s.db.PrepareContext(ctx, `SELECT modified FROM advisories WHERE id = ?`)
+	stmt, err := s.rd.PrepareContext(ctx, `SELECT modified FROM advisories WHERE id = ?`)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +227,7 @@ func (s *Store) PutAdvisory(ctx context.Context, a Advisory) error {
 // FixedVersions lists the fixed versions an advisory records for a package
 // in an ecosystem (matching "Ubuntu:22.04" to "Ubuntu:22.04:LTS" too).
 func (s *Store) FixedVersions(ctx context.Context, advisoryID, ecosystem, pkg string) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT DISTINCT fixed FROM affected_ranges
 		WHERE advisory_id = ? AND package = ? AND fixed IS NOT NULL
 		  AND (ecosystem = ? OR substr(ecosystem, 1, length(?) + 1) = ? || ':')
@@ -251,7 +251,7 @@ func (s *Store) FixedVersions(ctx context.Context, advisoryID, ecosystem, pkg st
 
 // OpenFindingCVEs lists the CVE IDs behind every open finding.
 func (s *Store) OpenFindingCVEs(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT DISTINCT alias FROM advisory_aliases
 		WHERE alias LIKE 'CVE-%' AND advisory_id IN (SELECT advisory_id FROM findings WHERE resolved_at IS NULL)
 		UNION
@@ -373,7 +373,7 @@ func (s *Store) ReplaceEOL(ctx context.Context, product string, cycles []EOLCycl
 
 // EOLCycles returns stored cycles for a product.
 func (s *Store) EOLCycles(ctx context.Context, product string) ([]EOLCycle, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT cycle, release_date, support_until, eol_date, coalesce(latest, '')
 		FROM eol_cycles WHERE product = ?`, product)
 	if err != nil {
@@ -457,7 +457,7 @@ type InventoryPackage struct {
 
 // HostsWithSnapshots lists every host that has reported at least once.
 func (s *Store) HostsWithSnapshots(ctx context.Context) ([]IngestHost, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, h.name FROM hosts h JOIN organizations o ON o.id = h.org_id
 		WHERE h.last_snapshot_id IS NOT NULL ORDER BY o.slug, h.name`)
 	if err != nil {
@@ -479,7 +479,7 @@ func (s *Store) HostsWithSnapshots(ctx context.Context) ([]IngestHost, error) {
 func (s *Store) Inventory(ctx context.Context, host IngestHost) (HostInventory, error) {
 	inv := HostInventory{Host: host}
 	var osID, osVer, idLike, pretty, pm sql.NullString
-	err := s.db.QueryRowContext(ctx, `
+	err := s.rd.QueryRowContext(ctx, `
 		SELECT s.id, s.os_id, s.os_version, s.os_id_like, s.os_pretty, s.package_manager
 		FROM hosts h JOIN snapshots s ON s.id = h.last_snapshot_id WHERE h.id = ?`, host.ID).
 		Scan(&inv.SnapshotID, &osID, &osVer, &idLike, &pretty, &pm)
@@ -492,7 +492,7 @@ func (s *Store) Inventory(ctx context.Context, host IngestHost) (HostInventory, 
 	inv.OSID, inv.OSVersion, inv.OSIDLike, inv.OSPretty, inv.PackageManager =
 		osID.String, osVer.String, idLike.String, pretty.String, pm.String
 
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT name, version, arch, coalesce(source_name, ''), coalesce(source_version, ''),
 		       coalesce(pending_version, ''), pending_security
 		FROM packages WHERE snapshot_id = ? ORDER BY name`, inv.SnapshotID)
@@ -520,7 +520,7 @@ func (s *Store) Inventory(ctx context.Context, host IngestHost) (HostInventory, 
 }
 
 func (s *Store) loadV3(ctx context.Context, inv *HostInventory) error {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.rd.QueryContext(ctx,
 		`SELECT name, image, tag, digest, state FROM containers WHERE snapshot_id = ? ORDER BY name`, inv.SnapshotID)
 	if err != nil {
 		return err
@@ -537,7 +537,7 @@ func (s *Store) loadV3(ctx context.Context, inv *HostInventory) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	rows, err = s.db.QueryContext(ctx, `
+	rows, err = s.rd.QueryContext(ctx, `
 		SELECT manifest_path, ecosystem, name, version FROM app_packages
 		WHERE snapshot_id = ?1 AND ecosystem != 'Packagist'
 		  -- a site's own package-lock.json belongs to the site (sites), even
@@ -565,7 +565,7 @@ func (s *Store) loadV3(ctx context.Context, inv *HostInventory) error {
 }
 
 func (s *Store) sites(ctx context.Context, snapshotID int64) ([]InventorySite, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT root, document_root, server_names, web_server, php_fpm_version, readable,
 		       framework, framework_version, php_requirement, deployed_at
 		FROM sites WHERE snapshot_id = ? ORDER BY root`, snapshotID)
@@ -593,7 +593,7 @@ func (s *Store) sites(ctx context.Context, snapshotID int64) ([]InventorySite, e
 	if err := rows.Err(); err != nil || len(out) == 0 {
 		return out, err
 	}
-	pkgs, err := s.db.QueryContext(ctx, `
+	pkgs, err := s.rd.QueryContext(ctx, `
 		SELECT ecosystem, manifest_path, name, version, dev FROM app_packages
 		WHERE snapshot_id = ? AND ecosystem IN ('Packagist', 'npm') ORDER BY name, version`, snapshotID)
 	if err != nil {
@@ -720,7 +720,7 @@ type ReportFinding struct {
 // exploited first, then ones in a live news incident, then ones with a fix
 // available, then by severity, EPSS and CVSS.
 func (s *Store) OpenFindings(ctx context.Context, hostID int64) ([]ReportFinding, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT f.advisory_id, a.summary, a.severity, coalesce(a.cvss_score, 0),
 		       f.package_name, f.package_version, f.binaries, coalesce(f.fixed_version, ''), f.fix_pending,
 		       f.first_seen_at, f.site_root, f.ecosystem, f.dev,

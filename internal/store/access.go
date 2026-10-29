@@ -64,14 +64,14 @@ func (s Scope) Empty() bool { return !s.Admin && len(s.Orgs) == 0 }
 func (s *Store) ScopeFor(ctx context.Context, userID int64) (Scope, error) {
 	sc := Scope{Orgs: map[int64]Role{}}
 	var admin int64
-	if err := s.db.QueryRowContext(ctx, `SELECT is_admin FROM users WHERE id = ?`, userID).Scan(&admin); err != nil {
+	if err := s.rd.QueryRowContext(ctx, `SELECT is_admin FROM users WHERE id = ?`, userID).Scan(&admin); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return sc, ErrNotFound
 		}
 		return sc, err
 	}
 	sc.Admin = admin == 1
-	rows, err := s.db.QueryContext(ctx, `SELECT org_id, role FROM memberships WHERE user_id = ?`, userID)
+	rows, err := s.rd.QueryContext(ctx, `SELECT org_id, role FROM memberships WHERE user_id = ?`, userID)
 	if err != nil {
 		return sc, err
 	}
@@ -112,7 +112,7 @@ type Membership struct {
 }
 
 func (s *Store) Memberships(ctx context.Context, userID int64) ([]Membership, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT o.slug, m.role, m.source FROM memberships m JOIN organizations o ON o.id = m.org_id
 		WHERE m.user_id = ? ORDER BY o.slug`, userID)
 	if err != nil {

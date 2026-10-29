@@ -102,7 +102,7 @@ func (s *Store) signInsWhere(ctx context.Context, sessWhere, auditWhere string, 
 	}
 	q += ` ORDER BY x.at DESC, x.open DESC LIMIT ?`
 	qargs = append(qargs, limit*2)
-	rows, err := s.db.QueryContext(ctx, q, qargs...)
+	rows, err := s.rd.QueryContext(ctx, q, qargs...)
 	if err != nil {
 		return nil, err
 	}
@@ -170,7 +170,7 @@ type IPPolicy struct {
 func (s *Store) IPPolicy(ctx context.Context, orgID int64) (IPPolicy, error) {
 	p := IPPolicy{OrgID: orgID, AllowServices: true}
 	var at string
-	err := s.db.QueryRowContext(ctx, `
+	err := s.rd.QueryRowContext(ctx, `
 		SELECT tailnet_only, allow_services, count_services, updated_by, updated_at FROM ip_policies WHERE org_id = ?`, orgID).
 		Scan(&p.TailnetOnly, &p.AllowServices, &p.CountServices, &p.UpdatedBy, &at)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -202,7 +202,7 @@ func (s *Store) SetIPPolicy(ctx context.Context, actor string, p IPPolicy, now t
 
 // AllIPLabels returns every label, for the CLI.
 func (s *Store) AllIPLabels(ctx context.Context) ([]IPLabel, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT id, COALESCE(org_id, 0), prefix, kind, name, person, source, note, created_by, updated_at
 		FROM ip_labels ORDER BY id`)
 	if err != nil {
@@ -238,7 +238,7 @@ func (s *Store) PrivilegeFrom(ctx context.Context, sc Scope, ip string, limit in
 	if a, err := netip.ParseAddr(ip); err == nil && a.Unmap().String() != ip {
 		srcs = append(srcs, a.Unmap().String())
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT p.at, p.kind, p.user, p.source, h.id, h.org_id, o.slug, h.name
 		FROM privilege_events p JOIN hosts h ON h.id = p.host_id JOIN organizations o ON o.id = h.org_id
 		WHERE p.source IN (?`+strings.Repeat(", ?", len(srcs)-1)+`) AND p.source NOT IN ('', '?')
@@ -277,7 +277,7 @@ type PrivilegeSource struct {
 // source (an address or host name; local and "?" left out). hostID 0 is
 // every host the scope can view.
 func (s *Store) PrivilegeSourcesSince(ctx context.Context, sc Scope, hostID int64, since time.Time) ([]PrivilegeSource, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, h.name, p.source, p.user, p.kind, count(*), max(p.at)
 		FROM privilege_events p JOIN hosts h ON h.id = p.host_id JOIN organizations o ON o.id = h.org_id
 		WHERE p.at >= ? AND p.source NOT IN ('', '?') AND (? = 0 OR h.id = ?)
@@ -331,7 +331,7 @@ func (s *Store) AuditFrom(ctx context.Context, ip string, all bool, orgs []int64
 	if err != nil {
 		return nil, nil
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT at, actor, action, COALESCE(org_id, 0), target, ip FROM audit_log WHERE ip = ? ORDER BY id DESC LIMIT 2000`,
 		a.Unmap().String())
 	if err != nil {

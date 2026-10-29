@@ -111,7 +111,7 @@ func (sc Scope) CanOperatePlan(p Plan) bool {
 }
 
 func (s *Store) plans(ctx context.Context, where string, args ...any) ([]Plan, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT p.id, p.name, coalesce(p.org_id, 0), coalesce(o.slug, ''), p.created_at, p.closed_at,
 		       (SELECT count(*) FROM patch_plan_items i WHERE i.plan_id = p.id),
 		       (SELECT count(*) FROM patch_plan_items i WHERE i.plan_id = p.id AND i.done_at IS NOT NULL),
@@ -138,7 +138,7 @@ func (s *Store) plans(ctx context.Context, where string, args ...any) ([]Plan, e
 
 // PlanItems lists a plan's hosts by batch.
 func (s *Store) PlanItems(ctx context.Context, planID int64) ([]PlanItem, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, h.name, i.batch, i.done_at, coalesce(u.email, ''), i.verified_at,
 		       coalesce((SELECT count(*) FROM packages p WHERE p.snapshot_id = h.last_snapshot_id AND p.pending_security = 1), 0)
 		FROM patch_plan_items i

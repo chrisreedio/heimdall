@@ -104,7 +104,7 @@ func (s *Store) ReplaceCloudflareZones(ctx context.Context, zones []CloudflareZo
 
 // CloudflareZones returns the stored zones by name.
 func (s *Store) CloudflareZones(ctx context.Context) ([]CloudflareZone, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT id, name, plan, status, synced_at, security, security_note, security_at, last24
 		FROM cloudflare_zones ORDER BY name`)
 	if err != nil {
@@ -126,7 +126,7 @@ func (s *Store) CloudflareZones(ctx context.Context) ([]CloudflareZone, error) {
 
 // CloudflareRecords returns every stored record.
 func (s *Store) CloudflareRecords(ctx context.Context) ([]CloudflareRecord, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT zone_id, name, type, content, proxied, ttl, synced_at
 		FROM cloudflare_dns_records ORDER BY name, type, content`)
 	if err != nil {
@@ -187,7 +187,7 @@ func (s *Store) SetCloudflareSecurity(ctx context.Context, zoneID, state, note s
 
 // CloudflareDailyCounts returns a zone's daily counts since day (inclusive).
 func (s *Store) CloudflareDailyCounts(ctx context.Context, zoneID, since string) ([]CloudflareDaily, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT day, dim, key, count FROM cloudflare_security_daily
 		WHERE zone_id = ? AND day >= ? ORDER BY day, dim, count DESC, key`, zoneID, since)
 	if err != nil {
@@ -264,7 +264,7 @@ type CloudflareSync struct {
 
 // CloudflareSyncs returns each sync's last run, by name.
 func (s *Store) CloudflareSyncs(ctx context.Context) (map[string]CloudflareSync, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT what, at, error FROM cloudflare_syncs`)
+	rows, err := s.rd.QueryContext(ctx, `SELECT what, at, error FROM cloudflare_syncs`)
 	if err != nil {
 		return nil, err
 	}
@@ -291,7 +291,7 @@ type ReportAddr struct {
 
 // ReportAddrs lists every host with a known report address.
 func (s *Store) ReportAddrs(ctx context.Context) ([]ReportAddr, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.org_id, o.slug, h.name, h.report_ip FROM hosts h JOIN organizations o ON o.id = h.org_id
 		WHERE h.report_ip <> '' ORDER BY o.slug, h.name`)
 	if err != nil {
@@ -323,7 +323,7 @@ type SiteNames struct {
 
 // AllSiteNames lists every site in every host's latest snapshot.
 func (s *Store) AllSiteNames(ctx context.Context) ([]SiteNames, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.org_id, o.slug, h.name, si.root, si.server_names
 		FROM hosts h
 		JOIN organizations o ON o.id = h.org_id
@@ -350,7 +350,7 @@ func (s *Store) AllSiteNames(ctx context.Context) ([]SiteNames, error) {
 // kind says something (not unknown), e.g. to tell a leftover DNS record
 // from an address someone recognizes.
 func (s *Store) KnownIPPrefixes(ctx context.Context) ([]netip.Prefix, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT prefix FROM ip_labels WHERE kind <> ?`, IPKindUnknown)
+	rows, err := s.rd.QueryContext(ctx, `SELECT DISTINCT prefix FROM ip_labels WHERE kind <> ?`, IPKindUnknown)
 	if err != nil {
 		return nil, err
 	}

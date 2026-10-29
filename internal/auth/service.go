@@ -26,6 +26,8 @@ const (
 	maxThrottleKeys    = 10000
 	// touchEvery limits session last_seen_at writes to one per minute.
 	touchEvery = time.Minute
+	// touchWait is how long a page waits for the writer to touch a session.
+	touchWait = 500 * time.Millisecond
 )
 
 // sessionPrefix marks session cookies so they're recognizable.
@@ -152,9 +154,13 @@ func (s *Service) Session(ctx context.Context, token string) (*Viewer, error) {
 		return nil, ErrNoSession
 	}
 	if now.Sub(sess.LastSeenAt) >= touchEvery {
-		if err := s.Store.TouchSession(ctx, hash, now); err != nil {
-			return nil, err
-		}
+		// Best effort and brief: pages read from the store's read pool, so
+		// a long write (a big first report, a findings recount) mustn't
+		// hold them up just to bump last_seen_at. A missed touch only
+		// brings the idle timeout closer; a later request touches again.
+		tctx, cancel := context.WithTimeout(ctx, touchWait)
+		s.Store.TouchSession(tctx, hash, now)
+		cancel()
 	}
 	scope, err := s.Store.ScopeFor(ctx, u.ID)
 	if err != nil {

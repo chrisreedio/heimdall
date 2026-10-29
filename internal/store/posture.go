@@ -41,7 +41,7 @@ const WatchEPSS = 0.10
 // from the finding_counts table: a few rows, where counting live would
 // join tens of thousands of findings per host to the advisories table.
 func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]FindingCounts, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT host_id, site_root, total, kev, critical, high, medium, low, unknown,
 		       fixable, fix_pending, fix_urgent, in_news, not_running, reboot_pending, kernel_userland, watch, dev
 		FROM finding_counts`)
@@ -277,7 +277,7 @@ type HostState struct {
 // HostStates returns the latest-report state of every host that has
 // reported, by host ID, in one query.
 func (s *Store) HostStates(ctx context.Context) (map[int64]HostState, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.id, coalesce(h.last_seen_at, s.received_at), s.collector_version, s.reboot_required,
 		       coalesce(h.triggers, ''),
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id AND p.pending_version IS NOT NULL),

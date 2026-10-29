@@ -40,13 +40,13 @@ func audit(ctx context.Context, tx *sql.Tx, e AuditEntry) error {
 // LastAuditAt returns when an action was last recorded (zero if never).
 func (s *Store) LastAuditAt(ctx context.Context, action string) (time.Time, error) {
 	var at sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT max(at) FROM audit_log WHERE action = ?`, action).Scan(&at)
+	err := s.rd.QueryRowContext(ctx, `SELECT max(at) FROM audit_log WHERE action = ?`, action).Scan(&at)
 	return parseNullTime(at), err
 }
 
 // CountOpenAnomalies counts unacknowledged anomalies across all hosts.
 func (s *Store) CountOpenAnomalies(ctx context.Context) (int, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM anomalies WHERE acknowledged_at IS NULL`).Scan(&n)
+	err := s.rd.QueryRowContext(ctx, `SELECT count(*) FROM anomalies WHERE acknowledged_at IS NULL`).Scan(&n)
 	return n, err
 }

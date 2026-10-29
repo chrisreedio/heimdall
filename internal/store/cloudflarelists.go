@@ -93,7 +93,7 @@ func dropListLabels(ctx context.Context, tx *sql.Tx, listID string) error {
 
 // CloudflareIPLists returns the stored lists by name.
 func (s *Store) CloudflareIPLists(ctx context.Context) ([]CloudflareIPList, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT id, account_id, name, description, items, kind, updated_by, updated_at, seen_at
 		FROM cloudflare_ip_lists ORDER BY name, id`)
 	if err != nil {

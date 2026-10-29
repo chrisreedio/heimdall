@@ -142,7 +142,7 @@ func (s *Store) AddBanAudit(ctx context.Context, a BanAudit) error {
 
 // BanAudits returns the newest audit rows, at most limit.
 func (s *Store) BanAudits(ctx context.Context, limit int) ([]BanAudit, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, at, actor, action, coalesce(ban_id, 0), zone_id, target, result, detail
+	rows, err := s.rd.QueryContext(ctx, `SELECT id, at, actor, action, coalesce(ban_id, 0), zone_id, target, result, detail
 		FROM ban_audit ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, err
@@ -257,7 +257,7 @@ func (s *Store) Bans(ctx context.Context, q BanQuery) ([]Ban, error) {
 		where = append(where, "updated_at >= ?")
 		args = append(args, q.Since.UTC().Format(timeLayout))
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+banCols+` FROM bans WHERE `+strings.Join(where, " AND ")+
+	rows, err := s.rd.QueryContext(ctx, `SELECT `+banCols+` FROM bans WHERE `+strings.Join(where, " AND ")+
 		` ORDER BY id DESC LIMIT ?`, append(args, q.Limit)...)
 	if err != nil {
 		return nil, err
@@ -276,7 +276,7 @@ func (s *Store) Bans(ctx context.Context, q BanQuery) ([]Ban, error) {
 
 // BanByID returns one ban.
 func (s *Store) BanByID(ctx context.Context, id int64) (Ban, error) {
-	b, err := scanBan(s.db.QueryRowContext(ctx, `SELECT `+banCols+` FROM bans WHERE id = ?`, id))
+	b, err := scanBan(s.rd.QueryRowContext(ctx, `SELECT `+banCols+` FROM bans WHERE id = ?`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return b, fmt.Errorf("ban %d: %w", id, ErrNotFound)
 	}
@@ -285,7 +285,7 @@ func (s *Store) BanByID(ctx context.Context, id int64) (Ban, error) {
 
 // OpenBan returns the target's open ban, if any.
 func (s *Store) OpenBan(ctx context.Context, target string) (Ban, bool, error) {
-	b, err := scanBan(s.db.QueryRowContext(ctx, `SELECT `+banCols+` FROM bans WHERE target = ? AND status IN (?, ?, ?, ?)`,
+	b, err := scanBan(s.rd.QueryRowContext(ctx, `SELECT `+banCols+` FROM bans WHERE target = ? AND status IN (?, ?, ?, ?)`,
 		target, BanProposed, BanPending, BanActive, BanLifting))
 	if errors.Is(err, sql.ErrNoRows) {
 		return b, false, nil
@@ -299,7 +299,7 @@ func (s *Store) OpenBan(ctx context.Context, target string) (Ban, bool, error) {
 // rejected (zero if never).
 func (s *Store) BanOffenses(ctx context.Context, target string, since time.Time) (n int, lastRejected time.Time, err error) {
 	var rej sql.NullString
-	err = s.db.QueryRowContext(ctx, `SELECT
+	err = s.rd.QueryRowContext(ctx, `SELECT
 		  coalesce(sum(started_at <> '' AND end_reason <> 'unbanned' AND created_at >= ?), 0),
 		  max(CASE WHEN status = 'rejected' THEN decided_at END)
 		FROM bans WHERE target = ?`, since.UTC().Format(timeLayout), target).Scan(&n, &rej)
@@ -492,7 +492,7 @@ type BanCounts struct {
 // CountBans counts active and recently started bans.
 func (s *Store) CountBans(ctx context.Context, since time.Time) (BanCounts, error) {
 	var c BanCounts
-	err := s.db.QueryRowContext(ctx, `SELECT coalesce(sum(status IN ('active', 'lifting')), 0),
+	err := s.rd.QueryRowContext(ctx, `SELECT coalesce(sum(status IN ('active', 'lifting')), 0),
 		coalesce(sum(started_at <> '' AND started_at >= ?), 0) FROM bans`, since.UTC().Format(timeLayout)).Scan(&c.Active, &c.StartedSince)
 	return c, err
 }
@@ -520,7 +520,7 @@ type BanZone struct {
 
 // BanZones returns every zone that was ever opted in, by name.
 func (s *Store) BanZones(ctx context.Context) (map[string]BanZone, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT zone_id, zone, enabled, state, note, ruleset_id, rules, updated_by, updated_at, applied_at
+	rows, err := s.rd.QueryContext(ctx, `SELECT zone_id, zone, enabled, state, note, ruleset_id, rules, updated_by, updated_at, applied_at
 		FROM ban_zones ORDER BY zone`)
 	if err != nil {
 		return nil, err
@@ -583,7 +583,7 @@ func (s *Store) SetBanZoneState(ctx context.Context, zoneID, state, note, rulese
 // BanStateGet reads a named value into out; false when it was never set.
 func (s *Store) BanStateGet(ctx context.Context, key string, out any) (bool, error) {
 	var v string
-	err := s.db.QueryRowContext(ctx, `SELECT value FROM ban_state WHERE key = ?`, key).Scan(&v)
+	err := s.rd.QueryRowContext(ctx, `SELECT value FROM ban_state WHERE key = ?`, key).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -639,7 +639,7 @@ func (s *Store) SetBanPaused(ctx context.Context, paused bool, actor, note strin
 // LoginDays counts, per address, the distinct UTC days with a failure
 // since a time, on every host (persistence across days).
 func (s *Store) LoginDays(ctx context.Context, since time.Time) (map[string]int, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT ip, count(DISTINCT day) FROM login_failures WHERE last_at >= ? GROUP BY ip`, since.Unix())
+	rows, err := s.rd.QueryContext(ctx, `SELECT ip, count(DISTINCT day) FROM login_failures WHERE last_at >= ? GROUP BY ip`, since.Unix())
 	if err != nil {
 		return nil, err
 	}
@@ -667,7 +667,7 @@ type LoginSuccess struct {
 // LoginSuccessesSince lists (host, day, address) rows with "then
 // succeeded" set, last seen since a time.
 func (s *Store) LoginSuccessesSince(ctx context.Context, since time.Time) ([]LoginSuccess, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, h.name, f.day, f.ip, f.failures, f.last_at
 		FROM login_failures f JOIN hosts h ON h.id = f.host_id JOIN organizations o ON o.id = h.org_id
 		WHERE f.succeeded = 1 AND f.last_at >= ? ORDER BY f.last_at`, since.Unix())
@@ -692,7 +692,7 @@ func (s *Store) LoginSuccessesSince(ctx context.Context, since time.Time) ([]Log
 // time (open sessions and audited sign-ins), in any org.
 func (s *Store) SignInIPs(ctx context.Context, since time.Time) ([]string, error) {
 	ts := since.UTC().Format(timeLayout)
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT ip FROM sessions WHERE ip <> '' AND last_seen_at >= ?
 		UNION
 		SELECT ip FROM audit_log WHERE ip <> '' AND at >= ? AND action IN (`+signInActions+`)`, ts, ts)
@@ -716,7 +716,7 @@ func (s *Store) SignInIPs(ctx context.Context, since time.Time) ([]string, error
 // anomaly even after it's acknowledged.
 func (s *Store) AnomalyKeySeen(ctx context.Context, hostID int64, rule, key string) (bool, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM anomalies WHERE host_id = ? AND rule = ? AND json_extract(detail, '$.key') = ?`,
+	err := s.rd.QueryRowContext(ctx, `SELECT count(*) FROM anomalies WHERE host_id = ? AND rule = ? AND json_extract(detail, '$.key') = ?`,
 		hostID, rule, key).Scan(&n)
 	return n > 0, err
 }

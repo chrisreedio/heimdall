@@ -71,6 +71,7 @@ type env struct {
 	auth    *fakeAuth
 	baseURL string
 	cookie  string
+	dbPath  string
 }
 
 var testNow = time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
@@ -84,7 +85,7 @@ func newEnv(t *testing.T, baseURL string, sf SearchFunc) *env {
 // by default, SSO off).
 func newEnvCfg(t *testing.T, baseURL string, sf SearchFunc, adjust func(*Config)) *env {
 	t.Helper()
-	st := storetest.New(t)
+	st, dbPath := storetest.NewPath(t)
 	if sf == nil {
 		sf = func(context.Context, string, store.Scope) (*search.Result, error) { return &search.Result{}, nil }
 	}
@@ -101,7 +102,7 @@ func newEnvCfg(t *testing.T, baseURL string, sf SearchFunc, adjust func(*Config)
 	if strings.HasPrefix(baseURL, "https") {
 		cookie = "__Host-heimdall"
 	}
-	return &env{t: t, h: h, st: st, auth: fa, baseURL: baseURL, cookie: cookie}
+	return &env{t: t, h: h, st: st, auth: fa, baseURL: baseURL, cookie: cookie, dbPath: dbPath}
 }
 
 // seed creates web-01 with a stored snapshot and one KEV-free finding whose

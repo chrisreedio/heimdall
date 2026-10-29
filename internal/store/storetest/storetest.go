@@ -25,6 +25,13 @@ var (
 // New returns an open, migrated store in t's temp dir, closed at cleanup.
 func New(t testing.TB) *store.Store {
 	t.Helper()
+	st, _ := NewPath(t)
+	return st
+}
+
+// NewPath is New, also returning the database file's path.
+func NewPath(t testing.TB) (*store.Store, string) {
+	t.Helper()
 	once.Do(func() { template, initErr = build() })
 	if initErr != nil {
 		t.Fatal(initErr)
@@ -38,7 +45,7 @@ func New(t testing.TB) *store.Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	return st
+	return st, path
 }
 
 // build migrates an empty database and returns the file's bytes. Closing
