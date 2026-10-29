@@ -129,6 +129,7 @@ type env struct {
 	now    time.Time
 	secret []byte
 	userID int64
+	dbPath string
 }
 
 const (
@@ -138,8 +139,8 @@ const (
 
 func newEnv(t *testing.T) *env {
 	t.Helper()
-	st := storetest.New(t)
-	e := &env{t: t, st: st, now: time.Unix(1_800_000_000, 0), secret: NewTOTPSecret()}
+	st, dbPath := storetest.NewPath(t)
+	e := &env{t: t, st: st, now: time.Unix(1_800_000_000, 0), secret: NewTOTPSecret(), dbPath: dbPath}
 	hash, _ := HashPassword(password)
 	var err error
 	if e.userID, err = st.CreateLocalUser(t.Context(), "test", email, "Admin", true, hash, e.secret); err != nil {

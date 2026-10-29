@@ -69,7 +69,7 @@ func (s *Store) CreateOrg(ctx context.Context, actor, slug, name string) (Org, e
 }
 
 func (s *Store) ListOrgs(ctx context.Context) ([]Org, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT o.id, o.slug, o.name, o.created_at, o.watch_privilege_users, o.watch_logins, count(h.id)
 		FROM organizations o LEFT JOIN hosts h ON h.org_id = o.id
 		GROUP BY o.id ORDER BY o.slug`)
@@ -152,11 +152,11 @@ func (s *Store) CreateEnv(ctx context.Context, actor, orgSlug, slug, name string
 }
 
 func (s *Store) ListEnvs(ctx context.Context, orgSlug string) ([]Env, error) {
-	id, err := orgIDBySlug(ctx, s.db, orgSlug)
+	id, err := orgIDBySlug(ctx, s.rd, orgSlug)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT e.id, e.org_id, e.slug, e.name, e.created_at, count(h.id)
 		FROM environments e LEFT JOIN hosts h ON h.env_id = e.id
 		WHERE e.org_id = ?

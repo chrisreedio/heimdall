@@ -21,9 +21,20 @@ var (
 	ErrExists   = errors.New("already exists")
 )
 
+// Store holds two pools on the same file. db is the writer: one
+// connection, so writes are serialized and SQLITE_BUSY stays out of the
+// picture. rd is a small read-only pool for plain reads; under WAL its
+// readers see the last commit and don't wait for a write in progress, so
+// pages keep rendering while a long write (a findings recount, a big
+// report) holds the writer. Anything that writes, runs in s.tx, uses temp
+// tables or must see its own uncommitted work stays on db.
 type Store struct {
 	db *sql.DB
+	rd *sql.DB
 }
+
+// readConns is the size of the read-only pool.
+const readConns = 4
 
 // Create makes a new, empty database file readable only by its owner.
 // It fails if the file already exists.
@@ -49,14 +60,13 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("database %s has permissions %04o; run `chmod 600 %s`", path, perm, path)
 	}
 
-	dsn := path +
-		"?_pragma=foreign_keys(1)" +
-		"&_pragma=journal_mode(WAL)" +
-		"&_pragma=synchronous(NORMAL)" +
+	common := "?_pragma=foreign_keys(1)" +
 		"&_pragma=busy_timeout(5000)" +
-		"&_pragma=trusted_schema(0)" +
-		"&_txlock=immediate"
-	db, err := sql.Open("sqlite", dsn)
+		"&_pragma=trusted_schema(0)"
+	db, err := sql.Open("sqlite", path+common+
+		"&_pragma=journal_mode(WAL)"+
+		"&_pragma=synchronous(NORMAL)"+
+		"&_txlock=immediate")
 	if err != nil {
 		return nil, err
 	}
@@ -67,10 +77,27 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("open %s: %w", path, err)
 	}
-	return &Store{db: db}, nil
+	// The read pool opens after the writer has put the file in WAL mode
+	// (journal_mode is persistent). query_only makes any write through it
+	// fail with SQLITE_READONLY, temp tables included.
+	rd, err := sql.Open("sqlite", path+common+"&_pragma=query_only(1)")
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
+	rd.SetMaxOpenConns(readConns)
+	rd.SetMaxIdleConns(readConns)
+	if err := rd.PingContext(ctx); err != nil {
+		rd.Close()
+		db.Close()
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	return &Store{db: db, rd: rd}, nil
 }
 
-func (s *Store) Close() error { return s.db.Close() }
+func (s *Store) Close() error {
+	return errors.Join(s.rd.Close(), s.db.Close())
+}
 
 // tx runs fn in a transaction, committing if it returns nil.
 func (s *Store) tx(ctx context.Context, fn func(*sql.Tx) error) error {

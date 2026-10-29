@@ -103,7 +103,7 @@ func (s *Store) TokenUser(ctx context.Context, hash [32]byte, purpose string, no
 }
 
 func (s *Store) ListMCPTokens(ctx context.Context, userID int64) ([]MCPToken, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT id, name, purpose, created_at, last_used_at, revoked_at FROM mcp_tokens WHERE user_id = ? ORDER BY id`, userID)
 	if err != nil {
 		return nil, err

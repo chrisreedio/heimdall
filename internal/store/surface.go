@@ -74,7 +74,7 @@ func (s *Store) SetSurfaceCert(ctx context.Context, zoneID, state, note string, 
 
 // SurfaceSettingsAll returns every zone's stored settings by zone ID.
 func (s *Store) SurfaceSettingsAll(ctx context.Context) (map[string]SurfaceSettings, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT zone_id, state, note, ssl, always_https, min_tls, at, cert_state, cert_note, cert_expires, cert_at
 		FROM surface_zone_settings`)
 	if err != nil {
@@ -137,7 +137,7 @@ func (s *Store) PutCNAMEChecks(ctx context.Context, checks []CNAMECheck, now tim
 
 // CNAMEChecks returns the stored checks by target.
 func (s *Store) CNAMEChecks(ctx context.Context) (map[string]CNAMECheck, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT target, status, note, checked_at FROM surface_cname_checks`)
+	rows, err := s.rd.QueryContext(ctx, `SELECT target, status, note, checked_at FROM surface_cname_checks`)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +203,7 @@ func (s *Store) AddSurfaceChanges(ctx context.Context, cs []SurfaceChange, now t
 
 // SurfaceChanges returns the changes since t, newest first, at most limit.
 func (s *Store) SurfaceChanges(ctx context.Context, since time.Time, limit int) ([]SurfaceChange, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT at, zone_id, zone, name, kind, old, new, orgs FROM surface_changes
 		WHERE at >= ? ORDER BY at DESC, id DESC LIMIT ?`, since.UTC().Format(timeLayout), limit)
 	if err != nil {
@@ -233,7 +233,7 @@ type SurfaceHost struct {
 
 // SurfaceHosts lists every host that has reported, with its OS.
 func (s *Store) SurfaceHosts(ctx context.Context) ([]SurfaceHost, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, h.name, coalesce(sn.os_pretty, ''), coalesce(sn.os_id, ''), coalesce(sn.os_version, '')
 		FROM hosts h JOIN organizations o ON o.id = h.org_id JOIN snapshots sn ON sn.id = h.last_snapshot_id
 		ORDER BY o.slug, h.name`)
@@ -266,7 +266,7 @@ type SurfaceSite struct {
 
 // SurfaceSites lists every site in every host's latest snapshot.
 func (s *Store) SurfaceSites(ctx context.Context) ([]SurfaceSite, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.id, si.root, si.web_server, si.php_fpm_version, si.framework, si.framework_version
 		FROM hosts h JOIN sites si ON si.snapshot_id = h.last_snapshot_id ORDER BY h.id, si.root`)
 	if err != nil {

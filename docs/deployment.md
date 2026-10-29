@@ -132,6 +132,8 @@ Expect **tens of megabytes**. A demo hub with 12 hosts (Debian, Ubuntu, Rocky, A
 
 Check the size with `ls -lh /var/lib/heimdall/` (or wherever `database` points). Backups (`hd backup`) are compact copies.
 
+The hub writes through a single SQLite connection, so writes never contend, and reads through a small read-only pool (the database is in WAL mode). Pages keep loading while a long write runs, such as a new server's first report or a findings recount, and show what was last committed.
+
 ## Backups
 
 ```sh

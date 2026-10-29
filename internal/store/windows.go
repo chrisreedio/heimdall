@@ -192,7 +192,7 @@ func (s *Store) WindowsFor(ctx context.Context, hostID int64) ([]Window, error) 
 }
 
 func (s *Store) windows(ctx context.Context, q string, args ...any) ([]Window, error) {
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.rd.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}

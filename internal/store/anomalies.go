@@ -57,7 +57,7 @@ type AnomalyView struct {
 
 // OpenAnomalies lists unacknowledged anomalies in the scope, newest first.
 func (s *Store) OpenAnomalies(ctx context.Context, sc Scope) ([]AnomalyView, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT a.id, a.rule, a.severity, a.summary, a.detected_at, coalesce(a.snapshot_id, 0),
 		       h.id, h.org_id, o.slug, h.name
 		FROM anomalies a JOIN hosts h ON h.id = a.host_id JOIN organizations o ON o.id = h.org_id
@@ -85,7 +85,7 @@ func (s *Store) OpenAnomalies(ctx context.Context, sc Scope) ([]AnomalyView, err
 // AnomalyHost returns the host an anomaly belongs to (for access checks).
 func (s *Store) AnomalyHost(ctx context.Context, id int64) (IngestHost, error) {
 	var h IngestHost
-	err := s.db.QueryRowContext(ctx, `
+	err := s.rd.QueryRowContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, h.name FROM anomalies a
 		JOIN hosts h ON h.id = a.host_id JOIN organizations o ON o.id = h.org_id WHERE a.id = ?`, id).
 		Scan(&h.ID, &h.OrgID, &h.OrgSlug, &h.Name)
@@ -139,7 +139,7 @@ type SourceAnomaly struct {
 
 // OpenSourceAnomalies lists a rule's open anomalies that name a source.
 func (s *Store) OpenSourceAnomalies(ctx context.Context, rule string) ([]SourceAnomaly, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT a.id, h.id, h.org_id, o.slug, h.name, json_extract(a.detail, '$.source'), a.detected_at
 		FROM anomalies a JOIN hosts h ON h.id = a.host_id JOIN organizations o ON o.id = h.org_id
 		WHERE a.rule = ? AND a.acknowledged_at IS NULL AND json_extract(a.detail, '$.source') <> ''
@@ -208,7 +208,7 @@ type ClosedAnomaly struct {
 // ClosedAnomalies lists anomalies acknowledged since a time in the scope,
 // newest first.
 func (s *Store) ClosedAnomalies(ctx context.Context, sc Scope, since time.Time, limit int) ([]ClosedAnomaly, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT a.id, a.rule, a.severity, a.summary, a.detected_at, coalesce(a.snapshot_id, 0),
 		       h.id, h.org_id, o.slug, h.name, a.acknowledged_at, a.ack_note,
 		       coalesce(nullif(u.display_name, ''), u.email, ''), coalesce(json_extract(a.detail, '$.resolved_by'), '') = ?
@@ -302,7 +302,7 @@ func (f SnapshotFacts) Key() string {
 // RecentSnapshotFacts returns the host's newest reports (newest first),
 // snapshots and heartbeats alike.
 func (s *Store) RecentSnapshotFacts(ctx context.Context, hostID int64, n int) ([]SnapshotFacts, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT id, 0 AS hb, received_at, coalesce(kernel, ''), coalesce(uptime_seconds, -1),
 		       coalesce(lower(hex(collector_sha256)), ''), collector_version, source, collected_at, coalesce(os_id, '')
 		FROM snapshots WHERE host_id = ?
@@ -333,7 +333,7 @@ func (s *Store) RecentSnapshotFacts(ctx context.Context, hostID int64, n int) ([
 // SnapshotCount counts a host's reports: stored snapshots plus heartbeats.
 func (s *Store) SnapshotCount(ctx context.Context, hostID int64) (int, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `
+	err := s.rd.QueryRowContext(ctx, `
 		SELECT (SELECT count(*) FROM snapshots WHERE host_id = ?) + (SELECT count(*) FROM heartbeats WHERE host_id = ?)`,
 		hostID, hostID).Scan(&n)
 	return n, err
@@ -342,7 +342,7 @@ func (s *Store) SnapshotCount(ctx context.Context, hostID int64) (int, error) {
 // CollectorTrust reports whether any collector is trusted, and whether sha is.
 func (s *Store) CollectorTrust(ctx context.Context, sha string) (anyTrusted, trusted bool, err error) {
 	var n, m int
-	err = s.db.QueryRowContext(ctx, `
+	err = s.rd.QueryRowContext(ctx, `
 		SELECT count(*), coalesce(sum(lower(hex(sha256)) = ?), 0) FROM known_collectors`, sha).Scan(&n, &m)
 	return n > 0, m > 0, err
 }
@@ -354,7 +354,7 @@ func (s *Store) CollectorTrust(ctx context.Context, sha string) (anyTrusted, tru
 func (s *Store) InventoryMatch(ctx context.Context, hostID, id int64, exclude ...int64) (matchID int64, receivedAt time.Time, found bool, err error) {
 	ex, _ := json.Marshal(append([]int64{id}, exclude...))
 	var at string
-	err = s.db.QueryRowContext(ctx, `
+	err = s.rd.QueryRowContext(ctx, `
 		SELECT o.id, o.received_at FROM snapshots s JOIN snapshots o
 		  ON o.host_id = s.host_id AND o.inventory_sha256 = s.inventory_sha256
 		WHERE s.id = ? AND s.host_id = ? AND s.inventory_sha256 IS NOT NULL
@@ -372,7 +372,7 @@ func (s *Store) InventoryMatch(ctx context.Context, hostID, id int64, exclude ..
 // InOpenPlan reports whether the host is in an open patch plan.
 func (s *Store) InOpenPlan(ctx context.Context, hostID int64) (bool, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `
+	err := s.rd.QueryRowContext(ctx, `
 		SELECT count(*) FROM patch_plan_items i JOIN patch_plans p ON p.id = i.plan_id
 		WHERE i.host_id = ? AND p.closed_at IS NULL`, hostID).Scan(&n)
 	return n > 0, err
@@ -386,7 +386,7 @@ func (s *Store) PeerPackages(ctx context.Context, hostID int64, names []string) 
 		WHERE h.id != ? AND h.last_snapshot_id IS NOT NULL
 		  AND t.tag IN (SELECT tag FROM host_tags WHERE host_id = ?)`
 	var peers int
-	if err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM (`+peersQ+`)`, hostID, hostID).Scan(&peers); err != nil || peers == 0 {
+	if err := s.rd.QueryRowContext(ctx, `SELECT count(*) FROM (`+peersQ+`)`, hostID, hostID).Scan(&peers); err != nil || peers == 0 {
 		return nil, 0, err
 	}
 	out := map[string]int{}
@@ -394,7 +394,7 @@ func (s *Store) PeerPackages(ctx context.Context, hostID int64, names []string) 
 		return out, peers, nil
 	}
 	b, _ := json.Marshal(names)
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT p.name, count(DISTINCT h.id) FROM hosts h JOIN packages p ON p.snapshot_id = h.last_snapshot_id
 		WHERE h.id IN (`+peersQ+`) AND p.name IN (SELECT value FROM json_each(?))
 		GROUP BY p.name`, hostID, hostID, string(b))
@@ -438,7 +438,7 @@ func (s *Store) SilenceAlertsOutstanding(ctx context.Context) ([]SilentHost, err
 }
 
 func (s *Store) silentHosts(ctx context.Context, where string, args ...any) ([]SilentHost, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, h.name, h.last_seen_at, h.silence_alerted_for
 		FROM hosts h JOIN organizations o ON o.id = h.org_id
 		WHERE h.last_seen_at IS NOT NULL AND `+where+` ORDER BY o.slug, h.name`, args...)
@@ -491,7 +491,7 @@ func (s *Store) NoteSilenceEnded(ctx context.Context, hostID int64, episode, bac
 // Suppressed reports whether a rule is muted for a host at a time.
 func (s *Store) Suppressed(ctx context.Context, hostID int64, rule string, at time.Time) (bool, error) {
 	var n int
-	err := s.db.QueryRowContext(ctx, `
+	err := s.rd.QueryRowContext(ctx, `
 		SELECT count(*) FROM anomaly_suppressions WHERE host_id = ? AND rule = ? AND until_at > ?`,
 		hostID, rule, at.UTC().Format(timeLayout)).Scan(&n)
 	return n > 0, err
@@ -500,7 +500,7 @@ func (s *Store) Suppressed(ctx context.Context, hostID int64, rule string, at ti
 // HostTriggers returns the host's last reported trigger state ("" if none).
 func (s *Store) HostTriggers(ctx context.Context, hostID int64) (string, error) {
 	var v sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT triggers FROM hosts WHERE id = ?`, hostID).Scan(&v)
+	err := s.rd.QueryRowContext(ctx, `SELECT triggers FROM hosts WHERE id = ?`, hostID).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", ErrNotFound
 	}

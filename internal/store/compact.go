@@ -57,7 +57,7 @@ func decompressRecord(z []byte) ([]byte, error) {
 func (s *Store) AdvisoryRecord(ctx context.Context, id string) ([]byte, error) {
 	var raw string
 	var z []byte
-	err := s.db.QueryRowContext(ctx, `SELECT raw, record FROM advisories WHERE id = ?`, id).Scan(&raw, &z)
+	err := s.rd.QueryRowContext(ctx, `SELECT raw, record FROM advisories WHERE id = ?`, id).Scan(&raw, &z)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -182,7 +182,7 @@ func (s *Store) SpaceStats(ctx context.Context) (SpaceStats, error) {
 		pragma string
 		dst    *int64
 	}{{"page_size", &st.PageSize}, {"page_count", &st.Pages}, {"freelist_count", &st.FreePages}} {
-		if err := s.db.QueryRowContext(ctx, `PRAGMA `+q.pragma).Scan(q.dst); err != nil {
+		if err := s.rd.QueryRowContext(ctx, `PRAGMA `+q.pragma).Scan(q.dst); err != nil {
 			return st, err
 		}
 	}

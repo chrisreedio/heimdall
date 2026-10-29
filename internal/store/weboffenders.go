@@ -85,7 +85,7 @@ func (s *Store) RecordWebOffenders(ctx context.Context, zoneID string, days []We
 // WebFinalDays returns the zone's days since sinceDay that were fetched
 // final.
 func (s *Store) WebFinalDays(ctx context.Context, zoneID, sinceDay string) (map[string]bool, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT day FROM cloudflare_web_days WHERE zone_id = ? AND day >= ? AND final = 1`, zoneID, sinceDay)
+	rows, err := s.rd.QueryContext(ctx, `SELECT day FROM cloudflare_web_days WHERE zone_id = ? AND day >= ? AND final = 1`, zoneID, sinceDay)
 	if err != nil {
 		return nil, err
 	}
@@ -103,7 +103,7 @@ func (s *Store) WebFinalDays(ctx context.Context, zoneID, sinceDay string) (map[
 
 // WebOffenderIPs lists every stored web offender address.
 func (s *Store) WebOffenderIPs(ctx context.Context) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT DISTINCT ip FROM cloudflare_web_offenders ORDER BY ip`)
+	rows, err := s.rd.QueryContext(ctx, `SELECT DISTINCT ip FROM cloudflare_web_offenders ORDER BY ip`)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +198,7 @@ func (s *Store) WebOffendersIn(ctx context.Context, orgs []string, since time.Ti
 			args = append(args, o)
 		}
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT w.ip, w.day, z.name, w.events, w.actions, w.first_at, w.last_at, w.asn, w.as_name, w.country
 		FROM cloudflare_web_offenders w JOIN cloudflare_zones z ON z.id = w.zone_id
 		WHERE w.last_at >= ?`+zones+`

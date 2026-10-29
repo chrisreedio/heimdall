@@ -38,7 +38,7 @@ func (s *Store) CreateSession(ctx context.Context, hash [32]byte, userID int64, 
 func (s *Store) SessionByHash(ctx context.Context, hash [32]byte) (Session, User, error) {
 	var sess Session
 	var created, seen, expires string
-	err := s.db.QueryRowContext(ctx,
+	err := s.rd.QueryRowContext(ctx,
 		`SELECT user_id, created_at, last_seen_at, expires_at FROM sessions WHERE id_hash = ?`, hash[:]).
 		Scan(&sess.UserID, &created, &seen, &expires)
 	if errors.Is(err, sql.ErrNoRows) {

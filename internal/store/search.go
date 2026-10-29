@@ -46,7 +46,7 @@ func scanSearchHost(sc interface{ Scan(...any) error }, h *SearchHost, extra ...
 // PackagesNamed finds packages whose binary or source name equals name
 // (case-insensitive) in every host's latest snapshot, in one query.
 func (s *Store) PackagesNamed(ctx context.Context, name string) ([]PackageHit, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT `+searchHostCols+`, p.name, p.version, coalesce(p.source_name, ''),
 		       coalesce(p.source_version, ''), coalesce(p.pending_version, '')
 		FROM hosts h
@@ -81,7 +81,7 @@ type FindingHit struct {
 // OpenFindingsFor finds open findings whose advisory ID or any alias
 // equals id (case-insensitive).
 func (s *Store) OpenFindingsFor(ctx context.Context, id string) ([]FindingHit, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT `+searchHostCols+`, f.advisory_id, f.package_name, f.package_version, coalesce(f.fixed_version, ''),
 		       f.site_root
 		FROM findings f
@@ -112,7 +112,7 @@ func (s *Store) OpenFindingsFor(ctx context.Context, id string) ([]FindingHit, e
 // HostsMatching finds hosts whose name contains fragment (case-insensitive),
 // including hosts that have never reported.
 func (s *Store) HostsMatching(ctx context.Context, fragment string) ([]SearchHost, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT `+searchHostCols+`
 		FROM hosts h
 		JOIN organizations o ON o.id = h.org_id
@@ -148,7 +148,7 @@ type SiteHit struct {
 // SitesAll lists every site in every host's latest snapshot, in one query.
 // Search filters these in Go; a fleet has at most a few thousand sites.
 func (s *Store) SitesAll(ctx context.Context) ([]SiteHit, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT `+searchHostCols+`, si.root, si.document_root, si.server_names, si.web_server,
 		       si.php_fpm_version, si.framework, si.framework_version
 		FROM hosts h
@@ -183,7 +183,7 @@ type ComposerHit struct {
 // ComposerPackagesNamed finds a Composer package (case-insensitive) across
 // every site in every host's latest snapshot.
 func (s *Store) ComposerPackagesNamed(ctx context.Context, name string) ([]ComposerHit, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT `+searchHostCols+`, ap.manifest_path, ap.name, ap.version
 		FROM hosts h
 		JOIN organizations o ON o.id = h.org_id

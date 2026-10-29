@@ -41,7 +41,7 @@ func (s *Store) RecordIPSourceRun(ctx context.Context, source string, at time.Ti
 
 // IPSourceStates returns every synced source's last sync, by source.
 func (s *Store) IPSourceStates(ctx context.Context) ([]IPSourceState, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.rd.QueryContext(ctx,
 		`SELECT source, last_attempt_at, last_success_at, last_error, labels FROM ip_source_state ORDER BY source`)
 	if err != nil {
 		return nil, err

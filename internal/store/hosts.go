@@ -100,7 +100,7 @@ func (s *Store) ListHosts(ctx context.Context, orgSlug string) ([]Host, error) {
 		JOIN environments e ON e.id = h.env_id`
 	var args []any
 	if orgSlug != "" {
-		if _, err := orgIDBySlug(ctx, s.db, orgSlug); err != nil {
+		if _, err := orgIDBySlug(ctx, s.rd, orgSlug); err != nil {
 			return nil, err
 		}
 		q += ` WHERE o.slug = ?`
@@ -108,7 +108,7 @@ func (s *Store) ListHosts(ctx context.Context, orgSlug string) ([]Host, error) {
 	}
 	q += ` ORDER BY o.slug, e.slug, h.name`
 
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.rd.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -346,7 +346,7 @@ func (s *Store) SetHostTags(ctx context.Context, actor string, hostID int64, tag
 
 // HostTags returns a host's tags, sorted.
 func (s *Store) HostTags(ctx context.Context, hostID int64) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT tag FROM host_tags WHERE host_id = ? ORDER BY tag`, hostID)
+	rows, err := s.rd.QueryContext(ctx, `SELECT tag FROM host_tags WHERE host_id = ? ORDER BY tag`, hostID)
 	if err != nil {
 		return nil, err
 	}

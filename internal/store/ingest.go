@@ -31,7 +31,7 @@ type IngestHost struct {
 // HostByToken resolves a live (unrevoked) token hash to its host.
 func (s *Store) HostByToken(ctx context.Context, hash [32]byte) (IngestHost, error) {
 	var h IngestHost
-	err := s.db.QueryRowContext(ctx, `
+	err := s.rd.QueryRowContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, h.name, t.id, h.auto_name, h.awaiting_approval
 		FROM ingest_tokens t
 		JOIN hosts h ON h.id = t.host_id
@@ -51,7 +51,7 @@ func (s *Store) HostByName(ctx context.Context, orgSlug, name string) (IngestHos
 		return IngestHost{}, err
 	}
 	var h IngestHost
-	err = s.db.QueryRowContext(ctx, `
+	err = s.rd.QueryRowContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, h.name, h.auto_name, e.slug
 		FROM hosts h JOIN organizations o ON o.id = h.org_id JOIN environments e ON e.id = h.env_id
 		WHERE o.slug = ? AND h.name = ?`, orgSlug, name).
@@ -67,7 +67,7 @@ func (s *Store) HostByName(ctx context.Context, orgSlug, name string) (IngestHos
 func (s *Store) SnapshotByPayload(ctx context.Context, hostID int64, hash [32]byte) (id int64, receivedAt time.Time, found bool, err error) {
 	var received string
 	// Heartbeats (unchanged reports) count too: their payloads were sent once.
-	err = s.db.QueryRowContext(ctx, `
+	err = s.rd.QueryRowContext(ctx, `
 		SELECT id, received_at FROM snapshots WHERE host_id = ? AND payload_sha256 = ?
 		UNION ALL
 		SELECT snapshot_id, received_at FROM heartbeats WHERE host_id = ? AND payload_sha256 = ?
@@ -388,7 +388,7 @@ type AnomalyRow struct {
 
 // Anomalies lists a host's open (unacknowledged) anomalies, newest first.
 func (s *Store) Anomalies(ctx context.Context, hostID int64) ([]AnomalyRow, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT id, rule, severity, summary, detected_at, coalesce(snapshot_id, 0)
 		FROM anomalies WHERE host_id = ? AND acknowledged_at IS NULL
 		ORDER BY id DESC`, hostID)
@@ -429,7 +429,7 @@ func (s *Store) LatestSnapshot(ctx context.Context, hostID int64) (SnapshotSumma
 	var received string
 	var os sql.NullString
 	var reboot sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `
+	err := s.rd.QueryRowContext(ctx, `
 		SELECT s.id, s.source, coalesce(h.last_seen_at, s.received_at), s.collector_version, coalesce(s.os_pretty, s.os_id), s.reboot_required, coalesce(s.kernel, ''),
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id),
 		       (SELECT count(*) FROM packages p WHERE p.snapshot_id = s.id AND p.pending_version IS NOT NULL),

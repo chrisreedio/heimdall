@@ -52,7 +52,7 @@ func (s *Store) TrustCollector(ctx context.Context, actor, sha, version, note st
 // ListCollectors returns trusted checksums plus any untrusted ones seen in
 // hosts' latest snapshots (Version is then what the host claimed).
 func (s *Store) ListCollectors(ctx context.Context) (trusted, untrusted []KnownCollector, err error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT lower(hex(k.sha256)), k.version, k.note, k.added_at,
 		       (SELECT count(*) FROM hosts h JOIN snapshots s ON s.id = h.last_snapshot_id WHERE s.collector_sha256 = k.sha256)
 		FROM known_collectors k ORDER BY k.added_at`)
@@ -73,7 +73,7 @@ func (s *Store) ListCollectors(ctx context.Context) (trusted, untrusted []KnownC
 		return nil, nil, err
 	}
 
-	rows, err = s.db.QueryContext(ctx, `
+	rows, err = s.rd.QueryContext(ctx, `
 		SELECT lower(hex(s.collector_sha256)), max(s.collector_version), count(*)
 		FROM hosts h JOIN snapshots s ON s.id = h.last_snapshot_id
 		WHERE s.collector_sha256 IS NOT NULL

@@ -78,7 +78,7 @@ func checkNewsItem(it NewsItem) error {
 
 // NewsValidators returns the ETag and Last-Modified stored for a source.
 func (s *Store) NewsValidators(ctx context.Context, source string) (etag, lastModified string, err error) {
-	err = s.db.QueryRowContext(ctx, `SELECT etag, last_modified FROM news_sources WHERE source = ?`, source).
+	err = s.rd.QueryRowContext(ctx, `SELECT etag, last_modified FROM news_sources WHERE source = ?`, source).
 		Scan(&etag, &lastModified)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", nil
@@ -269,7 +269,7 @@ func (s *Store) MatchNews(ctx context.Context, hostID int64, at time.Time) error
 
 // LiveNewsCVEs returns the CVE IDs named by live incidents.
 func (s *Store) LiveNewsCVEs(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.db.QueryContext(ctx,
+	rows, err := s.rd.QueryContext(ctx,
 		`SELECT DISTINCT c.value FROM news_items n, json_each(n.cve_ids) c WHERE n.status = 'live'`)
 	if err != nil {
 		return nil, err
@@ -342,7 +342,7 @@ func (s *Store) news(ctx context.Context, scope Scope, onlyHost int64) ([]NewsEn
 		q += ` WHERE n.id IN (SELECT item_id FROM news_matches WHERE host_id = ?)`
 		args = append(args, onlyHost)
 	}
-	rows, err := s.db.QueryContext(ctx, q+` ORDER BY n.started_at DESC, n.updated_at DESC, n.id DESC`, args...)
+	rows, err := s.rd.QueryContext(ctx, q+` ORDER BY n.started_at DESC, n.updated_at DESC, n.id DESC`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +369,7 @@ func (s *Store) news(ctx context.Context, scope Scope, onlyHost int64) ([]NewsEn
 		q += ` AND m.host_id = ?`
 		args = append(args, onlyHost)
 	}
-	mrows, err := s.db.QueryContext(ctx, q+` ORDER BY o.slug, h.name`, args...)
+	mrows, err := s.rd.QueryContext(ctx, q+` ORDER BY o.slug, h.name`, args...)
 	if err != nil {
 		return nil, err
 	}

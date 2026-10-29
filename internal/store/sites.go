@@ -18,7 +18,7 @@ func SiteLabelKey(org, host, root string) string { return org + "\x00" + host + 
 
 // SiteLabelsByName returns the labels set for sites, keyed by SiteLabelKey.
 func (s *Store) SiteLabelsByName(ctx context.Context) (map[string]string, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT o.slug, h.name, l.root, l.label
 		FROM site_labels l
 		JOIN hosts h ON h.id = l.host_id

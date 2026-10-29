@@ -98,7 +98,7 @@ func (s *Store) LoginWatchOf(ctx context.Context, hostID int64) (LoginWatch, err
 	var w LoginWatch
 	var counted int64
 	var reported string
-	err := s.db.QueryRowContext(ctx, `SELECT source, counted_at, reported_at FROM login_watch WHERE host_id = ?`, hostID).
+	err := s.rd.QueryRowContext(ctx, `SELECT source, counted_at, reported_at FROM login_watch WHERE host_id = ?`, hostID).
 		Scan(&w.Source, &counted, &reported)
 	if errors.Is(err, sql.ErrNoRows) {
 		return LoginWatch{}, nil
@@ -120,7 +120,7 @@ type HostLoginFailure struct {
 // with a failure since a time, on hosts the scope can view. hostID 0 is
 // every such host; ip "" is every address. Most failures first.
 func (s *Store) LoginFailuresSince(ctx context.Context, sc Scope, hostID int64, ip string, since time.Time) ([]HostLoginFailure, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.id, h.org_id, o.slug, h.name, f.ip, sum(f.failures), max(f.usernames), min(f.first_at), max(f.last_at), max(f.succeeded)
 		FROM login_failures f JOIN hosts h ON h.id = f.host_id JOIN organizations o ON o.id = h.org_id
 		WHERE f.last_at >= ? AND (? = 0 OR f.host_id = ?) AND (? = '' OR f.ip = ?)
@@ -150,7 +150,7 @@ func (s *Store) LoginFailuresSince(ctx context.Context, sc Scope, hostID int64, 
 // address or not) since a UTC day, on hosts the scope can view: one org's
 // (org "" every org's), one host (hostID 0 every host).
 func (s *Store) LoginDayTotals(ctx context.Context, sc Scope, org string, hostID int64, sinceDay string) (failures int, err error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT h.org_id, sum(d.failures) FROM login_failure_days d JOIN hosts h ON h.id = d.host_id
 		JOIN organizations o ON o.id = h.org_id
 		WHERE d.day >= ? AND (? = 0 OR d.host_id = ?) AND (? = '' OR o.slug = ?) GROUP BY d.host_id`,
@@ -176,7 +176,7 @@ func (s *Store) LoginDayTotals(ctx context.Context, sc Scope, org string, hostID
 // since a time, on hosts the scope can view: one org's (org "" every
 // org's). With AllScope and every org it's LoginDays.
 func (s *Store) LoginDaysFor(ctx context.Context, sc Scope, org string, since time.Time) (map[string]int, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT f.ip, h.org_id, f.day FROM login_failures f JOIN hosts h ON h.id = f.host_id
 		JOIN organizations o ON o.id = h.org_id
 		WHERE f.last_at >= ? AND (? = '' OR o.slug = ?) GROUP BY f.ip, h.org_id, f.day`, since.Unix(), org, org)
@@ -217,7 +217,7 @@ func (s *Store) RadarCached(ctx context.Context, ips []string) (map[string]Cloud
 			args[i] = ip
 		}
 		ips = ips[n:]
-		rows, err := s.db.QueryContext(ctx, `SELECT ip, asn, name, country, fetched_at FROM cloudflare_radar_asn
+		rows, err := s.rd.QueryContext(ctx, `SELECT ip, asn, name, country, fetched_at FROM cloudflare_radar_asn
 			WHERE asn > 0 AND ip IN (?`+strings.Repeat(", ?", n-1)+`)`, args...)
 		if err != nil {
 			return nil, err

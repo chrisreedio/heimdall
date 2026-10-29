@@ -87,19 +87,19 @@ type PrivilegeSummary struct {
 // PrivilegeSummary counts a host's events since a time.
 func (s *Store) PrivilegeSummary(ctx context.Context, hostID int64, since time.Time) (PrivilegeSummary, error) {
 	var sum PrivilegeSummary
-	err := s.db.QueryRowContext(ctx, `SELECT state, ever_on, detail FROM privilege_watch WHERE host_id = ?`, hostID).
+	err := s.rd.QueryRowContext(ctx, `SELECT state, ever_on, detail FROM privilege_watch WHERE host_id = ?`, hostID).
 		Scan(&sum.State, &sum.EverOn, &sum.Detail)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return sum, err
 	}
 	var last sql.NullInt64
-	if err := s.db.QueryRowContext(ctx, `SELECT max(at) FROM privilege_events WHERE host_id = ?`, hostID).Scan(&last); err != nil {
+	if err := s.rd.QueryRowContext(ctx, `SELECT max(at) FROM privilege_events WHERE host_id = ?`, hostID).Scan(&last); err != nil {
 		return sum, err
 	}
 	if last.Valid {
 		sum.Last = time.Unix(last.Int64, 0).UTC()
 	}
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT kind, count(*) FROM privilege_events WHERE host_id = ? AND at >= ? GROUP BY kind`, hostID, since.Unix())
 	if err != nil {
 		return sum, err
@@ -119,7 +119,7 @@ func (s *Store) PrivilegeSummary(ctx context.Context, hostID int64, since time.T
 
 // RecentPrivilege returns a host's newest events, newest first.
 func (s *Store) RecentPrivilege(ctx context.Context, hostID int64, limit int) ([]PrivilegeEvent, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT at, kind, user, source FROM privilege_events WHERE host_id = ? ORDER BY at DESC, kind LIMIT ?`, hostID, limit)
 	if err != nil {
 		return nil, err

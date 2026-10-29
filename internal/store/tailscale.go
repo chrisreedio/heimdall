@@ -95,7 +95,7 @@ func (s *Store) RecordTailnetSyncError(ctx context.Context, msg string, now time
 func (s *Store) TailnetSyncState(ctx context.Context) (TailnetSync, error) {
 	var st TailnetSync
 	var att, synced, keyExp string
-	err := s.db.QueryRowContext(ctx, `
+	err := s.rd.QueryRowContext(ctx, `
 		SELECT attempted_at, synced_at, error, devices, credential, key_expires FROM tailscale_sync WHERE id = 1`).
 		Scan(&att, &synced, &st.Error, &st.Devices, &st.Credential, &keyExp)
 	if err == sql.ErrNoRows {
@@ -110,7 +110,7 @@ func (s *Store) TailnetSyncState(ctx context.Context) (TailnetSync, error) {
 
 // TailnetDevices returns the devices from the last good sync, by name.
 func (s *Store) TailnetDevices(ctx context.Context) ([]TailnetDevice, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	rows, err := s.rd.QueryContext(ctx, `
 		SELECT id, name, hostname, addresses, user_login, tags, os, client_version, update_available, online,
 			last_seen, key_expiry, key_expiry_disabled, synced_at
 		FROM tailscale_devices ORDER BY name, id`)
@@ -142,7 +142,7 @@ type TailnetHost struct {
 
 // TailnetHosts lists every host (all orgs) for matching to devices.
 func (s *Store) TailnetHosts(ctx context.Context) ([]TailnetHost, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, org_id, name, report_ip FROM hosts ORDER BY id`)
+	rows, err := s.rd.QueryContext(ctx, `SELECT id, org_id, name, report_ip FROM hosts ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +162,7 @@ func (s *Store) TailnetHosts(ctx context.Context) ([]TailnetHost, error) {
 // unknown).
 func (s *Store) HostReportIP(ctx context.Context, hostID int64) (string, error) {
 	var ip string
-	err := s.db.QueryRowContext(ctx, `SELECT report_ip FROM hosts WHERE id = ?`, hostID).Scan(&ip)
+	err := s.rd.QueryRowContext(ctx, `SELECT report_ip FROM hosts WHERE id = ?`, hostID).Scan(&ip)
 	if err == sql.ErrNoRows {
 		return "", nil
 	}
