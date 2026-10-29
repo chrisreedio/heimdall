@@ -20,7 +20,8 @@ var rootCommands = map[string]bool{"upgrade": true, "restart": true, "sso": true
 	// root-owned files it stores.
 	"notify set-webhook": true, "notify test": true,
 	// Store a root-owned key file and add its LoadCredential line.
-	"tailscale set-key": true, "cloudflare set-token": true, "ip-services set-key": true, "bans set-token": true}
+	"tailscale set-key": true, "cloudflare set-token": true, "ip-services set-key": true, "bans set-token": true,
+	"mcp set-name": true} // edits the root-owned config, as sso setup does
 
 // keyCommands read a root-owned key file and then use the hub's database:
 // they read the key files as root, then drop to the hub user in-process,

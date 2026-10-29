@@ -15,7 +15,7 @@ import (
 
 func TestBuild(t *testing.T) {
 	const hub = "https://hub.example.ts.net:8444"
-	b, err := Build(hub, "v0.4.15")
+	b, err := Build(hub, "v0.4.15", "heimdall")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,10 +100,10 @@ func TestBuild(t *testing.T) {
 	}
 
 	// Same inputs, same bytes.
-	if b2, _ := Build(hub, "v0.4.15"); !bytes.Equal(b, b2) {
+	if b2, _ := Build(hub, "v0.4.15", "heimdall"); !bytes.Equal(b, b2) {
 		t.Error("bundle isn't deterministic")
 	}
-	if _, err := Build("not a url", "v1"); err == nil {
+	if _, err := Build("not a url", "v1", "heimdall"); err == nil {
 		t.Error("bad URL accepted")
 	}
 }

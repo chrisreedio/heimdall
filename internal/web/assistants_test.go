@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/json"
+	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -361,5 +362,50 @@ func TestAssistantsThreatsToken(t *testing.T) {
 	at, err := e.st.LastAuditAt(t.Context(), "mcp_token.create")
 	if err != nil || at.IsZero() {
 		t.Error("create not audited")
+	}
+}
+
+// A hub that names its connection (mcp.name) uses the name everywhere a
+// client keys on it, so connections to two hubs sit side by side.
+func TestAssistantsNamedHub(t *testing.T) {
+	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
+		c.MCP = MCPSetup{Enabled: true, BaseURL: testMCPURL, Name: "heimdall-acme"}
+	})
+	page := html.UnescapeString(e.get("/account/assistants", signedIn(e)).Body.String())
+	for _, want := range []string{
+		"claude mcp add --scope user --transport http heimdall-acme " + testMCPURL + "/mcp",
+		`"heimdall-acme": {`, "claude mcp remove heimdall-acme", `download="heimdall-acme.mcpb"`,
+		"called <code>heimdall-acme</code>",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("page lacks %q", want)
+		}
+	}
+	if strings.Contains(page, "http heimdall ") || strings.Contains(page, `"heimdall": {`) {
+		t.Error("page still uses the default name")
+	}
+	w := e.get("/account/assistants/heimdall.mcpb", signedIn(e))
+	if !strings.Contains(w.Header().Get("Content-Disposition"), `filename="heimdall-acme.mcpb"`) {
+		t.Errorf("download name: %v", w.Header())
+	}
+	b := w.Body.Bytes()
+	zr, err := zip.NewReader(bytes.NewReader(b), int64(len(b)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range zr.File {
+		if f.Name != "manifest.json" {
+			continue
+		}
+		rc, _ := f.Open()
+		raw, _ := io.ReadAll(rc)
+		var m struct {
+			Name        string `json:"name"`
+			DisplayName string `json:"display_name"`
+		}
+		json.Unmarshal(raw, &m)
+		if m.Name != "heimdall-acme" || m.DisplayName != "Heimdall (heimdall-acme)" {
+			t.Errorf("manifest name %q, display name %q", m.Name, m.DisplayName)
+		}
 	}
 }

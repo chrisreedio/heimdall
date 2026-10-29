@@ -74,15 +74,16 @@ sudo systemctl restart heimdall</pre><button type="button" class="copy" data-cop
 <section class="card">
   <h2>Connect an assistant</h2>
   <p class="muted">This computer must be on the tailnet: <code>{{.Endpoint}}</code> answers only there.</p>
+  <p class="muted small">{{if .Named}}This hub's connection is called <code>{{.Name}}</code>, so it sits beside connections to other Heimdall hubs.{{else}}Connecting to more than one Heimdall hub? Each one's connection needs its own name, or the second replaces the first. An admin sets it on each hub with <code>sudo heimdall mcp set-name heimdall-acme</code>, then <code>sudo heimdall restart</code>.{{end}} If a hub's name changes, remove the old connection and add it again.</p>
   <div class="tabs">
     <input type="radio" name="client" id="cl-desktop" checked><label for="cl-desktop">Claude Desktop</label>
     <input type="radio" name="client" id="cl-code"><label for="cl-code">Claude Code</label>
     <input type="radio" name="client" id="cl-other"><label for="cl-other">Other clients</label>
 
     <div class="panel" id="panel-desktop">
-      <p><a class="button" href="/account/assistants/heimdall.mcpb" download>Download the Heimdall extension</a></p>
+      <p><a class="button" href="/account/assistants/heimdall.mcpb" download="{{.FileName}}">Download the Heimdall extension</a></p>
       <ol class="setup-steps">
-        <li>Double-click <code>heimdall.mcpb</code> to open it in Claude Desktop (or drag it into the window, or use <strong>Settings → Extensions → Advanced settings → Install Extension…</strong>), then click <strong>Install</strong>.</li>
+        <li>Double-click <code>{{.FileName}}</code> to open it in Claude Desktop (or drag it into the window, or use <strong>Settings → Extensions → Advanced settings → Install Extension…</strong>), then click <strong>Install</strong>.</li>
         <li>Paste your token into the extension's <strong>Token</strong> setting. The Heimdall URL is already filled in with <code>{{.BaseURL}}</code>. Claude Desktop keeps the token in your system keychain.</li>
         <li>With this computer on the tailnet, ask Claude something like <em>"what should I patch first?"</em></li>
       </ol>
@@ -103,7 +104,7 @@ sudo systemctl restart heimdall</pre><button type="button" class="copy" data-cop
         <div class="codebox"><pre id="code-ps">{{.CodePS}}</pre><button type="button" class="copy" data-copy="code-ps" hidden>Copy</button></div>
         <p class="hint"><code>-MaskInput</code> needs PowerShell 7.1 or later.</p>
       </details>
-      <p class="hint">Claude Code saves the header in <code>~/.claude.json</code>. Check it with <code>claude mcp list</code>; remove it with <code>claude mcp remove heimdall</code>.</p>
+      <p class="hint">Claude Code saves the header in <code>~/.claude.json</code>. Check it with <code>claude mcp list</code>; remove it with <code>claude mcp remove {{.Name}}</code>.</p>
     </div>
 
     <div class="panel" id="panel-other">

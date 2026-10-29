@@ -118,7 +118,7 @@ func cmdServe(a *app, args []string) error {
 		// zone sync recorded (none without [cloudflare]).
 		tl := &threats.Lister{Store: s, Ranker: &logins.Ranker{Store: s, IPs: ips, Edge: cloudflareEdgeSet()},
 			Bans: cfg.Bans, Now: time.Now, Web: threats.StoreWeb(s)}
-		h, err := mcp.New(mcp.Config{BaseURL: cfg.MCP.BaseURL, Version: version, Threats: tl}, s, log.With("component", "mcp"), time.Now)
+		h, err := mcp.New(mcp.Config{BaseURL: cfg.MCP.BaseURL, Version: version, Name: cfg.MCP.ConnectorName(), Threats: tl}, s, log.With("component", "mcp"), time.Now)
 		if err != nil {
 			return err
 		}
@@ -221,7 +221,7 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.
 		IngestURL:    cfg.Ingest.PublicURL,
 		Updates:      updateChecker(cfg, log),
 		News:         cfg.News.Enabled,
-		MCP:          web.MCPSetup{Enabled: cfg.MCP.Enabled, BaseURL: cfg.MCP.BaseURL},
+		MCP:          web.MCPSetup{Enabled: cfg.MCP.Enabled, BaseURL: cfg.MCP.BaseURL, Name: cfg.MCP.ConnectorName()},
 		Agents:       handoffAgents(cfg, log.With("component", "handoff")),
 		IPs:          ips,
 		Cloudflare:   cfg.Cloudflare.Enabled,
