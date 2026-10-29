@@ -146,7 +146,10 @@ document.addEventListener("DOMContentLoaded", function () {
   setTimeout(function () {
     var u = new URL(location.href);
     u.searchParams.delete("ai"); // the "started" notice was for the first view
-    location.replace(u.toString());
+    // The URL has a #fragment (the card's anchor), and replacing a URL
+    // with itself plus a fragment only scrolls, it doesn't reload.
+    if (u.toString() === location.href) location.reload();
+    else location.replace(u.toString());
   }, 5000);
 });
 
