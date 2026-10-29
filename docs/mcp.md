@@ -96,6 +96,19 @@ Remove-Variable t
 | Header | `Authorization: Bearer hmd_mcp_…` |
 | Transport | Streamable HTTP, JSON responses, no session. There's no OAuth: the token is the only credential. |
 
+## More than one hub
+
+Each Heimdall install (one per organization, say) is its own hub with its own MCP endpoint. Clients key a connection on its name: Claude Code's server name, the Claude Desktop extension's id and the `claude_desktop_config.json` key. Out of the box every hub's connection is called `heimdall`, so someone connecting to a second hub would replace (or be refused) the first.
+
+Give each hub its own name, once, on the hub:
+
+```sh
+sudo heimdall mcp set-name heimdall-acme   # writes [mcp] name = "heimdall-acme"
+sudo heimdall restart
+```
+
+The name is 1-40 lowercase letters, digits, `-` or `_`. From then on the **AI assistants** page uses it everywhere: `claude mcp add … heimdall-acme`, the extension downloads as `heimdall-acme.mcpb` and shows as "Heimdall (heimdall-acme)" in Claude Desktop, and the server reports the name, so Claude can say which hub an answer came from. Anyone already connected removes the old connection (`claude mcp remove heimdall`, or uninstall the extension) and adds it again from the page.
+
 ## Why not a Claude custom connector?
 
 Claude's custom connectors (remote MCP added in Claude's settings) are reached **from Anthropic's cloud, not from your computer**. The server must be reachable from the public internet ([About connectors](https://support.claude.com/en/articles/11175166-about-connectors)). Heimdall's MCP endpoint stays on the tailnet on purpose.

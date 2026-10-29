@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/realmwatch/heimdall/internal/auth"
+	"github.com/realmwatch/heimdall/internal/config"
 	"github.com/realmwatch/heimdall/internal/mcpb"
 	"github.com/realmwatch/heimdall/internal/store"
 )
@@ -21,6 +22,15 @@ import (
 type MCPSetup struct {
 	Enabled bool
 	BaseURL string // mcp.base_url, the address clients use
+	Name    string // mcp.name, what clients call the connection ("" = heimdall)
+}
+
+// connectorName is MCPSetup.Name, or "heimdall".
+func (m MCPSetup) connectorName() string {
+	if m.Name == "" {
+		return config.DefaultConnectorName
+	}
+	return m.Name
 }
 
 const (
@@ -83,6 +93,10 @@ type assistantsBody struct {
 	Desktop     string // claude_desktop_config.json fallback
 	Code        string // Claude Code, POSIX shells
 	CodePS      string // Claude Code, PowerShell
+	// Name is the connection's name (mcp.name); Named: the hub set one.
+	Name     string
+	Named    bool
+	FileName string // the extension's download name
 }
 
 var assistantNotices = map[string]string{
@@ -120,13 +134,15 @@ func (s *server) renderAssistants(w http.ResponseWriter, r *http.Request, v *aut
 		"printf 'header = \"Authorization: Bearer %s\"\\n' \"$HMD_TOKEN\" > ~/.heimdall-threats.curl\n" +
 		"chmod 600 ~/.heimdall-threats.curl; unset HMD_TOKEN\n" +
 		"curl -fsS --config ~/.heimdall-threats.curl '" + body.ThreatsURL + "?format=plain&min_score=12'"
-	body.Desktop = desktopConfig(body.Endpoint)
+	name := s.cfg.MCP.connectorName()
+	body.Name, body.Named, body.FileName = name, s.cfg.MCP.Name != "" && name != config.DefaultConnectorName, mcpb.FileName(name)
+	body.Desktop = desktopConfig(name, body.Endpoint)
 	body.Code = "read -rs HMD_TOKEN   # paste your token, then press Enter\n" +
-		"claude mcp add --scope user --transport http heimdall " + body.Endpoint + " \\\n" +
+		"claude mcp add --scope user --transport http " + name + " " + body.Endpoint + " \\\n" +
 		"  --header \"Authorization: Bearer $HMD_TOKEN\"\n" +
 		"unset HMD_TOKEN"
 	body.CodePS = "$t = Read-Host \"Heimdall token\" -MaskInput\n" +
-		"claude mcp add --scope user --transport http heimdall " + body.Endpoint + " --header \"Authorization: Bearer $t\"\n" +
+		"claude mcp add --scope user --transport http " + name + " " + body.Endpoint + " --header \"Authorization: Bearer $t\"\n" +
 		"Remove-Variable t"
 	s.render(w, r, status, "assistants", v, "AI assistants", "assistants", body)
 }
@@ -149,8 +165,8 @@ func activeTokens(ts []store.MCPToken) []tokenRow {
 // desktopConfig is the claude_desktop_config.json fallback through
 // mcp-remote. The header is "Authorization:${AUTH_HEADER}" with no space
 // because Claude Desktop on Windows splits arguments at spaces.
-func desktopConfig(endpoint string) string {
-	cfg := map[string]any{"mcpServers": map[string]any{"heimdall": map[string]any{
+func desktopConfig(name, endpoint string) string {
+	cfg := map[string]any{"mcpServers": map[string]any{name: map[string]any{
 		"command": "npx",
 		"args":    []string{"-y", "mcp-remote", endpoint, "--header", "Authorization:${AUTH_HEADER}"},
 		"env":     map[string]string{"AUTH_HEADER": "Bearer <your token>"},
@@ -240,14 +256,15 @@ func (s *server) assistantBundle(w http.ResponseWriter, r *http.Request, v *auth
 		s.notFound(w, r, v)
 		return
 	}
-	b, err := mcpb.Build(s.cfg.MCP.BaseURL, s.cfg.Version)
+	name := s.cfg.MCP.connectorName()
+	b, err := mcpb.Build(s.cfg.MCP.BaseURL, s.cfg.Version, name)
 	if err != nil {
 		s.fail(w, r, v, err)
 		return
 	}
 	h := w.Header()
 	h.Set("Content-Type", "application/zip")
-	h.Set("Content-Disposition", `attachment; filename="`+mcpb.FileName+`"`)
+	h.Set("Content-Disposition", `attachment; filename="`+mcpb.FileName(name)+`"`)
 	h.Set("Cache-Control", "no-store")
 	h.Set("Content-Length", strconv.Itoa(len(b)))
 	if r.Method != http.MethodHead {

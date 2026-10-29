@@ -25,8 +25,18 @@ import (
 // ManifestVersion is the MCPB manifest spec version the bundle follows.
 const ManifestVersion = "0.3"
 
-// FileName is what the download is called.
-const FileName = "heimdall.mcpb"
+// FileName is what the download for a hub whose connection is called
+// name (mcp.name) is called: heimdall.mcpb, heimdall-acme.mcpb.
+func FileName(name string) string { return name + ".mcpb" }
+
+// DisplayName is the extension's name in Claude Desktop: "Heimdall", or
+// "Heimdall (heimdall-acme)" for a hub that names its connection.
+func DisplayName(name string) string {
+	if name == "heimdall" {
+		return "Heimdall"
+	}
+	return "Heimdall (" + name + ")"
+}
 
 //go:embed server/index.js
 var bridgeJS []byte
@@ -35,8 +45,10 @@ var bridgeJS []byte
 var iconPNG []byte
 
 // Build returns a .mcpb (a zip) for a hub whose MCP endpoint is at
-// baseURL (mcp.base_url), labelled with the Heimdall release.
-func Build(baseURL, release string) ([]byte, error) {
+// baseURL (mcp.base_url), labelled with the Heimdall release. name
+// (mcp.name) is the extension's id, so extensions for two hubs with
+// different names install side by side.
+func Build(baseURL, release, name string) ([]byte, error) {
 	u, err := url.Parse(baseURL)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
 		return nil, fmt.Errorf("mcpb: base URL must be an absolute http(s) URL")
@@ -45,7 +57,7 @@ func Build(baseURL, release string) ([]byte, error) {
 	enc := json.NewEncoder(&manifest)
 	enc.SetEscapeHTML(false) // keep ">=18.0.0" readable
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(Manifest(baseURL, release)); err != nil {
+	if err := enc.Encode(Manifest(baseURL, release, name)); err != nil {
 		return nil, err
 	}
 	var buf bytes.Buffer
@@ -75,12 +87,12 @@ func Build(baseURL, release string) ([]byte, error) {
 }
 
 // Manifest is the bundle's manifest.json.
-func Manifest(baseURL, release string) map[string]any {
+func Manifest(baseURL, release, name string) map[string]any {
 	version := semver(release)
 	return map[string]any{
 		"manifest_version": ManifestVersion,
-		"name":             "heimdall",
-		"display_name":     "Heimdall",
+		"name":             name,
+		"display_name":     DisplayName(name),
 		"version":          version,
 		"description":      "Ask Claude about your servers: patch priorities, vulnerabilities, end-of-life software, Laravel sites and anomaly alerts, read-only from your Heimdall hub over your tailnet.",
 		"long_description": "Connects Claude Desktop to a self-hosted Heimdall hub's read-only MCP endpoint. " +

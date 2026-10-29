@@ -72,6 +72,10 @@ keep_snapshots_min = 30        # per host, whatever their age
 enabled  = false
 listen   = "127.0.0.1:8090"
 base_url = "http://127.0.0.1:8090"
+# The name assistants give this hub's connection (Claude Code's server name,
+# the Claude Desktop extension). Someone connected to more than one hub needs
+# a different name for each: `sudo heimdall mcp set-name heimdall-acme`.
+# name = "heimdall"
 
 [news]
 # Threat news: curated "being exploited right now" incidents, matched on the

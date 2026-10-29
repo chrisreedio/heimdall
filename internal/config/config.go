@@ -244,6 +244,29 @@ type MCP struct {
 	Enabled bool   `toml:"enabled"`
 	Listen  string `toml:"listen"`
 	BaseURL string `toml:"base_url"` // the https origin clients use (checked against Origin headers)
+	// Name is what assistants call this hub's connection: Claude Code's
+	// server name, the Claude Desktop extension's id. Someone connected to
+	// two hubs needs a different one for each ("heimdall-acme"). "" is
+	// "heimdall" (ConnectorName).
+	Name string `toml:"name"`
+}
+
+// DefaultConnectorName is MCP.Name when it isn't set.
+const DefaultConnectorName = "heimdall"
+
+// connectorName is what Claude Code and Claude Desktop accept as a server
+// name, kept short and lowercase.
+var connectorName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,39}$`)
+
+// ValidConnectorName reports whether name can be an MCP.Name.
+func ValidConnectorName(name string) bool { return connectorName.MatchString(name) }
+
+// ConnectorName is Name, or DefaultConnectorName when it isn't set.
+func (m MCP) ConnectorName() string {
+	if m.Name == "" {
+		return DefaultConnectorName
+	}
+	return m.Name
 }
 
 // Notify configures the counts-only digest. Secrets (SMTP password, the
@@ -489,6 +512,9 @@ func (c Config) Validate() error {
 		}
 	}
 
+	if n := c.MCP.Name; n != "" && !ValidConnectorName(n) {
+		add("mcp.name: %q must be 1-40 lowercase letters, digits, - or _, starting with a letter or digit", n)
+	}
 	if m := c.MCP; m.Enabled {
 		if host, _, err := net.SplitHostPort(m.Listen); err != nil || !isLoopback(host) {
 			add("mcp.listen: must be a loopback address behind a local HTTPS proxy (e.g. tailscale serve)")

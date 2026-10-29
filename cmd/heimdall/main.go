@@ -63,6 +63,7 @@ Commands:
   user mcp-token create|list|revoke
                                Tokens for AI assistants on the read-only MCP endpoint,
                                or (--purpose threats) for the threat list's REST API
+  mcp set-name <name>          Name this hub's assistant connection (one per hub, e.g. heimdall-acme)
   import                       Store (or --check) a snapshot file
   collector trust|list         Manage known-good collector checksums
   feeds sync|status            Refresh OSV, KEV and end-of-life data now
@@ -152,6 +153,7 @@ var commands = map[string]command{
 	"ip":      group("ip", ipCommands), // ip.go
 	"upgrade": cmdUpgrade,
 	"restart": cmdRestart,
+	"mcp":     group("mcp", map[string]command{"set-name": cmdMCPSetName}), // mcpname.go
 	"ingest":  group("ingest", map[string]command{"cert": cmdIngestCert}),
 	"serve":   cmdServe,
 	"import":  cmdImport,
