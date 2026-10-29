@@ -17,8 +17,9 @@ boxes' id prefix. */}}
 
 {{/* aihandoff: a step's "Hand off to agent" buttons (aiHandoffs), one per
 repository its sites deploy and one per site with no known repository,
-labelled when there are several or one covers several sites. */}}
-{{define "aihandoff"}}{{with .}}<div class="ai-handoff">{{if or (gt (len .) 1) (index . 0).Site}}<span class="muted small">Hand off to agent:</span>{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}"{{with .Title}} title="{{.}}"{{end}}>{{.Site}}</a>{{end}}{{else}}{{range .}}<a class="button secondary handoff-btn" href="{{.URL}}"{{with .Title}} title="{{.}}"{{end}}>Hand off to agent</a>{{end}}{{end}}</div>{{end}}{{end}}
+labelled by repository (or by site when there are several), and with
+several an "All N" button for them all (handoffbatch.go). */}}
+{{define "aihandoff"}}{{with .}}<div class="ai-handoff">{{if or (gt (len .Links) 1) (index .Links 0).Site}}<span class="muted small">Hand off to agent:</span>{{range .Links}}<a class="button secondary handoff-btn" href="{{.URL}}"{{with .Title}} title="{{.}}"{{end}}>{{.Site}}</a>{{end}}{{with .All}}<a class="button handoff-all" href="{{.URL}}" title="{{.Title}}">{{.Site}}</a>{{end}}{{else}}{{range .Links}}<a class="button secondary handoff-btn" href="{{.URL}}"{{with .Title}} title="{{.}}"{{end}}>Hand off to agent</a>{{end}}{{end}}</div>{{end}}{{end}}
 
 {{/* ainotes: up to three short notes. */}}
 {{define "ainotes"}}{{with .Notes}}<ul class="muted small ai-notes">{{range .}}<li>{{aitext $.Links .}}</li>{{end}}</ul>{{end}}{{end}}
@@ -41,7 +42,7 @@ labelled when there are several or one covers several sites. */}}
     <div class="ai-title"><strong>{{aititle $v.Links .Title .Hosts}}</strong>{{range .Hosts}} {{aitext $v.Links .}}{{end}}{{template "aiheimdall" .Heimdall}}</div>
     {{with .Why}}<div class="muted small ai-why">{{aitext $v.Links .}}</div>{{end}}
     {{with .Commands}}<details class="ai-cmdbox"><summary>{{if gt (len .) 1}}{{len .}} commands{{else}}Command{{end}}</summary>{{template "aicmds" (aicmds $v $a (printf "ai-%s-%d" $v.Org.Slug $i))}}</details>{{end}}
-    {{template "aihandoff" (index $v.Handoffs $i)}}
+    {{template "aihandoff" ($v.HandoffRow $i)}}
   </li>{{end}}{{end}}</ol>{{end}}
   {{template "ainotes" (ainotes $v.Links .Notes)}}
   {{end}}
@@ -67,7 +68,7 @@ labelled when there are several or one covers several sites. */}}
       <div class="ai-title"><strong>{{aititle $v.Links .Title .Hosts}}</strong>{{template "aiheimdall" .Heimdall}}</div>
       {{with .Why}}<div class="muted small ai-why">{{aitext $v.Links .}}</div>{{end}}
       {{template "aicmds" (aicmds $v $a (printf "ai-host-%d" $i))}}
-      {{template "aihandoff" (index $v.Handoffs $i)}}
+      {{template "aihandoff" ($v.HandoffRow $i)}}
     </li>{{end}}</ol>
     {{template "ainotes" (ainotes $v.Links .Notes)}}
   </details>{{else}}{{template "ainotes" (ainotes $v.Links .Notes)}}{{end}}

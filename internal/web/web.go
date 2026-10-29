@@ -197,6 +197,8 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /sites/branch", s.requireAuth(s.siteBranch))
 	mux.HandleFunc("GET /hosts/{org}/{host}/handoff", s.requireAuth(s.handoffPage))
 	mux.HandleFunc("POST /hosts/{org}/{host}/handoff", s.requireAuth(s.handoffSend))
+	mux.HandleFunc("GET /handoff/batch", s.requireAuth(s.handoffBatchPage))
+	mux.HandleFunc("POST /handoff/batch", s.requireAuth(s.handoffBatchSend))
 	mux.HandleFunc("GET /hosts/{org}/{host}/changes", s.requireAuth(s.changesPage))
 	mux.HandleFunc("GET /anomalies", s.requireAuth(s.anomaliesPage))
 	mux.HandleFunc("POST /anomalies/{id}/{action}", s.requireAuth(s.anomalyAction))
@@ -524,7 +526,7 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, v *auth.Viewer, er
 
 func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
-		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "enroll", "site", "news", "handoff"}
+		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "enroll", "site", "news", "handoff", "handoffbatch"}
 	names = append(names, "assistants")          // AI assistants (MCP tokens)
 	names = append(names, "ips", "ip", "person") // IP awareness (ips.go, people.go)
 	names = append(names, "cloudflare")          // Cloudflare overview (cloudflare.go)

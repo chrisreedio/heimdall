@@ -242,11 +242,15 @@ func TestAIBriefHandoffsByRepo(t *testing.T) {
 			t.Errorf("step lacks %q:\n%s", want, li)
 		}
 	}
-	// Naming a site (here in a path, which stays plain) narrows the step
-	// to it and its repository's other sites.
+	// Two buttons: an "All 2" for both, opening one confirm page.
+	if !strings.Contains(li, `class="button handoff-all" href="/handoff/batch?`) || !strings.Contains(li, ">All 2</a>") {
+		t.Errorf("step lacks the All 2 button:\n%s", li)
+	}
+	// Naming one site (here in a path, which stays plain) doesn't narrow a
+	// command that lists its sites: Heimdall worked those out.
 	if li := brief("Run it in /var/www/app.example.dev/current."); !strings.Contains(li, `<div class="muted small ai-why">Run it in /var/www/app.example.dev/current.</div>`) ||
-		strings.Count(li, "handoff-btn") != 1 || !strings.Contains(li, ">acme/app</a>") {
-		t.Errorf("the step naming a site's path: a plain path, one button for its repository:\n%s", li)
+		strings.Count(li, "handoff-btn") != 2 || !strings.Contains(li, ">acme/app</a>") {
+		t.Errorf("the step naming a site's path: a plain path, both buttons:\n%s", li)
 	}
 
 	// The host page's triage card groups too: with beta.example.dev on the
@@ -340,12 +344,14 @@ func TestAIHandoffRepresentative(t *testing.T) {
 		}
 	}
 
-	// Alone, a repository with one site is a plain button; with two it's labelled.
+	// Alone, a repository's button is still labelled by it, so it's clear
+	// what the pull request is for (only a site with none says "Hand off
+	// to agent").
 	one := map[string]handoffHost{"web-01": {Org: "acme", Repos: map[string]string{"/a": repo},
 		Host: report.Host{Name: "web-01", Sites: []report.Site{site("/a", "a.example.com")}, Findings: []report.Finding{fix("/a", "laravel/framework", "1")}}}}
 	view := &aiView{View: ai.View{Result: &ai.Result{Actions: []ai.Action{step("Update", "x", "web-01", laravelFix)}}}}
 	aiHandoffs(view, one)
-	if l := view.Handoffs[0]; len(l) != 1 || l[0].Site != "" || !strings.Contains(l[0].Title, "acme/app") {
+	if l := view.Handoffs[0]; len(l) != 1 || l[0].Site != "acme/app" || !strings.Contains(l[0].Title, "acme/app") || view.HandoffAll != nil {
 		t.Errorf("one site: %+v", l)
 	}
 }

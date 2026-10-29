@@ -63,6 +63,19 @@ func (l *handoffLimiter) allow(now time.Time, keys ...string) int {
 	return -1
 }
 
+// limited reports whether one of keys had an attempt within handoffEvery,
+// recording nothing.
+func (l *handoffLimiter) limited(now time.Time, keys ...string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, key := range keys {
+		if t, ok := l.last[key]; ok && now.Sub(t) < handoffEvery {
+			return true
+		}
+	}
+	return false
+}
+
 // handoffNotices are the fixed messages the site page can show after one.
 var handoffNotices = map[string]string{
 	"sent":   "Handed off. The agent was asked to open a pull request.",
@@ -157,6 +170,8 @@ type handoffLink struct {
 	Site  string
 	Title string // the tooltip: which sites a repository's button covers
 	URL   string
+	// org and root are the site the button opens, for the batch button.
+	org, root string
 }
 
 // handoffHost is a host of an AI plan that the viewer may hand off from:
@@ -262,13 +277,16 @@ func aiHandoffs(view *aiView, hosts map[string]handoffHost) {
 					slices.Sort(versions)
 					seen[name+"\x00"+site.Root] = true
 					repo := hh.Repos[site.Root]
-					cand := handoffCand{link: handoffLink{Host: name, Site: label, URL: handoffURL(hh.Org, name, site.Root, "")},
+					cand := handoffCand{link: handoffLink{Host: name, Site: label, URL: handoffURL(hh.Org, name, site.Root, ""), org: hh.Org, root: site.Root},
 						host: name, root: site.Root, name: label, label: hh.Labels[site.Root],
 						repo: handoff.RepoKey(repo), short: handoff.RepoShort(repo),
 						hits: len(versions), versions: strings.Join(slices.Compact(versions), " ")}
 					cands = append(cands, cand)
-					// A step about one site names it (its domain or root): offer only that one.
-					if n := strings.ToLower(siteName(site)); (n != "" && strings.Contains(text, n)) || strings.Contains(text, strings.ToLower(site.Root)) {
+					// A step about one site names it (its domain or root): offer
+					// only that one. Not when the command lists its sites:
+					// Heimdall worked those out, and the text may single out
+					// one of several.
+					if n := strings.ToLower(siteName(site)); len(only) == 0 && ((n != "" && strings.Contains(text, n)) || strings.Contains(text, strings.ToLower(site.Root))) {
 						named = append(named, cand)
 					}
 				}
@@ -287,6 +305,12 @@ func aiHandoffs(view *aiView, hosts map[string]handoffHost) {
 				view.Handoffs = map[int][]handoffLink{}
 			}
 			view.Handoffs[i] = links
+			if all, ok := handoffBatchLink(links, aiBack(view)); ok {
+				if view.HandoffAll == nil {
+					view.HandoffAll = map[int]handoffLink{}
+				}
+				view.HandoffAll[i] = all
+			}
 		}
 	}
 }
@@ -326,10 +350,9 @@ func handoffLinks(cands []handoffCand) []handoffLink {
 		l.Title = handoffRepoTitle(g, rep)
 		links = append(links, l)
 	}
-	if len(links)+len(sites) == 1 && (len(sites) == 1 || len(groups[repos[0]]) == 1) {
-		links = append(links, sites...)
-		links[0].Site = "" // the step's only button, for one site: "Hand off to agent"
-		return links
+	if len(links) == 0 && len(sites) == 1 {
+		sites[0].Site = "" // the step's only button, for one site with no known repository: "Hand off to agent"
+		return sites
 	}
 	// Two hosts can serve a site of the same name: say which host.
 	clash := map[string]bool{}
@@ -782,12 +805,7 @@ func (s *server) handoffSend(w http.ResponseWriter, r *http.Request, v *auth.Vie
 	// Per site and agent, and per repository and agent: the sites that
 	// deploy one repository share a button on AI plans, and one hand-off
 	// covers them, so another of them can't be sent right after.
-	keys := []string{"site\x00" + strconv.FormatInt(t.host.ID, 10) + "\x00" + t.site.Root + "\x00" + t.agent.Name}
-	repoKey := handoff.RepoKey(t.repo.Repo())
-	if repoKey != "" {
-		keys = append(keys, "repo\x00"+repoKey+"\x00"+t.agent.Name)
-	}
-	switch s.handoffLimit.allow(s.now(), keys...) {
+	switch s.handoffLimit.allow(s.now(), handoffKeys(t)...) {
 	case 0:
 		body.Notice = "This site was handed to " + t.agent.Name + " in the last few minutes. Try again later."
 	case 1:
@@ -801,24 +819,7 @@ func (s *server) handoffSend(w http.ResponseWriter, r *http.Request, v *auth.Vie
 	ctx, cancel := context.WithTimeout(r.Context(), handoffPostTimeout)
 	defer cancel()
 	postErr := t.agent.Poster.PostPayloadFile(ctx, msg.Payload, msg.FileName, msg.File)
-	branches := target.Branches
-	if target.Mode == handoff.TargetEach {
-		branches = handoff.Branches(t.sites)
-	}
-	if branches == nil {
-		branches = []string{}
-	}
-	detail := map[string]any{"agent": t.agent.Name, "host": t.host.Name, "site": t.site.Root, "request_id": id,
-		"packages": msg.Packages, "omitted": msg.Omitted, "repo": t.repo.Repo(), "ok": postErr == nil,
-		"target": target.Mode, "branches": branches, "sites": len(t.sites)}
-	if postErr != nil {
-		s.log.Warn("hand-off not posted", "agent", t.agent.Name, "host", t.host.Name, "site", t.site.Root, "err", postErr)
-		detail["error"] = "post failed"
-	}
-	if err := s.st.Audit(r.Context(), store.AuditEntry{Actor: actorOf(v), Action: "handoff.send", OrgID: t.host.OrgID,
-		Target: t.host.Name, Detail: detail, IP: clientIP(r)}); err != nil {
-		s.log.Error("hand-off audit failed", "err", err)
-	}
+	s.auditHandoff(r, v, t, msg, id, target, postErr, 0)
 	result := "sent"
 	if postErr != nil {
 		result = "failed"

@@ -312,6 +312,16 @@ The confirm page asks **where the pull request goes**:
 
 The choice is part of the message, so the page shows the message for it, and the digest that confirms what you saw covers it. Only a branch Heimdall knows for these sites (detected or set) is accepted: any other submitted text is refused with a 400, and nothing is sent. Nothing about the choice is stored.
 
+### Several repositories at once
+
+When a daily brief or host explanation step's update applies to sites on several repositories (a Laravel fix needed by eleven apps, say), the step has a button per repository and an **All N** button (up to 20). It opens one confirm page for all of them:
+
+- Each repository is listed with its sites, branches, installed versions and the exact message its own button would post (under **The message**). Sites on the same repository share one hand-off.
+- **Where the pull requests go:** each repository's **default branch**, or **each branch**, which works per repository as above: a repository whose sites' branches are known gets one pull request per branch, and one whose aren't goes to its default branch.
+- **Post N to Discord** posts each repository's hand-off in turn, one message each, so the agent opens one pull request per repository (and per branch with **each branch**). They're ordinary hand-offs: the same message, the same rate limit per site and repository (one handed off in the last few minutes is shown as skipped, and skipped when sending), and one `handoff.send` audit entry each, with `"batch": N` in its detail.
+- The page lists what happened to each: posted, not posted (Discord refused or timed out; the hub log says why), or skipped.
+- The same checks as one hand-off apply to every site: operator or admin of its org, and a digest per message, so if anything changed since the page was shown nothing is sent and the page shows the new messages.
+
 ### The message
 
 One Discord message, under Discord's 2,000-character limit, with one file attached (see [The attached file](#the-attached-file)). It starts with a mention of the bot, then a fixed instruction, then a JSON block. For example:
