@@ -84,12 +84,11 @@ func TestBuildSites(t *testing.T) {
 	if len(f.Sites[0].Installed) != 3 {
 		t.Errorf("own site installed: %+v", f.Sites[0].Installed)
 	}
-	// The message block lists them too (without versions) and says how many.
-	d := block(t, m.Content)
-	if len(d.Sites) != 4 || d.Sites[1].Installed != nil || d.Host != "app-01" || d.SitePath != "/home/forge/example.com" {
-		t.Errorf("block sites: %+v", d.Sites)
+	// The text says how many.
+	if f.Host != "app-01" || f.SitePath != "/home/forge/example.com" || len(f.Sites) != 4 {
+		t.Errorf("file sites: %+v", f.Sites)
 	}
-	if !strings.Contains(m.Content, "4 sites, 3 branches and 1 unknown (`sites`).") {
+	if !strings.Contains(m.Content, "**Sites:** 4 · 3 branches and 1 unknown\n") {
 		t.Errorf("content doesn't count the sites: %q", m.Content)
 	}
 }
@@ -108,13 +107,13 @@ func TestBuildTargets(t *testing.T) {
 			"heimdall/security-" + id, "against the default branch", "this pull request targets the default branch only"},
 		{Target{Mode: TargetBranch, Branches: []string{"env/beta"}}, TargetData{Mode: "branch", Branches: []string{"env/beta"},
 			PullRequests: []PullRequest{{Base: ptr("env/beta"), SuggestedBranch: "heimdall/security-" + id + "-env-beta"}}},
-			"heimdall/security-" + id + "-env-beta", "against the branch in `target.branches`, not the default branch", "check out the branch in `target.branches`"},
+			"heimdall/security-" + id + "-env-beta", "one pull request against `env/beta` (not the default branch)", "check out the branch in `target.branches`"},
 		// Each known branch, sorted; the detached site (no branch) isn't targeted.
 		{Target{Mode: TargetEach}, TargetData{Mode: "each", Branches: []string{"dev", "env/beta", "main"}, PullRequests: []PullRequest{
 			{Base: ptr("dev"), SuggestedBranch: "heimdall/security-" + id + "-dev"},
 			{Base: ptr("env/beta"), SuggestedBranch: "heimdall/security-" + id + "-env-beta"},
 			{Base: ptr("main"), SuggestedBranch: "heimdall/security-" + id + "-main"}}},
-			"", "Open one pull request per branch in `target.branches` (3)", "once for each entry in `target.pull_requests`"},
+			"", "one pull request per branch (`dev`, `env/beta`, `main`), each changing only that branch's lock files", "once for each entry in `target.pull_requests`"},
 	}
 	digests := map[string]bool{}
 	for _, c := range cases {
@@ -125,7 +124,7 @@ func TestBuildTargets(t *testing.T) {
 			t.Fatalf("%+v: %v", c.target, err)
 		}
 		f := fileOf(t, m)
-		if !reflect.DeepEqual(f.Target, c.want) || !reflect.DeepEqual(block(t, m.Content).Target, TargetData{Mode: c.want.Mode, Branches: c.want.Branches}) {
+		if !reflect.DeepEqual(f.Target, c.want) {
 			t.Errorf("%s target:\n got %+v\nwant %+v", c.want.Mode, f.Target, c.want)
 		}
 		if f.SuggestedBranch != c.suggested {
@@ -182,8 +181,8 @@ func TestBuildTargetInvalid(t *testing.T) {
 	}
 }
 
-// With many sites, packages are kept and the last sites are left out of
-// the block (the file has them all), and the text says so.
+// With many sites, every package is still listed: the sites are only in
+// the file, and the text counts them.
 func TestBuildSitesFit(t *testing.T) {
 	req := threeSites()
 	for i := range 30 {
@@ -194,11 +193,10 @@ func TestBuildSitesFit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d, f := block(t, m.Content), fileOf(t, m)
-	if m.Omitted != 0 || d.OmittedSites == 0 || len(d.Sites)+d.OmittedSites != len(f.Sites) || len(f.Sites) != 34 {
-		t.Errorf("omitted %d packages, block %d sites + %d omitted, file %d", m.Omitted, len(d.Sites), d.OmittedSites, len(f.Sites))
+	if f := fileOf(t, m); m.Omitted != 0 || len(f.Sites) != 34 {
+		t.Errorf("omitted %d packages, file %d sites", m.Omitted, len(f.Sites))
 	}
-	if !strings.Contains(m.Content, fmt.Sprintf("%d more sites didn't fit", d.OmittedSites)) || utf8.RuneCountInString(m.Content) > MaxContent {
+	if !strings.Contains(m.Content, "**Sites:** 34 · ") || utf8.RuneCountInString(m.Content) > MaxContent {
 		t.Errorf("content: %q", m.Content)
 	}
 }

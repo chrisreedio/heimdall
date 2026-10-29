@@ -98,7 +98,7 @@ func TestHandoffSites(t *testing.T) {
 		t.Errorf("installed: %+v", f.Sites[2].Installed)
 	}
 	for _, want := range []string{`value="branch:dev"`, `value="branch:env/beta"`, `value="branch:main"`, `value="each" data-autosubmit`,
-		"Where the pull request goes", "Sites on this repository", "set by an operator", "3 sites, 3 branches (`sites`)."} {
+		"Where the pull request goes", "Sites on this repository", "set by an operator", "**Sites:** 3 · 3 branches"} {
 		if !strings.Contains(html.UnescapeString(page), want) {
 			t.Errorf("confirm page lacks %q", want)
 		}
@@ -162,7 +162,7 @@ func TestHandoffSites(t *testing.T) {
 		t.Errorf("posted file: %+v", posted.Target)
 	}
 	content, _ := sent[0]["content"].(string)
-	if !strings.Contains(content, "Open one pull request per branch in `target.branches` (3)") || !strings.Contains(content, `"mode":"each"`) && !strings.Contains(content, `"mode": "each"`) {
+	if !strings.Contains(content, "**Task:** one pull request per branch (`dev`, `env/beta`, `main`)") {
 		t.Errorf("posted content: %s", content)
 	}
 	// The repository's rate limit holds for its other sites.
