@@ -29,6 +29,9 @@ type Cloudflare struct {
 	// ConnectingIP: behind ingest.behind_proxy, when the proxy's peer is a
 	// Cloudflare edge address, take the client from CF-Connecting-IP.
 	ConnectingIP bool `toml:"connecting_ip"`
+	// ProbeDangling: check whether anything answers at dangling records'
+	// addresses, with a plain TCP connect from the hub to 443 and 80.
+	ProbeDangling bool `toml:"probe_dangling"`
 	// APIBase is the API's base URL; only tests change it.
 	APIBase string `toml:"api_base"`
 }
@@ -38,7 +41,7 @@ const CloudflareAPI = "https://api.cloudflare.com/client/v4"
 
 // CloudflareDefaults are [cloudflare]'s defaults (off).
 var CloudflareDefaults = Cloudflare{SyncEvery: Duration{time.Hour}, SecurityEvents: true, Radar: true,
-	ConnectingIP: true, APIBase: CloudflareAPI}
+	ConnectingIP: true, ProbeDangling: true, APIBase: CloudflareAPI}
 
 // MaxCloudflareZones caps [cloudflare] zones.
 const MaxCloudflareZones = 200
@@ -92,6 +95,7 @@ sync_every      = "1h"
 security_events = true     # counts by action, country, network and path (no client IPs)
 radar           = true     # look up the network (ASN) of addresses nobody knows
 connecting_ip   = true     # trust CF-Connecting-IP only from Cloudflare's edge (behind_proxy)
+probe_dangling  = true     # TCP connect (443, 80; nothing sent) to dangling records' addresses: does anything answer?
 `
 
 func init() { defaultTemplate += cloudflareTemplate }

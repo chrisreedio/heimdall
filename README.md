@@ -215,7 +215,7 @@ Supported platforms: **Ubuntu 22.04/24.04, Debian 12, Rocky 9, AlmaLinux 9 and A
 - **Two listeners:** the UI binds to `127.0.0.1` or a tailnet/WireGuard interface by default. The ingest listener exposes `POST /api/v1/ingest` and nothing else, not even a health page or static files.
 - Use TLS everywhere, terminated by Heimdall or a reverse proxy (Caddy/nginx).
 - Optionally allowlist ingest source IPs or CIDRs (`ingest.allow_cidrs`).
-- Outbound traffic: only the feed hosts, `login.microsoftonline.com` (if SSO is enabled) the `[news]` source hosts (if threat news is on, in their own allowlist) and your `[ai]` endpoint's host (if AI analysis is on, likewise), ideally enforced with a host firewall (`IPAddressAllow=` in systemd).
+- Outbound traffic: only the feed hosts, `login.microsoftonline.com` (if SSO is enabled) the `[news]` source hosts (if threat news is on, in their own allowlist) and your `[ai]` endpoint's host (if AI analysis is on, likewise), and with `[cloudflare]` on, Cloudflare's API plus a send-nothing TCP connect to dangling DNS records' public addresses on 443 and 80 (`probe_dangling`, see [docs/cloudflare.md](docs/cloudflare.md#dangling-records)), ideally enforced with a host firewall (`IPAddressAllow=` in systemd).
 
 ### Ingest
 - Request bodies are capped (default 5 MB), decompressed with a cap, and parsed with a strict JSON decoder that rejects unknown fields

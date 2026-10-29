@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"path"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +34,7 @@ type Input struct {
 	Stacks   []store.SurfaceSite
 	Counts   map[int64]map[string]store.FindingCounts // host ID → site root ("" = OS) → open findings
 	Known    func(netip.Addr) bool                    // someone recognizes the address (cloudflare.Known)
+	Probes   map[netip.Addr]store.DanglingProbe       // what answers at dangling records' addresses (cloudflare.Prober)
 	Now      time.Time
 }
 
@@ -252,7 +254,18 @@ func Build(in Input) Map {
 			addSite(r, s)
 		}
 		if m.Dangling {
-			addFlag(r, Flag{Kind: "dangling", Level: Medium, Note: m.Content + " is none of your hosts, not Cloudflare's and not labelled: a leftover, or someone else's now"})
+			f := Flag{Kind: "dangling", Level: Medium, Note: m.Content + " is none of your hosts, not Cloudflare's and not labelled: a leftover, or someone else's now"}
+			if a, err := netip.ParseAddr(m.Content); err == nil {
+				switch p := in.Probes[a.Unmap()]; p.State {
+				case store.ProbeAnswers:
+					f.Note = m.Content + " is none of your hosts, not Cloudflare's and not labelled, and answers on port " + strconv.Itoa(p.Port) + ": a server you don't monitor, or someone else's serving this name"
+				case store.ProbeRefused:
+					f.Note = m.Content + " is none of your hosts, not Cloudflare's and not labelled; a machine is there but refuses 80 and 443: check whose before deleting"
+				case store.ProbeSilent:
+					f.Level, f.Note = Info, m.Content+" is none of your hosts and nothing answers on 80 or 443 from the hub: likely a leftover, safe to delete"
+				}
+			}
+			addFlag(r, f)
 		}
 	}
 

@@ -5,6 +5,7 @@ package web
 import (
 	"encoding/json"
 	"net/http"
+	"net/netip"
 	"strings"
 	"testing"
 
@@ -150,6 +151,83 @@ func TestCloudflareNavLink(t *testing.T) {
 		w := e.get("/", signedIn(e))
 		if got := strings.Contains(w.Body.String(), `<a href="/cloudflare"`); got != on {
 			t.Errorf("cloudflare on=%v: link shown=%v", on, got)
+		}
+	}
+}
+
+func TestCloudflareDanglingProbes(t *testing.T) {
+	e := newEnv(t, "http://127.0.0.1:8080", nil)
+	e.seedCloudflare()
+	ctx := t.Context()
+	// More dangling records in example.net: a wildcard, a dead one, an
+	// unchecked one and one refused.
+	err := e.st.ReplaceCloudflareZones(ctx, []store.CloudflareZone{
+		{ID: cfZone, Name: "example.com", Plan: "Pro Website", Status: "active"},
+		{ID: cfZone2, Name: "example.net", Plan: "Free Website", Status: "active"},
+	}, map[string][]store.CloudflareRecord{
+		cfZone: {
+			{Name: "example.com", Type: "A", Content: "203.0.113.10", Proxied: true},
+			{Name: "old.example.com", Type: "A", Content: "203.0.113.199", Proxied: true},
+		},
+		cfZone2: {
+			{Name: "a-dead.example.net", Type: "A", Content: "198.51.100.8"},
+			{Name: "*.example.net", Type: "A", Content: "198.51.100.7"},
+			{Name: "b-new.example.net", Type: "AAAA", Content: "2001:db8::9"},
+			{Name: "c-closed.example.net", Type: "A", Content: "198.51.100.10"},
+			{Name: "z-live.example.net", Type: "A", Content: "198.51.100.9"},
+		},
+	}, testNow)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := e.st.SetDanglingProbes(ctx, []store.DanglingProbe{
+		{Addr: netip.MustParseAddr("203.0.113.199"), State: store.ProbeAnswers, Port: 443, CheckedAt: testNow},
+		{Addr: netip.MustParseAddr("198.51.100.9"), State: store.ProbeAnswers, Port: 80, CheckedAt: testNow},
+		{Addr: netip.MustParseAddr("198.51.100.8"), State: store.ProbeSilent, CheckedAt: testNow},
+		{Addr: netip.MustParseAddr("198.51.100.10"), State: store.ProbeRefused, CheckedAt: testNow},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	b := e.get("/cloudflare", signedIn(e)).Body.String()
+	sec := b[strings.Index(b, `id="dangling"`):]
+	for _, want := range []string{
+		`<a href="https://old.example.com" target="_blank" rel="noopener noreferrer">old.example.com</a>`,
+		`<a href="https://z-live.example.net" target="_blank" rel="noopener noreferrer">`,
+		"answers on 443", "answers on 80", "no answer", "not checked", "host up, ports closed",
+		`aria-label="Proxied"`, `aria-label="DNS only"`, "5 records · 1 answering", "1 record · 1 answering", "6 dangling",
+	} {
+		if !strings.Contains(b, want) {
+			t.Errorf("dangling list missing %q", want)
+		}
+	}
+	if strings.Contains(sec, `href="https://*.example.net"`) || !strings.Contains(sec, `<td class="id full">*.example.net</td>`) {
+		t.Error("the wildcard should be listed, not linked")
+	}
+	if strings.Contains(sec, "<th>Zone</th>") {
+		t.Error("the Zone column should be gone: rows are grouped by zone")
+	}
+	// Zones in name order; in each, answering first, then refused, then
+	// not checked, then no answer.
+	order := []string{`class="dang-zone">example.com <`, `class="dang-zone">example.net <`, "z-live.example.net", "c-closed.example.net", "*.example.net", "b-new.example.net", "a-dead.example.net"}
+	last := -1
+	for _, s := range order {
+		i := strings.Index(sec, s)
+		if i < 0 || i < last {
+			t.Errorf("%q out of order", s)
+		}
+		last = i
+	}
+}
+
+func TestValidHostname(t *testing.T) {
+	for n, want := range map[string]bool{
+		"www.example.com": true, "a-b.example.com": true, "Example.COM": true,
+		"*.example.com": false, "_dmarc.example.com": false, "example": false, "-a.example.com": false,
+		"a..example.com": false, "192.0.2.1": false, "": false, strings.Repeat("a.", 127) + "com": false,
+		"exa mple.com": false,
+	} {
+		if got := validHostname(n); got != want {
+			t.Errorf("validHostname(%q) = %v", n, got)
 		}
 	}
 }

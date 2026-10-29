@@ -18,6 +18,7 @@
   --unk-bg: #eceef1;  --unk-fg: #464f5b;
   --ok-bg: #dff3e4;   --ok-fg: #17602c;
   --kev-bg: #8f1018;  --kev-fg: #ffffff;
+  --cf-on: #d9690f;   --cf-off: #8a939f; /* proxy clouds: >= 3:1 on the surface */
   --ms-bg: #ffffff; --ms-fg: #5e5e5e; --ms-border: #8c8c8c; --ms-hover: #f3f3f3;
   --shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 12px 32px rgba(16, 24, 40, .10);
   color-scheme: light dark;
@@ -42,6 +43,7 @@
     --unk-bg: #2a3038;  --unk-fg: #c3cad4;
     --ok-bg: #133a20;   --ok-fg: #9ee0b0;
     --kev-bg: #d23a44;  --kev-fg: #ffffff;
+    --cf-on: #f6821f;   --cf-off: #6b7480;
     --ms-bg: #2f2f2f; --ms-fg: #ffffff; --ms-border: #5c5c5c; --ms-hover: #3a3a3a;
     --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45);
   
@@ -64,6 +66,7 @@
   --unk-bg: #2a3038;  --unk-fg: #c3cad4;
   --ok-bg: #133a20;   --ok-fg: #9ee0b0;
   --kev-bg: #d23a44;  --kev-fg: #ffffff;
+  --cf-on: #f6821f;   --cf-off: #6b7480;
   --ms-bg: #2f2f2f; --ms-fg: #ffffff; --ms-border: #5c5c5c; --ms-hover: #3a3a3a;
   --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 32px rgba(0, 0, 0, .45);
 
@@ -1151,3 +1154,17 @@ form.row.card.bulk-form button:disabled { opacity: .45; cursor: not-allowed; fil
 form.row.card.bulk-form label.bulk-all { flex: 1 1 100%; padding-bottom: 0; font-weight: 400; }
 @media (min-width: 761px) { form.row.card.bulk-form label.bulk-all { display: none; } } /* the table header has one */
 .anomaly-list input[type=checkbox] { width: 1.05rem; height: 1.05rem; margin: 0; vertical-align: middle; }
+
+/* /cloudflare dangling records: Cloudflare's proxy cloud, grouped by zone. */
+.cf-cloud { display: inline-flex; color: var(--cf-off); }
+.cf-cloud.on { color: var(--cf-on); }
+.cf-cloud .icon { width: 22px; height: 22px; }
+h3.dang-zone { margin: 18px 0 6px; font-size: 15px; }
+@media (min-width: 761px) {
+  table.dangling { table-layout: fixed; }
+  table.dangling th:nth-child(1) { width: 38%; }
+  table.dangling th:nth-child(2) { width: 8%; }
+  table.dangling th:nth-child(3) { width: 22%; }
+  table.dangling th:nth-child(4) { width: 10%; }
+  table.dangling td:first-child { overflow-wrap: anywhere; }
+}

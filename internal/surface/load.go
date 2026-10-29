@@ -40,6 +40,9 @@ func Load(ctx context.Context, st *store.Store, cloudflareOn bool, now time.Time
 			return Map{}, err
 		}
 		in.Known = cloudflare.Known(known, cloudflare.NewEdge())
+		if in.Probes, err = st.DanglingProbes(ctx); err != nil {
+			return Map{}, err
+		}
 	}
 	if in.Sites, err = st.AllSiteNames(ctx); err != nil {
 		return Map{}, err
