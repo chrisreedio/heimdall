@@ -3,6 +3,7 @@
 package cloudflare
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -80,6 +81,34 @@ func (c *Client) Accounts(ctx context.Context) ([]Account, error) {
 	var out []Account
 	_, err := c.call(ctx, http.MethodGet, "/accounts", url.Values{"per_page": {"50"}}, nil, &out)
 	return out, err
+}
+
+// TokenAccounts are the accounts the token can work in: those /accounts
+// lists, plus the accounts of the zones it can read. /accounts needs
+// Account Settings: Read, which a read-only token often lacks (it then
+// lists none), while each zone names its account. It fails only when
+// neither gives one.
+func (c *Client) TokenAccounts(ctx context.Context) ([]Account, error) {
+	as, aerr := c.Accounts(ctx)
+	zs, zerr := c.Zones(ctx)
+	out := []Account{}
+	seen := map[string]bool{}
+	add := func(a Account) {
+		if a.ID != "" && !seen[a.ID] {
+			seen[a.ID] = true
+			out = append(out, a)
+		}
+	}
+	for _, a := range as {
+		add(a)
+	}
+	for _, z := range zs {
+		add(z.Account)
+	}
+	if len(out) == 0 {
+		return nil, cmp.Or(aerr, zerr)
+	}
+	return out, nil
 }
 
 // IPList is an account-level list.
