@@ -120,9 +120,9 @@ func (s *server) aiBriefsFor(r *http.Request, v *auth.Viewer, org string, orgs [
 			// The brief is the org's, so its hosts are: the viewer may
 			// operate on each (canHandoff above), and each link carries
 			// the host's own org slug.
-			hosts := map[string]handoffHost{}
-			for _, h := range rep.Hosts {
-				hosts[h.Name] = handoffHost{Org: h.Org, Host: h}
+			hosts, err := s.handoffHostsOf(r.Context(), o.ID, rep.Hosts)
+			if err != nil {
+				return nil, err
 			}
 			aiHandoffs(&view, hosts)
 		}

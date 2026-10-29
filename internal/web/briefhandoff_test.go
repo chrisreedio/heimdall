@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"html"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -190,5 +192,160 @@ func TestAIHandoffSameSiteName(t *testing.T) {
 	}
 	if want := "web-01 · example.com|web-01.example.dev|web-02 · example.com|web-02.example.dev"; strings.Join(got, "|") != want {
 		t.Errorf("labels %q, want %q", got, want)
+	}
+}
+
+// Sites that deploy one repository share a button on the brief, labelled
+// by the repository and opening its representative site; a site with no
+// known repository keeps its own. The host page groups the same way, a
+// viewer gets none, and the rate limit holds per repository too.
+func TestAIBriefHandoffsByRepo(t *testing.T) {
+	fd := newFakeDiscord(t)
+	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
+		c.Agents = []handoff.Agent{fd.agent("pr-bot", testBotID)}
+		c.AI = &fakeAI{}
+	})
+	ctx := t.Context()
+	staging, sRoots := e.seedComposerHost("acme", "staging-01", "app.example.dev", "beta.example.dev")
+	web, wRoots := e.seedComposerHost("acme", "web-01", "www.example.com")
+	// One repository, reached two ways (detected over https, set by hand over ssh).
+	if err := e.st.SetDetectedSiteRepos(ctx, staging.ID, map[string]string{sRoots[0]: "https://github.com/acme/app.git"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.st.SetSiteRepo(ctx, "test", web.ID, wRoots[0], "git@github.com:acme/app"); err != nil {
+		t.Fatal(err)
+	}
+	// app.example.dev sorts first by name, but it's labelled staging.
+	if err := e.st.SetSiteLabel(ctx, "test", staging.ID, sRoots[0], "staging"); err != nil {
+		t.Fatal(err)
+	}
+	all := ai.Command{Hosts: []string{"staging-01", "web-01"}, Command: laravelFix,
+		Sites: map[string][]string{"staging-01": {"app.example.dev", "beta.example.dev"}, "web-01": {"www.example.com"}}}
+	runs := 0
+	brief := func(why string) string {
+		runs++
+		storeRun(t, e.st, web.OrgID, 0, ai.Result{Summary: "s", Actions: []ai.Action{
+			{Title: "Update laravel/framework", Why: why, Hosts: all.Hosts, Commands: []ai.Command{all}}}}, testNow.Add(time.Duration(runs-3)*time.Hour))
+		return html.UnescapeString(briefStep(t, e.get("/", signedIn(e)).Body.String(), "acme"))
+	}
+	asRole(e, web.OrgID, store.RoleOperator)
+	li := brief("High.")
+	if n := strings.Count(li, "handoff-btn"); n != 2 {
+		t.Errorf("%d hand-off buttons, want one for the repository and one for the site without one:\n%s", n, li)
+	}
+	for _, want := range []string{
+		`href="` + handoffURL("acme", "web-01", wRoots[0], "") + `" title="One pull request on acme/app for 2 sites: ` +
+			`staging-01 · app.example.dev, web-01 · www.example.com. It sends web-01 · www.example.com's findings.">acme/app</a>`,
+		`href="` + handoffURL("acme", "staging-01", sRoots[1], "") + `">beta.example.dev</a>`,
+	} {
+		if !strings.Contains(li, want) {
+			t.Errorf("step lacks %q:\n%s", want, li)
+		}
+	}
+	// Naming a site (here in a path, which stays plain) narrows the step
+	// to it and its repository's other sites.
+	if li := brief("Run it in /var/www/app.example.dev/current."); !strings.Contains(li, `<div class="muted small ai-why">Run it in /var/www/app.example.dev/current.</div>`) ||
+		strings.Count(li, "handoff-btn") != 1 || !strings.Contains(li, ">acme/app</a>") {
+		t.Errorf("the step naming a site's path: a plain path, one button for its repository:\n%s", li)
+	}
+
+	// The host page's triage card groups too: with beta.example.dev on the
+	// same repository, staging-01's two sites get one labelled button.
+	if err := e.st.SetSiteRepo(ctx, "test", staging.ID, sRoots[1], "https://github.com/acme/app"); err != nil {
+		t.Fatal(err)
+	}
+	storeRun(t, e.st, staging.OrgID, staging.ID, ai.Result{Summary: "x", Actions: []ai.Action{
+		step("Update Laravel", "x", "staging-01", laravelFix)}}, testNow)
+	page := html.UnescapeString(e.get("/hosts/acme/staging-01", signedIn(e)).Body.String())
+	card := page[strings.Index(page, `id="ai-triage"`):]
+	card = card[:strings.Index(card, "</section>")]
+	if strings.Count(card, "handoff-btn") != 1 || !strings.Contains(card, `href="`+handoffURL("acme", "staging-01", sRoots[1], "")+`"`) ||
+		!strings.Contains(card, ">acme/app</a>") || !strings.Contains(card, "Hand off to agent:") {
+		t.Errorf("host page: one button for the repository, opening the production site:\n%s", card)
+	}
+
+	// Sending for one site holds the repository's other sites for the agent.
+	send := func(host, root string) *httptest.ResponseRecorder {
+		t.Helper()
+		cp := e.get(handoffURL("acme", host, root, "pr-bot"), signedIn(e)).Body.String()
+		d, id := digestRe.FindStringSubmatch(cp), requestIDRe.FindStringSubmatch(cp)
+		if d == nil || id == nil {
+			t.Fatalf("confirm page for %s %s:\n%s", host, root, cp)
+		}
+		return e.post("/hosts/acme/"+host+"/handoff", url.Values{"csrf": {auth.CSRFToken(goodToken)}, "root": {root},
+			"agent": {"pr-bot"}, "request_id": {id[1]}, "digest": {d[1]}}, signedIn(e), origin(e.baseURL))
+	}
+	if w := send("web-01", wRoots[0]); w.Code != http.StatusSeeOther {
+		t.Fatalf("first send: %d", w.Code)
+	}
+	w := send("staging-01", sRoots[0])
+	if w.Code != http.StatusTooManyRequests || !strings.Contains(html.UnescapeString(w.Body.String()), "Another site on acme/app was handed to pr-bot") {
+		t.Errorf("same repository right after: %d", w.Code)
+	}
+	if n := len(fd.sent()); n != 1 {
+		t.Errorf("posted %d messages, want 1", n)
+	}
+
+	// A viewer gets no buttons on either.
+	asRole(e, web.OrgID, store.RoleViewer)
+	if li := briefStep(t, e.get("/", signedIn(e)).Body.String(), "acme"); strings.Contains(li, "handoff-btn") {
+		t.Errorf("viewer sees hand-off buttons:\n%s", li)
+	}
+	if page := e.get("/hosts/acme/staging-01", signedIn(e)).Body.String(); strings.Contains(page, "handoff-btn") {
+		t.Error("viewer sees the host page's hand-off button")
+	}
+}
+
+// A repository's button opens the site with the most of the step's
+// findings, then a production one, then the first by name; the tooltip
+// says when the sites aren't on the same versions.
+func TestAIHandoffRepresentative(t *testing.T) {
+	const two = "composer update laravel/framework guzzlehttp/guzzle --with-dependencies"
+	site := func(root, name string) report.Site { return report.Site{Root: root, ServerNames: []string{name}} }
+	fix := func(root, pkg, installed string) report.Finding {
+		return report.Finding{Site: root, Package: pkg, Version: installed, Fixed: "99.0.0"}
+	}
+	repo := "https://github.com/acme/app"
+	cases := []struct {
+		name     string
+		labels   map[string]string
+		findings []report.Finding
+		want     string // the representative's root
+		differ   bool
+	}{
+		{"most findings", map[string]string{"/a": "production", "/b": "staging"},
+			[]report.Finding{fix("/a", "laravel/framework", "11.31.0"), fix("/b", "laravel/framework", "11.20.0"), fix("/b", "guzzlehttp/guzzle", "7.0.0")}, "/b", true},
+		{"production on a tie", map[string]string{"/a": "staging", "/b": "production"},
+			[]report.Finding{fix("/a", "laravel/framework", "11.31.0"), fix("/b", "laravel/framework", "11.31.0")}, "/b", false},
+		{"name on a tie", map[string]string{"/a": "production", "/b": "production"},
+			[]report.Finding{fix("/a", "laravel/framework", "11.31.0"), fix("/b", "laravel/framework", "11.31.0")}, "/a", false},
+	}
+	for _, c := range cases {
+		hosts := map[string]handoffHost{"web-01": {Org: "acme", Labels: c.labels,
+			Repos: map[string]string{"/a": repo, "/b": repo, "/c": ""},
+			Host: report.Host{Name: "web-01", Sites: []report.Site{site("/a", "a.example.com"), site("/b", "b.example.com"), site("/c", "c.example.com")},
+				Findings: append(c.findings, fix("/c", "laravel/framework", "11.31.0"))}}}
+		view := &aiView{View: ai.View{Result: &ai.Result{Actions: []ai.Action{{Title: "Update", Hosts: []string{"web-01"},
+			Commands: []ai.Command{{Hosts: []string{"web-01"}, Command: two}}}}}}}
+		aiHandoffs(view, hosts)
+		links := view.Handoffs[0]
+		if len(links) != 2 || links[0].Site != "acme/app" || links[1].Site != "c.example.com" || links[1].Title != "" {
+			t.Fatalf("%s: links %+v", c.name, links)
+		}
+		if want := handoffURL("acme", "web-01", c.want, ""); links[0].URL != want {
+			t.Errorf("%s: opens %s, want %s", c.name, links[0].URL, want)
+		}
+		if differ := strings.Contains(links[0].Title, "aren't all on the same versions"); differ != c.differ {
+			t.Errorf("%s: title %q", c.name, links[0].Title)
+		}
+	}
+
+	// Alone, a repository with one site is a plain button; with two it's labelled.
+	one := map[string]handoffHost{"web-01": {Org: "acme", Repos: map[string]string{"/a": repo},
+		Host: report.Host{Name: "web-01", Sites: []report.Site{site("/a", "a.example.com")}, Findings: []report.Finding{fix("/a", "laravel/framework", "1")}}}}
+	view := &aiView{View: ai.View{Result: &ai.Result{Actions: []ai.Action{step("Update", "x", "web-01", laravelFix)}}}}
+	aiHandoffs(view, one)
+	if l := view.Handoffs[0]; len(l) != 1 || l[0].Site != "" || !strings.Contains(l[0].Title, "acme/app") {
+		t.Errorf("one site: %+v", l)
 	}
 }

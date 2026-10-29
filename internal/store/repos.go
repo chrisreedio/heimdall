@@ -49,6 +49,31 @@ func (s *Store) SiteRepos(ctx context.Context, hostID int64) (map[string]SiteRep
 	return out, rows.Err()
 }
 
+// SiteReposByOrg returns the repositories of an org's sites, keyed by
+// SiteLabelKey (org, host, root).
+func (s *Store) SiteReposByOrg(ctx context.Context, orgID int64) (map[string]SiteRepo, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT o.slug, h.name, r.root, r.detected, r.manual
+		FROM site_repos r
+		JOIN hosts h ON h.id = r.host_id
+		JOIN organizations o ON o.id = h.org_id
+		WHERE h.org_id = ?`, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]SiteRepo{}
+	for rows.Next() {
+		var org, host, root string
+		var r SiteRepo
+		if err := rows.Scan(&org, &host, &root, &r.Detected, &r.Manual); err != nil {
+			return nil, err
+		}
+		out[SiteLabelKey(org, host, root)] = r
+	}
+	return out, rows.Err()
+}
+
 func validRepoRoot(root string) bool { return root != "" && len(root) <= 512 && root[0] == '/' }
 
 // SetDetectedSiteRepos replaces the collector-detected repositories of a

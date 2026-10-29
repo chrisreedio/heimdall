@@ -28,8 +28,17 @@ func TestSiteRepos(t *testing.T) {
 		t.Fatal(err)
 	}
 	repos, _ = s.SiteRepos(ctx, h.ID)
-	if r := repos["/var/www/app"]; r.Repo() != "https://gitlab.com/acme/app" || r.Detected != "https://github.com/acme/app" {
+	r := repos["/var/www/app"]
+	if r.Repo() != "https://gitlab.com/acme/app" || r.Detected != "https://github.com/acme/app" {
 		t.Errorf("repo = %+v", r)
+	}
+	s.CreateOrg(ctx, "test", "beta", "")
+	s.CreateEnv(ctx, "test", "beta", "prod", "")
+	other, _, _ := s.AddHost(ctx, "test", "beta", "prod", "web-09", nil)
+	s.SetSiteRepo(ctx, "user:1", other.ID, "/var/www/app", "https://github.com/beta/app")
+	ih, _ := s.HostByName(ctx, "acme", "web-01")
+	if byOrg, _ := s.SiteReposByOrg(ctx, ih.OrgID); len(byOrg) != 1 || byOrg[SiteLabelKey("acme", "web-01", "/var/www/app")] != r {
+		t.Errorf("by org = %+v", byOrg)
 	}
 	if at, _ := s.LastAuditAt(ctx, "site.repo"); at.IsZero() {
 		t.Error("site.repo not audited")
