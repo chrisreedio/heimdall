@@ -52,6 +52,10 @@ type noFixFact struct {
 	Package  string `json:"package"`
 	Findings int    `json:"findings"`
 	Worst    string `json:"worst_severity"`
+	// ServerNotInstalled names the server package that isn't installed
+	// when only the source's clients and libraries are (bind9's dig
+	// without named): its advisories mostly don't apply.
+	ServerNotInstalled string `json:"server_not_installed,omitempty"`
 }
 
 type siteFact struct {
@@ -530,7 +534,7 @@ func (src Sources) fact(d hostData, lv detail, top int, full bool) hostFact {
 		if f.Fixed == "" {
 			nf := noFix[f.Package]
 			if nf == nil {
-				nf = &noFixFact{Package: clip(f.Package, 100), Worst: f.Severity}
+				nf = &noFixFact{Package: clip(f.Package, 100), Worst: f.Severity, ServerNotInstalled: clip(f.ClientOnly, 100)}
 				noFix[f.Package] = nf
 			}
 			nf.Findings++

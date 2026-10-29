@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/realmwatch/heimdall/internal/clientonly"
 	"github.com/realmwatch/heimdall/internal/composer"
 	"github.com/realmwatch/heimdall/internal/feeds/eol"
 	"github.com/realmwatch/heimdall/internal/findings"
@@ -126,7 +127,9 @@ type Counts struct {
 	// NotRunning (Total = Fixable + NoFix + NotRunning + KernelUserland).
 	KernelUserland int `json:"kernel_userland"`
 	// Watch are the NoFix findings still worth watching: known-exploited,
-	// in the news, or with an EPSS score of at least store.WatchEPSS.
+	// in the news, or with an EPSS score of at least store.WatchEPSS. On a
+	// source installed only for its clients (Finding.ClientOnly), only
+	// known-exploited ones.
 	// Fixable + Watch is what needs attention (Attention).
 	Watch int `json:"watch"`
 	// Dev are on npm dev dependencies: needed to build or test a site, not
@@ -164,6 +167,10 @@ type Finding struct {
 	// KernelStatus is kernel.State.Status: running, not_running,
 	// reboot_pending or newer_kernel, or "" when not on a kernel package.
 	KernelStatus string `json:"kernel_status,omitempty"`
+	// ClientOnly names the server package that isn't installed when the
+	// finding's source is installed only for its clients and libraries
+	// (bind9's dig without named): see internal/clientonly.
+	ClientOnly string `json:"client_only,omitempty"`
 }
 
 // Filter narrows a report. Scope is required: hosts outside it are never
@@ -281,10 +288,11 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 			if err != nil {
 				return nil, err
 			}
+			co := clientOnly(inv)
 			for _, f := range fs {
-				status := ""
+				status, server := "", ""
 				if f.SiteRoot == "" {
-					status = ks.Status(f.Binaries)
+					status, server = ks.Status(f.Binaries), co[f.Package]
 				}
 				host.Findings = append(host.Findings, Finding{
 					Advisory: f.AdvisoryID, CVEs: nonNil(f.CVEs), Severity: f.Severity, CVSS: f.CVSS,
@@ -292,11 +300,11 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 					Binaries: nonNil(f.Binaries), Fixed: f.FixedVersion, FixPending: f.FixPending,
 					Summary: f.Summary, FirstSeen: f.FirstSeen, Site: f.SiteRoot, Ecosystem: f.Ecosystem, Dev: f.Dev,
 					EPSS: f.EPSS, InNews: f.InNews,
-					NotRunning: status == kernel.StatusNotRunning, KernelStatus: status,
+					NotRunning: status == kernel.StatusNotRunning, KernelStatus: status, ClientOnly: server,
 				})
-				host.Counts.add(f, status)
+				host.Counts.add(f, status, server != "")
 				c := siteCounts[f.SiteRoot]
-				c.add(f, status)
+				c.add(f, status, server != "")
 				siteCounts[f.SiteRoot] = c
 			}
 		}
@@ -381,9 +389,10 @@ func buildSite(s store.InventorySite, counts Counts, lifecycle func(product, cyc
 	return site, nil
 }
 
-// add counts one finding with its kernel status. The store's recount
-// (countsSQL in internal/store) counts the same way.
-func (c *Counts) add(f store.ReportFinding, kernelStatus string) {
+// add counts one finding with its kernel status, and whether it's on a
+// source installed only for its clients (Finding.ClientOnly). The store's
+// recount (countsSQL in internal/store) counts the same way.
+func (c *Counts) add(f store.ReportFinding, kernelStatus string, clientOnly bool) {
 	c.Total++
 	if f.Dev {
 		c.Dev++
@@ -401,7 +410,7 @@ func (c *Counts) add(f store.ReportFinding, kernelStatus string) {
 		}
 	default:
 		c.NoFix++
-		if f.KEV || f.InNews || f.EPSS >= store.WatchEPSS {
+		if f.KEV || (!clientOnly && (f.InNews || f.EPSS >= store.WatchEPSS)) {
 			c.Watch++
 		}
 	}
@@ -576,4 +585,16 @@ func (l *Lifecycle) describe() string {
 		return fmt.Sprintf("%s: supported until %s (%d days)", name, l.EOLDate.Format(time.DateOnly), l.DaysLeft)
 	}
 	return name + ": supported, no end date announced"
+}
+
+// clientOnly is clientonly.Sources for a Debian/Ubuntu host's packages.
+func clientOnly(inv store.HostInventory) map[string]string {
+	if findings.PackageManager(inv) != "dpkg" {
+		return nil
+	}
+	pkgs := make([]clientonly.Package, len(inv.Packages))
+	for i, p := range inv.Packages {
+		pkgs[i] = clientonly.Package{Name: p.Name, Source: p.SourceName}
+	}
+	return clientonly.Sources(pkgs)
 }

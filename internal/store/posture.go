@@ -6,8 +6,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"time"
 
+	"github.com/realmwatch/heimdall/internal/clientonly"
 	"github.com/realmwatch/heimdall/internal/kernel"
 )
 
@@ -77,7 +79,9 @@ func (s *Store) OpenFindingCounts(ctx context.Context) (map[int64]map[string]Fin
 // one is installed, and userland when every binary is a kernel userland
 // package (temp.kernel_userland, kernel.Userland's list):
 // kernel.State.Status. ?2 is WatchEPSS: watch counts findings with no fix
-// that are known-exploited, in the news, or scored at least that. A
+// that are known-exploited, in the news, or scored at least that; on a
+// source installed only for its clients (temp.client_only, clientonly),
+// only known-exploited ones. A
 // finding on an npm dev dependency (findings.dev) counts in total and dev
 // only (report.Counts.Dev).
 //
@@ -111,7 +115,9 @@ const countsSQL = `
 		           WHERE NOT EXISTS (SELECT 1 FROM temp.kernel_old ko WHERE ko.host_id = f.host_id AND ko.name = b.value)), 0) AS nr0,
 		       coalesce(f.site_root = '' AND json_array_length(f.binaries) > 0 AND NOT EXISTS (
 		           SELECT 1 FROM json_each(f.binaries) b
-		           WHERE NOT EXISTS (SELECT 1 FROM temp.kernel_boot kb WHERE kb.host_id = f.host_id AND kb.name = b.value)), 0) AS rb
+		           WHERE NOT EXISTS (SELECT 1 FROM temp.kernel_boot kb WHERE kb.host_id = f.host_id AND kb.name = b.value)), 0) AS rb,
+		       f.site_root = '' AND EXISTS (
+		           SELECT 1 FROM temp.client_only co WHERE co.host_id = f.host_id AND co.name = f.package_name) AS co
 		FROM findings f JOIN advisories a INDEXED BY advisories_tally ON a.id = f.advisory_id
 		JOIN (SELECT h.id, coalesce(s.package_manager = 'dpkg', 0) AS dpkg FROM hosts h
 		      LEFT JOIN snapshots s ON s.id = h.last_snapshot_id WHERE ?1 = 0 OR h.id = ?1) h ON h.id = f.host_id
@@ -126,7 +132,7 @@ const countsSQL = `
 	       sum(fixable AND NOT off), sum(pending AND NOT off),
 	       sum(fixable AND NOT off AND sev IN ('critical', 'high')),
 	       sum(news AND NOT dev), sum(nr), sum(rb AND NOT off), sum(ku),
-	       sum(NOT fixable AND NOT off AND (kev OR news OR hot)), sum(dev)
+	       sum(NOT fixable AND NOT off AND (kev OR ((news OR hot) AND NOT co))), sum(dev)
 	FROM fk
 	GROUP BY host_id, site_root`
 
@@ -137,11 +143,12 @@ var kernelTables = []string{
 	`CREATE TEMP TABLE IF NOT EXISTS kernel_old (host_id INTEGER, name TEXT, PRIMARY KEY (host_id, name)) WITHOUT ROWID`,
 	`CREATE TEMP TABLE IF NOT EXISTS kernel_boot (host_id INTEGER, name TEXT, PRIMARY KEY (host_id, name)) WITHOUT ROWID`,
 	`CREATE TEMP TABLE IF NOT EXISTS kernel_userland (name TEXT PRIMARY KEY) WITHOUT ROWID`,
+	`CREATE TEMP TABLE IF NOT EXISTS client_only (host_id INTEGER, name TEXT, PRIMARY KEY (host_id, name)) WITHOUT ROWID`,
 }
 
 // clearKernelTables empties kernelTables.
 func clearKernelTables(ctx context.Context, tx *sql.Tx) error {
-	for _, t := range []string{"kernel_old", "kernel_boot", "kernel_userland"} {
+	for _, t := range []string{"kernel_old", "kernel_boot", "kernel_userland", "client_only"} {
 		if _, err := tx.ExecContext(ctx, `DELETE FROM temp.`+t); err != nil {
 			return err
 		}
@@ -161,6 +168,45 @@ func refreshFindingCounts(ctx context.Context, tx *sql.Tx, hostID int64) error {
 	return writeFindingCounts(ctx, tx, hostID, sets)
 }
 
+// clientOnlySets is each Debian/Ubuntu host's sources installed only for
+// their clients (clientonly.Sources), for host hostID (0 = every host).
+func clientOnlySets(ctx context.Context, tx *sql.Tx, hostID int64) (map[int64][]string, error) {
+	like := make([]string, len(clientonly.SourceLike))
+	args := []any{hostID}
+	for i, p := range clientonly.SourceLike {
+		like[i] = "coalesce(nullif(p.source_name, ''), p.name) LIKE ?"
+		args = append(args, p)
+	}
+	rows, err := tx.QueryContext(ctx, `
+		SELECT h.id, p.name, coalesce(p.source_name, '')
+		FROM hosts h JOIN snapshots s ON s.id = h.last_snapshot_id
+		JOIN packages p ON p.snapshot_id = s.id
+		WHERE (?1 = 0 OR h.id = ?1) AND s.package_manager = 'dpkg' AND (`+strings.Join(like, " OR ")+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	pkgs := map[int64][]clientonly.Package{}
+	for rows.Next() {
+		var id int64
+		var p clientonly.Package
+		if err := rows.Scan(&id, &p.Name, &p.Source); err != nil {
+			return nil, err
+		}
+		pkgs[id] = append(pkgs[id], p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := map[int64][]string{}
+	for id, ps := range pkgs {
+		for src := range clientonly.Sources(ps) {
+			out[id] = append(out[id], src)
+		}
+	}
+	return out, nil
+}
+
 // writeFindingCounts is refreshFindingCounts with the kernel sets given.
 func writeFindingCounts(ctx context.Context, tx *sql.Tx, hostID int64, sets map[int64]kernelSet) error {
 	for _, q := range kernelTables {
@@ -176,6 +222,15 @@ func writeFindingCounts(ctx context.Context, tx *sql.Tx, hostID int64, sets map[
 		_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO temp.`+table+` (host_id, name)
 			SELECT ?, value FROM json_each(?)`, host, string(b))
 		return err
+	}
+	co, err := clientOnlySets(ctx, tx, hostID)
+	if err != nil {
+		return err
+	}
+	for id, names := range co {
+		if err := fill("client_only", id, names); err != nil {
+			return err
+		}
 	}
 	for id, ks := range sets {
 		if err := fill("kernel_old", id, ks.Old); err != nil {

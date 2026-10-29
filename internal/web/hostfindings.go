@@ -34,6 +34,7 @@ type pkgGroup struct {
 	News             int    // findings named by a live news incident
 	NotRunning       bool   // every finding is on an old kernel that isn't running
 	KernelStatus     string // the findings' common kernel status, or ""
+	ClientOnly       string // the server package that isn't installed (report.Finding.ClientOnly)
 	BySev            map[string]int
 	Total, Fixable   int
 	FixPending       bool // an update that fixes some of them is already pending
@@ -115,8 +116,11 @@ func needsAction(f report.Finding) bool {
 	return live(f) && (f.Fixed != "" || watched(f))
 }
 
-// watched: worth watching even with no fix (report.Counts.Watch).
-func watched(f report.Finding) bool { return f.KEV || f.InNews || f.EPSS >= store.WatchEPSS }
+// watched: worth watching even with no fix (report.Counts.Watch). On a
+// source installed only for its clients, only when known-exploited.
+func watched(f report.Finding) bool {
+	return f.KEV || (f.ClientOnly == "" && (f.InNews || f.EPSS >= store.WatchEPSS))
+}
 
 // kernelInfo is what the findings view needs about the host's kernels.
 type kernelInfo struct{ Running, Newer string }
@@ -329,7 +333,8 @@ func groupByPackage(list []report.Finding) []pkgGroup {
 			i = len(groups)
 			idx[key] = i
 			groups = append(groups, pkgGroup{Package: f.Package, Version: f.Version, Ecosystem: f.Ecosystem, Binaries: f.Binaries,
-				BySev: map[string]int{}, NotRunning: f.NotRunning, KernelStatus: f.KernelStatus, Dev: f.Dev})
+				BySev: map[string]int{}, NotRunning: f.NotRunning, KernelStatus: f.KernelStatus, Dev: f.Dev,
+				ClientOnly: f.ClientOnly})
 		}
 		g := &groups[i]
 		g.NotRunning = g.NotRunning && f.NotRunning
