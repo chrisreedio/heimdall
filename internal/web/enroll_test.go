@@ -153,7 +153,7 @@ func TestExpiresIn(t *testing.T) {
 	for d, want := range map[time.Duration]string{
 		30 * time.Second: "in 1 minute", 10 * time.Minute: "in 11 minutes", 23 * time.Hour: "in 23 hours", time.Hour: "in 1 hour",
 	} {
-		if got := expiresIn(now.Add(d), now); got != want {
+		if got := string(expiresIn(now.Add(d), now)); got != want {
 			t.Errorf("%v: %q, want %q", d, got, want)
 		}
 	}

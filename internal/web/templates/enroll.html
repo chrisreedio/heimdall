@@ -45,7 +45,7 @@
   <h2 id="key-h">Paste this when the installer asks</h2>
   <p><strong>Shown once.</strong> Heimdall keeps just a hash. The installer asks for it on each server (cloud-init user data already has it).</p>
   <div class="codebox"><code id="enroll-key">{{.Secret}}</code><button type="button" class="copy" data-copy="enroll-key" hidden>Copy</button></div>
-  <p class="hint">Adds {{if .Key.MaxUses}}up to {{.Key.MaxUses}} server{{if ne .Key.MaxUses 1}}s{{end}}{{else}}any number of servers{{end}} to {{.Key.OrgSlug}} / {{.Key.EnvSlug}}{{if .Key.Tags}}, tagged {{join .Key.Tags ", "}}{{end}}. Expires {{.Key.Expires}} ({{time .Key.ExpiresAt}}).
+  <p class="hint">Adds {{if .Key.MaxUses}}up to {{.Key.MaxUses}} server{{if ne .Key.MaxUses 1}}s{{end}}{{else}}any number of servers{{end}} to {{.Key.OrgSlug}} / {{.Key.EnvSlug}}{{if .Key.Tags}}, tagged {{join .Key.Tags ", "}}{{end}}. Expires {{.Key.Expires}} ({{ts .Key.ExpiresAt}}).
   {{if .Key.Approval}}Each server waits for your approval below before its reports count.{{else}}Servers report at once, without approval.{{end}}</p>
   <div class="actions start">
     <a class="button" href="/hosts">Go to Hosts</a>

@@ -144,9 +144,9 @@ func TestAIBrief(t *testing.T) {
 	fa := &fakeAI{}
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.AI = fa })
 	host := e.seed()
-	storeRun(t, e.st, host.OrgID, 0, hostile(), time.Date(2026, 10, 22, 8, 0, 0, 0, time.Local))
+	storeRun(t, e.st, host.OrgID, 0, hostile(), time.Date(2026, 10, 22, 8, 0, 0, 0, time.UTC))
 	page := e.get("/", signedIn(e)).Body.String()
-	for _, want := range []string{`id="ai-brief-acme"`, "Daily brief", "&lt;script&gt;", "Generated Oct 22, 2026 8:00 AM by 6.1 sol",
+	for _, want := range []string{`id="ai-brief-acme"`, "Daily brief", "&lt;script&gt;", "Generated <time", ">Oct 22, 2026 8:00 AM UTC</time> by ",
 		`<a class="ref ref-host" href="/hosts/acme/web-01" title="Host">`, `action="/ai/brief/acme"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard lacks %q", want)

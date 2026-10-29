@@ -111,7 +111,7 @@
   <h2>Audit log</h2>
   {{if .Audit}}<div class="scroll"><table>
     <thead><tr><th>When</th><th>Who</th><th>What</th><th>Target</th><th>Result</th></tr></thead>
-    <tbody>{{range .Audit}}<tr><td class="nowrap">{{time .At}}</td><td>{{.Actor}}</td><td>{{.Action}}</td><td class="id">{{.Target}}</td>
+    <tbody>{{range .Audit}}<tr><td class="nowrap">{{ts .At}}</td><td>{{.Actor}}</td><td>{{.Action}}</td><td class="id">{{.Target}}</td>
       <td>{{if eq .Result "ok"}}ok{{else}}<span class="pill bad" title="{{index .Detail "error"}}">error</span>{{end}}</td></tr>{{end}}</tbody>
   </table></div>
   {{else}}<p class="empty">Nothing yet.</p>{{end}}
@@ -121,7 +121,7 @@
 {{define "banrow"}}{{$r := .Row}}{{$csrf := .CSRF}}
 <article class="card" id="ban-{{$r.ID}}">
   <h3><span class="id">{{$r.Target}}</span> {{if eq $r.Kind "network"}}<span class="pill info">network</span> {{end}}<span class="pill {{if eq $r.Action "block"}}bad{{else}}warn{{end}}">{{$r.Action}}</span> for {{$r.Days}} days{{if gt $r.Offense 1}} (offense {{$r.Offense}}){{end}}</h3>
-  <p class="small">{{with $r.Ev.Network}}{{.}} · {{end}}{{$r.Ev.Prefix}} · {{$r.Ev.Failures}} failures, {{$r.Ev.Usernames}} usernames, {{$r.Ev.Days}} day{{if ne $r.Ev.Days 1}}s{{end}} · first {{time $r.Ev.First}}, last {{ago $r.Ev.Last}}
+  <p class="small">{{with $r.Ev.Network}}{{.}} · {{end}}{{$r.Ev.Prefix}} · {{$r.Ev.Failures}} failures, {{$r.Ev.Usernames}} usernames, {{$r.Ev.Days}} day{{if ne $r.Ev.Days 1}}s{{end}} · first {{ts $r.Ev.First}}, last {{ago $r.Ev.Last}}
     {{if $r.Ev.Succeeded}} · <span class="pill bad">then succeeded</span>{{end}}</p>
   <p class="small">Hosts: {{range $i, $h := $r.Hosts}}{{if $i}}, {{end}}<a href="{{hostURL $h.Org $h.Name}}#logins">{{$h.Name}}</a>{{end}}{{if $r.HostsMore}} +{{$r.HostsMore}} in other orgs{{end}}{{with $r.Ev.Members}} · addresses: {{join . ", "}}{{end}}</p>
   <p class="small">IP awareness: {{$r.Ev.Known}} · {{$r.Ev.Reason}}</p>

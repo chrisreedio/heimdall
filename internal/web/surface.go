@@ -132,7 +132,7 @@ func (s *server) surfacePage(w http.ResponseWriter, r *http.Request, v *auth.Vie
 			return
 		}
 		for _, c := range surface.ChangesFor(cs, v.Scope.Admin, can) {
-			body.Changes = append(body.Changes, surfaceChangeRow{SurfaceChange: c, When: dayAgo(&c.At, s.now()), Full: c.At.Local().Format("Jan 2, 2006 3:04 PM")})
+			body.Changes = append(body.Changes, surfaceChangeRow{SurfaceChange: c, When: dayAgoHTML(&c.At, s.now()), Full: utcText(c.At)})
 		}
 		if syncs, err := s.st.CloudflareSyncs(ctx); err == nil {
 			body.LastSync = syncs["zones"].At
@@ -149,7 +149,8 @@ type surfaceHTML = template.HTML
 // surfaceChangeRow is a change with its time as people read it.
 type surfaceChangeRow struct {
 	store.SurfaceChange
-	When, Full string
+	When template.HTML
+	Full string
 }
 
 // surfaceLineBody is the host or site page's "public as" line.

@@ -9,7 +9,7 @@
     <td>{{if .OrgSlug}}{{.OrgSlug}}{{else}}<span class="muted">all orgs</span>{{end}}</td>
     <td>{{.Hosts}}</td><td>{{.Done}}</td><td>{{.Verified}}</td>
     <td>{{if .ClosedAt.IsZero}}open{{else}}closed{{end}}</td>
-    <td>{{time .CreatedAt}}</td>
+    <td>{{ts .CreatedAt}}</td>
   </tr>{{else}}<tr><td colspan="7" class="muted">No plans yet.</td></tr>{{end}}</tbody>
 </table></div>
 {{if or .Orgs .CanAllOrgs}}

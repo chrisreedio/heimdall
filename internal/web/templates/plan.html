@@ -2,7 +2,7 @@
 <nav class="crumbs" aria-label="Breadcrumb"><a href="/plans">Patch plans</a> <span aria-hidden="true">/</span> {{.Plan.Name}}</nav>
 <h1>{{.Plan.Name}}</h1>
 {{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
-<p class="muted">{{.Plan.Hosts}} hosts · {{.Plan.Done}} done · {{.Plan.Verified}} verified{{if not .Plan.ClosedAt.IsZero}} · closed {{time .Plan.ClosedAt}}{{end}}</p>
+<p class="muted">{{.Plan.Hosts}} hosts · {{.Plan.Done}} done · {{.Plan.Verified}} verified{{if not .Plan.ClosedAt.IsZero}} · closed {{ts .Plan.ClosedAt}}{{end}}</p>
 <div class="scroll"><table>
   <thead><tr><th>Batch</th><th>Host</th><th>Pending security</th><th>State</th>{{if $can}}<th></th>{{end}}</tr></thead>
   <tbody>{{range .Items}}<tr>

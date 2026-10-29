@@ -102,7 +102,7 @@
   <h2>Open anomalies</h2>
   <div class="scroll"><table>
     <thead><tr><th>Detected</th><th>Severity</th><th>Rule</th><th>Summary</th></tr></thead>
-    <tbody>{{range .Anomalies}}<tr><td>{{time .DetectedAt}}</td><td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span></td><td>{{.Rule}}</td><td>{{.Summary}}</td></tr>{{end}}</tbody>
+    <tbody>{{range .Anomalies}}<tr><td>{{ts .DetectedAt}}</td><td><span class="sev sev-{{sev .Severity}}">{{.Severity}}</span></td><td>{{.Rule}}</td><td>{{.Summary}}</td></tr>{{end}}</tbody>
   </table></div>
 </section>
 {{end}}
