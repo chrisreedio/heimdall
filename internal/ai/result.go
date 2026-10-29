@@ -11,6 +11,7 @@ import (
 	"unicode"
 
 	"github.com/realmwatch/heimdall/internal/kernel"
+	"github.com/realmwatch/heimdall/internal/report"
 )
 
 // Result is the validated, advisory-only output of a run.
@@ -739,7 +740,7 @@ func noABIKernel(pm string, pkgs []string) bool {
 
 // commandShapeOK checks a stored command's shape (not the package list).
 func commandShapeOK(cmd string) bool {
-	if cmd == RebootCommand || cmd == kernel.DpkgFullUpgrade {
+	if cmd == RebootCommand || cmd == kernel.DpkgFullUpgrade || phpCLICommand.MatchString(cmd) {
 		return true
 	}
 	if rest, ok := strings.CutPrefix(cmd, "composer update "); ok {
@@ -749,7 +750,8 @@ func commandShapeOK(cmd string) bool {
 	if rest, ok := strings.CutPrefix(cmd, kernel.PurgePrefix+" "); ok {
 		pkgs := strings.Fields(rest)
 		return len(pkgs) > 0 && len(pkgs) <= maxCommandPkgs && all(pkgs, safePackage) && strings.Join(pkgs, " ") == rest &&
-			!slices.ContainsFunc(pkgs, func(p string) bool { return !kernel.ABIPackage("dpkg", p) })
+			(!slices.ContainsFunc(pkgs, func(p string) bool { return !kernel.ABIPackage("dpkg", p) }) ||
+				!slices.ContainsFunc(pkgs, func(p string) bool { return report.PHPPackageMinor(p) == "" }))
 	}
 	for pm, prefixes := range commandPrefixes {
 		for _, prefix := range prefixes {
@@ -762,6 +764,9 @@ func commandShapeOK(cmd string) bool {
 	}
 	return false
 }
+
+// phpCLICommand is report.PHPCLICommand's shape.
+var phpCLICommand = regexp.MustCompile(`^sudo update-alternatives --set php /usr/bin/php[0-9]+\.[0-9]+$`)
 
 func all(pkgs []string, shape *regexp.Regexp) bool {
 	for _, p := range pkgs {

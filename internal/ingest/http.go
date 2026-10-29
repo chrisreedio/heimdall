@@ -281,6 +281,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.recordPrivilege(r.Context(), log, host, res.SnapshotID, r) // opt-in privilege watch (privilege.go)
 		h.recordSiteRepos(r.Context(), log, host, r)                 // repos.go
 		h.recordSiteBranches(r.Context(), log, host, r)              // branches.go
+		h.recordPHP(r.Context(), log, host, r)                       // php.go
 		h.recordLogins(r.Context(), log, host, r)                    // opt-in login watch (logins.go)
 	}
 	if res.Status == http.StatusCreated && h.OnStored != nil {
