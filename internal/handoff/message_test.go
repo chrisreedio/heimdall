@@ -78,6 +78,9 @@ func TestBuildPayload(t *testing.T) {
 	want := Data{
 		Heimdall: "v0.5.0", RequestID: "0123456789abcdef", Org: "acme", Host: "app-01", Site: "example.com",
 		SitePath: "/home/forge/example.com", Repo: &repo,
+		// The block's sites and target are brief; the file has the rest.
+		Sites:  []SiteEntry{{Host: "app-01", Site: "example.com"}},
+		Target: TargetData{Mode: TargetDefault, Branches: []string{}},
 		Packages: []Package{
 			{Ecosystem: "composer", Name: "guzzlehttp/guzzle", Installed: "7.9.2", Fixed: "7.9.3", Advisories: []string{"GHSA-1111-2222-3333"}},
 			// The highest fix of the package's advisories.
@@ -112,7 +115,7 @@ func TestBuildRepoUnknown(t *testing.T) {
 	if !strings.Contains(m.Content, "**Repo unknown:**") || block(t, m.Content).Repo != nil {
 		t.Errorf("repo unknown not said: %q", m.Content)
 	}
-	if !strings.Contains(m.Content, `"repo": null`) {
+	if !strings.Contains(m.Content, `"repo": null`) && !strings.Contains(m.Content, `"repo":null`) {
 		t.Errorf("repo isn't null")
 	}
 }
@@ -217,8 +220,8 @@ func TestMajorUpgrade(t *testing.T) {
 	if !l.MajorUpgrade || l.Fixed != "12.69.0" || len(l.Fixes) != 2 || l.Fixes[0].Fixed != "11.44.1" {
 		t.Errorf("laravel: %+v", l)
 	}
-	if !strings.Contains(prose("123456789012345678", "f.json", true, true, false, true, 0), "Major upgrade") ||
-		strings.Contains(prose("123456789012345678", "f.json", true, true, false, false, 0), "Major upgrade") {
+	if !strings.Contains(prose("123456789012345678", "f.json", proseFacts{repoKnown: true, composer: true, major: true}), "Major upgrade") ||
+		strings.Contains(prose("123456789012345678", "f.json", proseFacts{repoKnown: true, composer: true}), "Major upgrade") {
 		t.Error("the major-upgrade note should appear only when needed")
 	}
 }

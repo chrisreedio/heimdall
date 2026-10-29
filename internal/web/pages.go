@@ -915,6 +915,8 @@ type siteBody struct {
 	CanOperate   bool   // may set the repository
 	RepoNotice   string // fixed text after saving it
 	RepoError    bool
+	BranchNotice string // fixed text after saving the branch
+	BranchError  bool
 	HandoffURL   string // "Hand off to agent", when allowed and there's something to fix
 	HandoffNote  string // fixed text after a hand-off
 	HandoffError bool
@@ -986,6 +988,8 @@ func (s *server) sitePage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	body.Repo, body.CanOperate = repos[root], v.Scope.CanOperate(host.OrgID)
 	rn := r.URL.Query().Get("repo")
 	body.RepoNotice, body.RepoError = repoNotices[rn], rn == "invalid"
+	bn := r.URL.Query().Get("branch")
+	body.BranchNotice, body.BranchError = branchNotices[bn], bn == "invalid"
 	if s.canHandoff(v, host.OrgID) && len(handoffFindings(h, root)) > 0 {
 		body.HandoffURL = handoffURL(host.OrgSlug, host.Name, root, "")
 	}

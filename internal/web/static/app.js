@@ -153,11 +153,11 @@ document.addEventListener("DOMContentLoaded", function () {
   }, 5000);
 });
 
-// Selects marked data-autosubmit submit their form on change (the hand-off
-// agent picker); the form's button is then hidden. Without JavaScript the
-// button stays.
+// Selects and radio buttons marked data-autosubmit submit their form on
+// change (the hand-off's agent and target pickers); the form's button is
+// then hidden. Without JavaScript the button stays.
 document.addEventListener("DOMContentLoaded", function () {
-  document.querySelectorAll("select[data-autosubmit]").forEach(function (sel) {
+  document.querySelectorAll("select[data-autosubmit], input[data-autosubmit]").forEach(function (sel) {
     if (!sel.form) return;
     sel.addEventListener("change", function () { sel.form.submit(); });
     sel.form.querySelectorAll("[data-autosubmit-hide]").forEach(function (b) { b.hidden = true; });

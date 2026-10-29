@@ -76,6 +76,13 @@ var repoNotices = map[string]string{
 	"invalid": "That isn't a repository URL Heimdall accepts: https://host/owner/repo, ssh://git@host/owner/repo or git@host:owner/repo.",
 }
 
+// branchNotices are the fixed messages after saving a site's branch.
+var branchNotices = map[string]string{
+	"saved":   "Branch saved.",
+	"cleared": "Branch cleared.",
+	"invalid": "That isn't a branch name Heimdall accepts: letters, digits, \".\", \"_\", \"-\" and \"/\" only, such as main or env/beta.",
+}
+
 // canHandoff: agents are configured and the viewer may operate in the org.
 func (s *server) canHandoff(v *auth.Viewer, orgID int64) bool {
 	return len(s.cfg.Agents) > 0 && v.Scope.CanOperate(orgID)
@@ -394,12 +401,20 @@ type handoffBody struct {
 	Agent                 string
 	Repo, RepoWeb         string
 	RepoManual            bool
-	Content               string
-	Digest, RequestID     string
-	Packages, Omitted     int
-	File, FileName        string // the attached JSON, shown for review
-	Notice                string
-	Sent                  bool
+	// Sites are every site on the repository the viewer may operate on,
+	// this one first; Branches their distinct known branches. Target is
+	// the chosen mode (handoff.TargetDefault, ...) and TargetBranch the
+	// branch for TargetBranch.
+	Sites                []handoffSiteRow
+	Branches             []string
+	Unknown              int // sites whose branch is unknown
+	Target, TargetBranch string
+	Content              string
+	Digest, RequestID    string
+	Packages, Omitted    int
+	File, FileName       string // the attached JSON, shown for review
+	Notice               string
+	Sent                 bool
 }
 
 // handoffTarget is what both the confirm page and the send need.
@@ -409,6 +424,163 @@ type handoffTarget struct {
 	h     report.Host
 	repo  store.SiteRepo
 	agent handoff.Agent
+	// sites deploy the same repository (this one first), with rows the
+	// confirm page shows for them.
+	sites []handoff.Site
+	rows  []handoffSiteRow
+}
+
+// handoffSiteRow is one site on the confirm page.
+type handoffSiteRow struct {
+	Org, Host, Root, Name string
+	URL                   string
+	Label                 string
+	Branch                string // "" when unknown
+	BranchManual          bool   // set by an operator
+	Commit                string // a detached HEAD's commit, shortened
+	Versions              string // its installed versions of the hand-off's packages
+	This                  bool   // the hand-off's own site
+	Gets                  string // what the chosen target does for it (handoffBody)
+	Targeted              bool
+}
+
+// handoffSites finds the sites that deploy t's repository and have a
+// fixable finding in t's packages: t's own first, then the others in
+// orgs the viewer may operate in (handoff.Build drops any without one of
+// t's packages). Without a known repository it's t's site alone.
+func (s *server) handoffSites(ctx context.Context, v *auth.Viewer, t *handoffTarget) error {
+	labels, err := s.st.SiteLabelsByName(ctx)
+	if err != nil {
+		return err
+	}
+	add := func(org string, h report.Host, site report.Site, repo store.SiteRepo, this bool) {
+		fs := handoffFindings(h, site.Root)
+		if len(fs) == 0 {
+			return
+		}
+		label, ok := labels[store.SiteLabelKey(org, h.Name, site.Root)]
+		if !ok {
+			label = suggestSiteLabel(site.ServerNames)
+		}
+		hs := handoff.Site{Host: h.Name, Site: siteName(site), SitePath: site.Root, Label: label, Branch: repo.Branch(), Findings: fs}
+		row := handoffSiteRow{Org: org, Host: h.Name, Root: site.Root, Name: cmp.Or(siteName(site), site.Root),
+			URL: siteURL(org, h.Name, site.Root), Label: label, Branch: repo.Branch(), BranchManual: repo.ManualBranch != "", This: this}
+		if hs.Branch == "" && handoff.ValidCommit(repo.DetectedCommit) {
+			hs.Commit, row.Commit = repo.DetectedCommit, repo.DetectedCommit[:12]
+		}
+		t.sites, t.rows = append(t.sites, hs), append(t.rows, row)
+	}
+	t.sites, t.rows = nil, nil
+	add(t.host.OrgSlug, t.h, t.site, t.repo, true)
+	if len(t.sites) == 0 {
+		return nil // nothing to hand off (the page answers 404)
+	}
+	var vs []string
+	for _, p := range handoff.SiteInstalled(t.sites[0], t.sites[0]) {
+		vs = append(vs, p.Name+" "+p.Installed)
+	}
+	t.rows[0].Versions = strings.Join(vs, ", ")
+	key := handoff.RepoKey(t.repo.Repo())
+	if key == "" {
+		return nil
+	}
+	all, err := s.st.RepoSites(ctx)
+	if err != nil {
+		return err
+	}
+	byHost := map[string][]store.RepoSite{}
+	var hosts []string
+	for _, rs := range all {
+		if handoff.RepoKey(rs.Repo.Repo()) != key || !v.Scope.CanView(rs.OrgID) || !s.canHandoff(v, rs.OrgID) ||
+			rs.HostID == t.host.ID && rs.Root == t.site.Root {
+			continue
+		}
+		k := rs.Org + "\x00" + rs.Host
+		if byHost[k] == nil {
+			hosts = append(hosts, k)
+		}
+		byHost[k] = append(byHost[k], rs)
+	}
+	for _, k := range hosts {
+		g := byHost[k]
+		rep, err := report.Build(ctx, s.st, report.Filter{Org: g[0].Org, Host: g[0].Host, Scope: v.Scope}, s.now())
+		if err != nil {
+			return err
+		}
+		for _, rh := range rep.Hosts {
+			if rh.Name != g[0].Host {
+				continue
+			}
+			for _, rs := range g {
+				for _, site := range rh.Sites {
+					if site.Root == rs.Root {
+						add(rs.Org, rh, site, rs.Repo, false)
+					}
+				}
+			}
+		}
+	}
+	// Only those with something of this hand-off to fix, as the message
+	// lists them; production first, then staging and development.
+	type pair struct {
+		site handoff.Site
+		row  handoffSiteRow
+	}
+	var others []pair
+	for i := 1; i < len(t.sites); i++ {
+		inst := handoff.SiteInstalled(t.sites[0], t.sites[i])
+		if len(inst) == 0 {
+			continue
+		}
+		var vs []string
+		for _, p := range inst {
+			vs = append(vs, p.Name+" "+p.Installed)
+		}
+		t.rows[i].Versions = strings.Join(vs, ", ")
+		others = append(others, pair{t.sites[i], t.rows[i]})
+	}
+	slices.SortStableFunc(others, func(a, b pair) int {
+		return cmp.Or(cmp.Compare(labelRank(a.row.Label), labelRank(b.row.Label)), cmp.Compare(a.row.Host, b.row.Host), cmp.Compare(a.row.Root, b.row.Root))
+	})
+	t.sites, t.rows = t.sites[:1], t.rows[:1]
+	for _, o := range others {
+		t.sites, t.rows = append(t.sites, o.site), append(t.rows, o.row)
+	}
+	return nil
+}
+
+func labelRank(l string) int {
+	switch l {
+	case "production":
+		return 0
+	case "staging":
+		return 1
+	case "development":
+		return 2
+	}
+	return 3
+}
+
+// handoffTargetOf checks a submitted target against the sites' known
+// branches (detected or set by an operator): the branch must be one of
+// them, never other text. ok is false for anything else.
+func handoffTargetOf(mode, branch string, known []string) (handoff.Target, bool) {
+	if m, b, ok := strings.Cut(mode, ":"); ok && m == handoff.TargetBranch { // the confirm page's radio buttons
+		mode, branch = m, b
+	}
+	switch mode {
+	case "", handoff.TargetDefault:
+		return handoff.Target{Mode: handoff.TargetDefault}, true
+	case handoff.TargetBranch:
+		if slices.Contains(known, branch) {
+			return handoff.Target{Mode: handoff.TargetBranch, Branches: []string{branch}}, true
+		}
+	case handoff.TargetEach:
+		if len(known) > 0 {
+			return handoff.Target{Mode: handoff.TargetEach}, true
+		}
+	}
+	return handoff.Target{}, false
 }
 
 // loadHandoff resolves and checks a hand-off request. ok is false when
@@ -457,6 +629,9 @@ func (s *server) loadHandoff(ctx context.Context, v *auth.Viewer, org, hostName,
 		return t, false, err
 	}
 	t.repo = repos[root]
+	if err := s.handoffSites(ctx, v, &t); err != nil {
+		return t, false, err
+	}
 	return t, true, nil
 }
 
@@ -468,8 +643,9 @@ func (s *server) agentOK(name string) (handoff.Agent, error) {
 	return a, nil
 }
 
-func (s *server) handoffMessage(t handoffTarget, v *auth.Viewer, requestID string) (handoff.Message, error) {
+func (s *server) handoffMessage(t handoffTarget, v *auth.Viewer, requestID string, target handoff.Target) (handoff.Message, error) {
 	return handoff.Build(t.agent, handoff.Request{
+		Sites: t.sites, Target: target,
 		Version: s.cfg.Version, Org: t.host.OrgSlug, Host: t.host.Name, Site: siteName(t.site),
 		SitePath: t.site.Root, Repo: t.repo.Repo(), Findings: handoffFindings(t.h, t.site.Root),
 		RequestID: requestID, RequestedBy: v.DisplayName,
@@ -487,9 +663,35 @@ func siteFacts(site report.Site) handoff.SiteFacts {
 	return f
 }
 
-func (s *server) handoffBody(t handoffTarget, msg handoff.Message, requestID string) handoffBody {
+func (s *server) handoffBody(t handoffTarget, msg handoff.Message, requestID string, target handoff.Target) handoffBody {
 	repo := t.repo.Repo()
+	unknown := 0
+	for _, r := range t.rows {
+		if r.Branch == "" {
+			unknown++
+		}
+	}
+	tb := ""
+	if target.Mode == handoff.TargetBranch {
+		tb = target.Branches[0]
+	}
+	rows := slices.Clone(t.rows)
+	for i := range rows {
+		r := &rows[i]
+		switch {
+		case target.Mode == handoff.TargetEach && r.Branch != "":
+			r.Gets, r.Targeted = "its own pull request, against "+r.Branch, true
+		case target.Mode == handoff.TargetEach:
+			r.Gets = "branch unknown: not targeted"
+		case target.Mode == handoff.TargetBranch && r.Branch == tb:
+			r.Gets, r.Targeted = "the pull request's branch", true
+		case target.Mode == handoff.TargetBranch:
+			r.Gets = "listed for the agent only"
+		}
+	}
 	return handoffBody{
+		Sites: rows, Branches: handoff.Branches(t.sites), Unknown: unknown,
+		Target: cmp.Or(target.Mode, handoff.TargetDefault), TargetBranch: tb,
 		Org: t.host.OrgSlug, Host: t.host.Name, Root: t.site.Root, Site: siteName(t.site),
 		SiteURL: siteURL(t.host.OrgSlug, t.host.Name, t.site.Root),
 		Agents:  agentNames(s.cfg.Agents), Agent: t.agent.Name,
@@ -512,14 +714,25 @@ func (s *server) handoffPage(w http.ResponseWriter, r *http.Request, v *auth.Vie
 		s.notFound(w, r, v)
 		return
 	}
+	status, notice := http.StatusOK, ""
+	target, ok := handoffTargetOf(q.Get("target"), q.Get("branch"), handoff.Branches(t.sites))
+	if !ok {
+		status, notice = http.StatusBadRequest, badTargetNotice
+		target = handoff.Target{Mode: handoff.TargetDefault}
+	}
 	id := handoff.RequestID()
-	msg, err := s.handoffMessage(t, v, id)
+	msg, err := s.handoffMessage(t, v, id, target)
 	if err != nil {
 		s.notFound(w, r, v) // nothing fixable to hand off
 		return
 	}
-	s.render(w, r, http.StatusOK, "handoff", v, "Hand off to agent", "sites", s.handoffBody(t, msg, id))
+	body := s.handoffBody(t, msg, id, target)
+	body.Notice = notice
+	s.render(w, r, status, "handoff", v, "Hand off to agent", "sites", body)
 }
+
+// badTargetNotice: a target branch that isn't one of the sites' branches.
+const badTargetNotice = "That branch isn't one of these sites' branches, so the default branch is shown. Pick a target from the list."
 
 // handoffSend posts the message the operator confirmed.
 func (s *server) handoffSend(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
@@ -538,21 +751,37 @@ func (s *server) handoffSend(w http.ResponseWriter, r *http.Request, v *auth.Vie
 		s.forbidden(w, r)
 		return
 	}
-	msg, err := s.handoffMessage(t, v, id)
+	// The target is checked against the sites' branches, never sent as
+	// given; one that isn't theirs sends nothing.
+	target, ok := handoffTargetOf(f.Get("target"), f.Get("branch"), handoff.Branches(t.sites))
+	if !ok {
+		def := handoff.Target{Mode: handoff.TargetDefault}
+		msg, err := s.handoffMessage(t, v, id, def)
+		if err != nil {
+			s.notFound(w, r, v)
+			return
+		}
+		body := s.handoffBody(t, msg, id, def)
+		body.Notice = badTargetNotice
+		s.render(w, r, http.StatusBadRequest, "handoff", v, "Hand off to agent", "sites", body)
+		return
+	}
+	msg, err := s.handoffMessage(t, v, id, target)
 	if err != nil {
 		s.notFound(w, r, v)
 		return
 	}
-	body := s.handoffBody(t, msg, id)
+	body := s.handoffBody(t, msg, id, target)
 	if f.Get("digest") != msg.Digest {
-		// The findings or repository changed since the page was shown.
-		body.Notice = "The message changed since you opened this page (new findings or a new repository). Check it again before sending."
+		// The findings, repository, sites or target changed since the page
+		// was shown: the digest covers the whole message and file.
+		body.Notice = "The message changed since you opened this page (new findings, sites, branches or repository). Check it again before sending."
 		s.render(w, r, http.StatusConflict, "handoff", v, "Hand off to agent", "sites", body)
 		return
 	}
 	// Per site and agent, and per repository and agent: the sites that
-	// deploy one repository share a button on AI plans, and one pull
-	// request covers them, so another of them can't be sent right after.
+	// deploy one repository share a button on AI plans, and one hand-off
+	// covers them, so another of them can't be sent right after.
 	keys := []string{"site\x00" + strconv.FormatInt(t.host.ID, 10) + "\x00" + t.site.Root + "\x00" + t.agent.Name}
 	repoKey := handoff.RepoKey(t.repo.Repo())
 	if repoKey != "" {
@@ -563,7 +792,7 @@ func (s *server) handoffSend(w http.ResponseWriter, r *http.Request, v *auth.Vie
 		body.Notice = "This site was handed to " + t.agent.Name + " in the last few minutes. Try again later."
 	case 1:
 		body.Notice = "Another site on " + handoff.RepoShort(t.repo.Repo()) + " was handed to " + t.agent.Name +
-			" in the last few minutes, and one pull request covers the repository. Try again later."
+			" in the last few minutes, and one hand-off covers the repository. Try again later."
 	}
 	if body.Notice != "" {
 		s.render(w, r, http.StatusTooManyRequests, "handoff", v, "Hand off to agent", "sites", body)
@@ -572,8 +801,16 @@ func (s *server) handoffSend(w http.ResponseWriter, r *http.Request, v *auth.Vie
 	ctx, cancel := context.WithTimeout(r.Context(), handoffPostTimeout)
 	defer cancel()
 	postErr := t.agent.Poster.PostPayloadFile(ctx, msg.Payload, msg.FileName, msg.File)
+	branches := target.Branches
+	if target.Mode == handoff.TargetEach {
+		branches = handoff.Branches(t.sites)
+	}
+	if branches == nil {
+		branches = []string{}
+	}
 	detail := map[string]any{"agent": t.agent.Name, "host": t.host.Name, "site": t.site.Root, "request_id": id,
-		"packages": msg.Packages, "omitted": msg.Omitted, "repo": t.repo.Repo(), "ok": postErr == nil}
+		"packages": msg.Packages, "omitted": msg.Omitted, "repo": t.repo.Repo(), "ok": postErr == nil,
+		"target": target.Mode, "branches": branches, "sites": len(t.sites)}
 	if postErr != nil {
 		s.log.Warn("hand-off not posted", "agent", t.agent.Name, "host", t.host.Name, "site", t.site.Root, "err", postErr)
 		detail["error"] = "post failed"
@@ -614,5 +851,34 @@ func (s *server) siteRepo(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 		http.Redirect(w, r, back+"&repo=cleared#repo", http.StatusSeeOther)
 	default:
 		http.Redirect(w, r, back+"&repo=saved#repo", http.StatusSeeOther)
+	}
+}
+
+// siteBranch sets or clears a site's branch (operator or admin), for a
+// site whose checkout the collector can't see.
+func (s *server) siteBranch(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
+	host, err := s.st.HostByName(r.Context(), r.PostForm.Get("org"), r.PostForm.Get("host"))
+	if err != nil || !v.Scope.CanOperate(host.OrgID) {
+		s.notFound(w, r, v)
+		return
+	}
+	root := r.PostForm.Get("root")
+	back := siteURL(host.OrgSlug, host.Name, root)
+	branch := strings.TrimSpace(r.PostForm.Get("branch"))
+	if r.PostForm.Get("clear") != "" {
+		branch = ""
+	}
+	var verr *store.ValidationError
+	switch err := s.st.SetSiteBranch(r.Context(), actorOf(v), host.ID, root, branch); {
+	case errors.As(err, &verr) && verr.Field == "branch":
+		http.Redirect(w, r, back+"&branch=invalid#branch", http.StatusSeeOther)
+	case errors.As(err, &verr):
+		s.notFound(w, r, v)
+	case err != nil:
+		s.fail(w, r, v, err)
+	case branch == "":
+		http.Redirect(w, r, back+"&branch=cleared#branch", http.StatusSeeOther)
+	default:
+		http.Redirect(w, r, back+"&branch=saved#branch", http.StatusSeeOther)
 	}
 }

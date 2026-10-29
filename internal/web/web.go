@@ -194,6 +194,7 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /hosts/{org}/{host}/env", s.requireAuth(s.hostEnv))
 	mux.HandleFunc("POST /sites/label", s.requireAuth(s.siteLabel))
 	mux.HandleFunc("POST /sites/repo", s.requireAuth(s.siteRepo))
+	mux.HandleFunc("POST /sites/branch", s.requireAuth(s.siteBranch))
 	mux.HandleFunc("GET /hosts/{org}/{host}/handoff", s.requireAuth(s.handoffPage))
 	mux.HandleFunc("POST /hosts/{org}/{host}/handoff", s.requireAuth(s.handoffSend))
 	mux.HandleFunc("GET /hosts/{org}/{host}/changes", s.requireAuth(s.changesPage))
@@ -675,6 +676,8 @@ var funcs = template.FuncMap{
 	// siteURL is a site's page: sites are a host plus a web root.
 	"siteURL": siteURL,
 	"repoWeb": handoff.WebURL, // a GitHub or GitLab link for a repository, or ""
+	// shortCommit is a commit hash's first 12 characters.
+	"shortCommit": func(c string) string { return c[:min(len(c), 12)] },
 	// repoShort shows a web link without its scheme: github.com/owner/repo.
 	"repoShort": func(u string) string { return strings.TrimPrefix(u, "https://") },
 	// pathBreak renders a path that may wrap only after a "/".

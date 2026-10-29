@@ -965,8 +965,25 @@ details.repo-pick form { flex-wrap: wrap; align-items: flex-end; max-width: 560p
 .handoff-note { display: grid; gap: 6px; padding: 10px 12px; border-radius: 8px; border-left: 4px solid var(--accent); background: var(--code-bg); }
 .handoff-note p { margin: 0; max-width: 95ch; }
 .handoff-send { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 0; }
+.handoff-sites td { overflow-wrap: anywhere; }
+.handoff-sites .site-label { white-space: nowrap; }
+.handoff-sites tr.targeted td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.handoff-target { display: grid; gap: 8px; justify-items: start; margin: 0; }
+.handoff-target fieldset { margin: 0; padding: 0; border: 0; display: grid; gap: 6px; min-width: 0; }
+.handoff-target legend { padding: 0; margin-bottom: 4px; font-size: 15px; font-weight: 600; }
+.handoff-opt { display: flex; gap: 8px; align-items: baseline; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; }
+.handoff-opt:has(input:checked) { border-color: var(--accent); background: var(--code-bg); }
+.handoff-opt.disabled { cursor: not-allowed; opacity: .7; }
+.handoff-opt > span { min-width: 0; overflow-wrap: anywhere; }
+.branch-row { gap: 6px 10px; }
 @media (max-width: 560px) {
   .handoff-msg { font-size: 12px; padding: 10px; }
+  /* The sites table stacks: one block per site, cells in a row. */
+  .handoff-sites thead { display: none; }
+  .handoff-sites tr { display: block; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .handoff-sites td { display: block; padding: 2px 0; border: 0; }
+  .handoff-sites tr.targeted { box-shadow: inset 3px 0 0 var(--accent); }
+  .handoff-sites tr.targeted td:first-child { box-shadow: none; }
   .handoff-send button, .handoff-send .button { flex: 1 1 auto; text-align: center; }
 }
 

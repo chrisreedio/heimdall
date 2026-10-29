@@ -193,3 +193,57 @@ func TestCollectorSiteRepos(t *testing.T) {
 		})
 	}
 }
+
+// TestCollectorSiteBranches checks the branches the collector would send
+// (X-Heimdall-Site-Branches) for the fixture's .git/HEAD files: a plain
+// checkout, a detached zero-downtime release found through current, a
+// branch with a slash, and a HEAD the collector's user can't read.
+func TestCollectorSiteBranches(t *testing.T) {
+	dir := os.Getenv("HEIMDALL_COLLECTOR_OUT")
+	if dir == "" {
+		t.Skip("HEIMDALL_COLLECTOR_OUT not set; run collector/test/run-containers.sh")
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "*-sites.err"))
+	if len(files) == 0 {
+		t.Fatalf("no *-sites.err in %s", dir)
+	}
+	want := map[string]string{
+		"/home/forge/example.com":             "branch:main",
+		"/home/forge/zdt.example.com/current": "commit:0123456789abcdef0123456789abcdef01234567",
+		"/var/www/alp":                        "branch:env/beta",
+	}
+	for _, f := range files {
+		t.Run(filepath.Base(f), func(t *testing.T) {
+			b, err := os.ReadFile(f)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var value string
+			for line := range strings.SplitSeq(string(b), "\n") {
+				if v, ok := strings.CutPrefix(line, "site-branches: "); ok {
+					value = v
+				}
+			}
+			list, ok := strings.CutPrefix(value, "v1 ")
+			if !ok {
+				t.Fatalf("no site-branches line in %s: %q", f, b)
+			}
+			got := map[string]string{}
+			for entry := range strings.SplitSeq(list, ",") {
+				root, ref, _ := strings.Cut(entry, " ")
+				got[root] = ref
+			}
+			if strings.Contains(value, "secret") {
+				t.Errorf("an unreadable HEAD was sent: %q", value)
+			}
+			if len(got) != len(want) {
+				t.Errorf("got %v, want %v", got, want)
+			}
+			for root, ref := range want {
+				if got[root] != ref {
+					t.Errorf("%s: got %q, want %q", root, got[root], ref)
+				}
+			}
+		})
+	}
+}

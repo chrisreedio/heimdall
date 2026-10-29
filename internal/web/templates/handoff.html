@@ -3,13 +3,13 @@
 <div class="head">
   <h1>Hand off to agent</h1>
 </div>
-<p class="muted handoff-lead">Ask a coding agent to open a pull request that updates this site's vulnerable packages. Check the message below: it's exactly what will be posted.</p>
+<p class="muted handoff-lead">Ask a coding agent to open a pull request that updates {{if gt (len .Sites) 1}}the vulnerable packages of the {{len .Sites}} sites that deploy this repository{{else}}this site's vulnerable packages{{end}}. Check the message below: it's exactly what will be posted.</p>
 {{with .Notice}}<p class="notice notice-bad" role="alert">{{.}}</p>{{end}}
 
 <section class="card handoff-card">
   <dl class="handoff-facts">
     <div><dt>Agent</dt><dd>{{if gt (len .Agents) 1}}<form method="get" action="" class="handoff-agent">
-      <input type="hidden" name="root" value="{{.Root}}">
+      <input type="hidden" name="root" value="{{.Root}}">{{if ne .Target "default"}}<input type="hidden" name="target" value="{{.Target}}">{{with .TargetBranch}}<input type="hidden" name="branch" value="{{.}}">{{end}}{{end}}
       <select name="agent" aria-label="Agent" data-autosubmit>{{range .Agents}}<option value="{{.}}"{{if eq . $.Body.Agent}} selected{{end}}>{{.}}</option>{{end}}</select>
       <button type="submit" class="secondary" data-autosubmit-hide>Show message</button>
     </form>{{else}}<strong>{{.Agent}}</strong>{{end}}</dd></div>
@@ -18,15 +18,40 @@
     <div><dt>Packages</dt><dd>{{.Packages}} to update{{if .Omitted}} <span class="muted small">({{.Omitted}} more didn't fit Discord's 2,000-character limit; the attached file lists them all)</span>{{end}}</dd></div>
   </dl>
 
+  <h2 class="handoff-h">{{if gt (len .Sites) 1}}Sites on this repository{{else}}Site{{end}}</h2>
+  <div class="scroll"><table class="handoff-sites">
+    <thead><tr><th>Site</th><th>Branch</th><th>Installed</th>{{if ne .Target "default"}}<th>Pull request</th>{{end}}</tr></thead>
+    <tbody>{{range .Sites}}<tr{{if .Targeted}} class="targeted"{{end}}>
+      <td><a href="{{.URL}}">{{.Name}}</a>{{with .Label}} <span class="site-label label-{{.}}">{{.}}</span>{{end}}{{if .This}} <span class="muted small">this hand-off</span>{{end}}<br><span class="muted small">on {{.Host}}</span></td>
+      <td>{{if .Branch}}<code>{{.Branch}}</code>{{if .BranchManual}} <span class="muted small">set by an operator</span>{{end}}{{else if .Commit}}<span class="pill muted">branch unknown</span> <span class="muted small">detached at <code>{{.Commit}}</code></span>{{else}}<span class="pill muted">branch unknown</span>{{end}}</td>
+      <td class="small">{{.Versions}}</td>
+      {{if ne $.Body.Target "default"}}<td class="small">{{.Gets}}</td>{{end}}
+    </tr>{{end}}</tbody>
+  </table></div>
+
+  <form method="get" action="" class="handoff-target">
+    <input type="hidden" name="root" value="{{.Root}}"><input type="hidden" name="agent" value="{{.Agent}}">
+    <fieldset>
+      <legend>Where the pull request goes</legend>
+      <label class="handoff-opt"><input type="radio" name="target" value="default"{{if eq .Target "default"}} checked{{end}} data-autosubmit>
+        <span><strong>Default branch</strong> <span class="muted small">One pull request against the repository's default branch.{{if gt (len .Sites) 1}} The other sites and their branches are listed for the agent as information.{{end}}</span></span></label>
+      {{range .Branches}}<label class="handoff-opt"><input type="radio" name="target" value="branch:{{.}}"{{if and (eq $.Body.Target "branch") (eq . $.Body.TargetBranch)}} checked{{end}} data-autosubmit>
+        <span><strong>Branch <code>{{.}}</code></strong> <span class="muted small">One pull request against this branch only.</span></span></label>{{end}}
+      <label class="handoff-opt{{if not .Branches}} disabled{{end}}"><input type="radio" name="target" value="each"{{if eq .Target "each"}} checked{{end}}{{if not .Branches}} disabled{{end}} data-autosubmit>
+        <span><strong>Each branch</strong> <span class="muted small">{{if .Branches}}One pull request per branch ({{len .Branches}}), each changing only that branch's lock file.{{if .Unknown}} {{.Unknown}} site{{if gt .Unknown 1}}s{{end}} with an unknown branch {{if gt .Unknown 1}}aren't{{else}}isn't{{end}} targeted.{{end}}{{else}}No site's branch is known, so there's nothing to target. The collector reads it from <code>.git/HEAD</code>; with zero-downtime deploys there's often none, so set it on the site page.{{end}}</span></span></label>
+    </fieldset>
+    <button type="submit" class="secondary" data-autosubmit-hide>Show message</button>
+  </form>
+
   <h2 class="handoff-h">The message</h2>
   <pre class="handoff-msg" id="handoff-msg">{{.Content}}</pre>
   <details class="handoff-file">
-    <summary>Attached file: <code>{{.FileName}}</code> <span class="muted small">every package and advisory, the site's runtime and the steps</span></summary>
+    <summary>Attached file: <code>{{.FileName}}</code> <span class="muted small">every site, package and advisory, the site's runtime and the steps</span></summary>
     <pre class="handoff-msg" id="handoff-file">{{.File}}</pre>
   </details>
 
   <div class="handoff-note small">
-    <p><strong>What this shares:</strong> the package names, installed and fixed versions and advisories above (in the attached file: with their CVEs, severity and known-exploited status), the site's framework and PHP versions, plus the host and site names, the site's path and repository, and your display name. That's more than Heimdall's alerts, which carry counts only. Everyone and every bot in that Discord channel can read it.</p>
+    <p><strong>What this shares:</strong> the package names, installed and fixed versions and advisories above (in the attached file: with their CVEs, severity and known-exploited status), the site's framework and PHP versions, plus the host and site names, the site's path and repository, {{if gt (len .Sites) 1}}each listed site's host, name, path, branch and installed versions, {{end}}and your display name. That's more than Heimdall's alerts, which carry counts only. Everyone and every bot in that Discord channel can read it.</p>
     <p><strong>Who it pings:</strong> only {{.Agent}}. The message allows no other mentions.</p>
     <p><strong>The agent acts on it.</strong> The wording is fixed and every value comes from Heimdall's own data, never from the AI triage text.</p>
   </div>
@@ -35,6 +60,8 @@
     <input type="hidden" name="csrf" value="{{$csrf}}">
     <input type="hidden" name="root" value="{{.Root}}">
     <input type="hidden" name="agent" value="{{.Agent}}">
+    <input type="hidden" name="target" value="{{.Target}}">
+    <input type="hidden" name="branch" value="{{.TargetBranch}}">
     <input type="hidden" name="request_id" value="{{.RequestID}}">
     <input type="hidden" name="digest" value="{{.Digest}}">
     <button type="submit">Post to Discord</button>
