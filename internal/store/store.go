@@ -60,8 +60,13 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("database %s has permissions %04o; run `chmod 600 %s`", path, perm, path)
 	}
 
+	// busy_timeout only matters across processes (the hub's own writes
+	// share one connection): a CLI command run beside the service waits
+	// out the service's longest writes, such as a feed sync on start
+	// (20s for EPSS on a busy hub), instead of failing with
+	// "database is locked".
 	common := "?_pragma=foreign_keys(1)" +
-		"&_pragma=busy_timeout(5000)" +
+		"&_pragma=busy_timeout(60000)" +
 		"&_pragma=trusted_schema(0)"
 	db, err := sql.Open("sqlite", path+common+
 		"&_pragma=journal_mode(WAL)"+

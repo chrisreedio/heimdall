@@ -5,6 +5,8 @@ package store
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -102,5 +104,54 @@ func TestReadPoolIsReadOnly(t *testing.T) {
 	}
 	if orgs, err := s.ListOrgs(ctx); err != nil || len(orgs) != 1 {
 		t.Errorf("ListOrgs after commit: %v %v", orgs, err)
+	}
+}
+
+// A second process on the same file (a CLI command beside the hub) waits
+// for a write that holds the lock longer than the old 5-second timeout,
+// as the hub's feed sync on start does, instead of failing with "database
+// is locked".
+func TestOtherProcessWaitsForLongWrite(t *testing.T) {
+	if testing.Short() {
+		t.Skip("holds a write for 6s")
+	}
+	t.Parallel()
+	ctx := t.Context()
+	templateOnce.Do(func() { template, templateErr = buildTemplate() })
+	if templateErr != nil {
+		t.Fatal(templateErr)
+	}
+	path := filepath.Join(t.TempDir(), "h.db")
+	if err := os.WriteFile(path, template, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	hub, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer hub.Close()
+	cli, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cli.Close()
+
+	tx, err := hub.db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO organizations (slug, name) VALUES ('held', 'Held')`); err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(6 * time.Second)
+		tx.Commit()
+	}()
+	start := time.Now()
+	if _, err := cli.CreateOrg(ctx, "test", "acme", "Acme"); err != nil {
+		t.Fatalf("after %s: %v", time.Since(start).Round(time.Second), err)
+	}
+	if waited := time.Since(start); waited < 5*time.Second {
+		t.Errorf("wrote after %s; the other write should have held the lock", waited)
 	}
 }
