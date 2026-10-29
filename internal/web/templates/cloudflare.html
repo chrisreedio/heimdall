@@ -2,7 +2,7 @@
 <div class="head">
   <h1>Cloudflare</h1>
   {{if .Exposed}}<span class="pill bad">{{len .Exposed}} origin{{if ne (len .Exposed) 1}}s{{end}} exposed</span>{{end}}
-  {{if .Dangling}}<span class="pill warn">{{len .Dangling}} dangling</span>{{end}}
+  {{if .Dangling}}<span class="pill warn">{{.Dangling}} dangling</span>{{end}}
 </div>
 <p class="lede">What your Cloudflare zones say about your servers: DNS records that point straight at a host (its address is public), sites that aren't behind Cloudflare, and the security events Cloudflare blocked or challenged. Read with a read-only token; nothing is changed at Cloudflare.</p>
 
@@ -67,14 +67,18 @@
 {{if .Admin}}
 <section id="dangling">
   <h2>Dangling records</h2>
-  {{if .Dangling}}
-  <p class="muted small">A and AAAA records whose address is none of your hosts, not Cloudflare's, not private and not labelled. Often a leftover from a server that's gone; if that address now belongs to someone else, they can serve your name. Delete the record, or label the address if it's yours. Only admins see this list.</p>
-  <div class="scroll"><table>
-    <thead><tr><th>Record</th><th>Type</th><th>Address</th><th>Proxied</th><th>Zone</th></tr></thead>
-    <tbody>{{range .Dangling}}
-    <tr><td class="id">{{.Name}}</td><td>{{.Type}}</td><td class="id">{{.Content}}</td><td>{{if .Proxied}}yes{{else}}no{{end}}</td><td>{{.Zone}}</td></tr>{{end}}
+  {{if .DangZones}}
+  <p class="muted small">A and AAAA records whose address is none of your hosts, not Cloudflare's, not private and not labelled. The hub tries a plain TCP connect to each address on 443 and 80 (nothing is sent). <strong>Answers</strong>: a server you don't monitor; if it's yours, add or label it, if not, someone else may be serving your name. <strong>No answer</strong>: likely a leftover, safe to delete. A hub whose outbound traffic is firewalled sees no answer everywhere. Only admins see this list.</p>
+  {{range .DangZones}}
+  <h3 class="dang-zone">{{.Zone}} <span class="muted small">{{len .Rows}} record{{if ne (len .Rows) 1}}s{{end}}{{if .Answers}} · {{.Answers}} answering{{end}}</span></h3>
+  <div class="scroll"><table class="cards-sm dangling">
+    <thead><tr><th>Record</th><th>Type</th><th>Address</th><th>Proxied</th><th>Reachable</th></tr></thead>
+    <tbody>{{range .Rows}}
+    <tr><td class="id full">{{if .Link}}<a href="{{.Link}}" target="_blank" rel="noopener noreferrer">{{.Name}}</a>{{else}}{{.Name}}{{end}}</td><td>{{.Type}}</td><td class="id">{{.Content}}</td><td>{{template "cfcloud" .Proxied}}</td>
+      <td>{{template "dangprobe" .Probe}}</td></tr>{{end}}
     </tbody>
   </table></div>
+  {{end}}
   {{else}}<p class="empty">Every A and AAAA record points at a known address.</p>{{end}}
 </section>
 {{end}}
@@ -108,3 +112,15 @@
 </section>
 {{end}}
 {{end}}{{end}}
+
+
+{{/* cfcloud: Cloudflare's proxy status as its dashboard shows it, an
+     orange cloud (proxied) or a grey one (DNS only). */}}
+{{define "cfcloud"}}{{if .}}<span class="cf-cloud on" role="img" aria-label="Proxied" title="Proxied">{{template "icon" "cloud"}}</span>{{else}}<span class="cf-cloud" role="img" aria-label="DNS only" title="DNS only">{{template "icon" "cloud"}}</span>{{end}}{{end}}
+
+{{/* dangprobe: what the hub's TCP probe found at a dangling record's
+     address (a store.DanglingProbe; zero = not checked). */}}
+{{define "dangprobe"}}{{if eq .State "answers"}}<span class="pill warn" title="Not monitored: if it's yours, add it to Heimdall or label the address; if not, someone else may serve this name. Checked {{ago .CheckedAt}}">answers on {{.Port}}</span>
+{{- else if eq .State "refused"}}<span class="pill muted" title="Something replied but refused 443 and 80: a machine is there, serving no web. Check whose before deleting. Checked {{ago .CheckedAt}}">host up, ports closed</span>
+{{- else if eq .State "silent"}}<span class="pill muted" title="Nothing answers on 80 or 443 from the hub: likely a leftover, safe to delete. Checked {{ago .CheckedAt}}">no answer</span>
+{{- else}}<span class="muted small" title="Not probed yet, or [cloudflare] probe_dangling is off">not checked</span>{{end}}{{end}}

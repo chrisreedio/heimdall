@@ -3,9 +3,11 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"html/template"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 	"sync"
@@ -32,32 +34,15 @@ type cfData struct {
 }
 
 func (s *server) cloudflareData(ctx context.Context) (*cfData, error) {
-	zones, err := s.st.CloudflareZones(ctx)
+	zones, m, err := cloudflare.LoadMap(ctx, s.st, cloudflare.NewEdge())
 	if err != nil || len(zones) == 0 {
-		return nil, err
-	}
-	recs, err := s.st.CloudflareRecords(ctx)
-	if err != nil {
-		return nil, err
-	}
-	hosts, err := s.st.ReportAddrs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	sites, err := s.st.AllSiteNames(ctx)
-	if err != nil {
-		return nil, err
-	}
-	known, err := s.st.KnownIPPrefixes(ctx)
-	if err != nil {
 		return nil, err
 	}
 	syncs, err := s.st.CloudflareSyncs(ctx)
 	if err != nil {
 		return nil, err
 	}
-	d := &cfData{zones: zones, syncs: syncs, orgsOf: map[string]map[int64]bool{},
-		m: cloudflare.Build(zones, recs, hosts, sites, cloudflare.Known(known, cloudflare.NewEdge()))}
+	d := &cfData{zones: zones, syncs: syncs, orgsOf: map[string]map[int64]bool{}, m: m}
 	for _, r := range d.m.Records {
 		for _, org := range recordOrgs(r) {
 			if d.orgsOf[r.ZoneID] == nil {
@@ -140,7 +125,8 @@ type cloudflareBody struct {
 	Exposed   []cloudflare.Mapped
 	Sites     []cloudflare.SiteDNS // names not behind Cloudflare
 	SitesOK   int                  // names that are
-	Dangling  []cloudflare.Mapped  // admins only
+	Dangling  int                  // admins only: dangling records
+	DangZones []cfDangZone         // admins only: them, by zone
 	Records   int
 	LastSync  time.Time
 	SyncError string
@@ -191,8 +177,14 @@ func (s *server) cloudflarePage(w http.ResponseWriter, r *http.Request, v *auth.
 				body.Exposed = append(body.Exposed, visibleTo(rec, v.Scope.Admin, can))
 			}
 		}
-		if rec.Dangling && v.Scope.Admin {
-			body.Dangling = append(body.Dangling, rec)
+	}
+	if v.Scope.Admin {
+		if body.DangZones, err = s.danglingByZone(ctx, d.m); err != nil {
+			s.fail(w, r, v, err)
+			return
+		}
+		for _, z := range body.DangZones {
+			body.Dangling += len(z.Rows)
 		}
 	}
 	for _, z := range d.zones {
@@ -213,6 +205,111 @@ func (s *server) cloudflarePage(w http.ResponseWriter, r *http.Request, v *auth.
 		}
 	}
 	s.render(w, r, http.StatusOK, "cloudflare", v, "Cloudflare", "cloudflare", body)
+}
+
+// cfDangZone is one zone's dangling records, the ones that answer first.
+type cfDangZone struct {
+	Zone    string
+	Answers int // records whose address answers
+	Rows    []cfDangling
+}
+
+// cfDangling is a dangling record and what the hub's probe found there
+// (zero Probe: not checked).
+type cfDangling struct {
+	cloudflare.Mapped
+	Probe store.DanglingProbe
+	Link  string // https://name, when the name is a plain hostname
+}
+
+// probeRank orders probe states: answers, then something there but
+// closed, then not checked, then nothing answering.
+func probeRank(p store.DanglingProbe) int {
+	switch p.State {
+	case store.ProbeAnswers:
+		return 0
+	case store.ProbeRefused:
+		return 1
+	case "":
+		return 2
+	}
+	return 3
+}
+
+func (s *server) danglingByZone(ctx context.Context, m cloudflare.Map) ([]cfDangZone, error) {
+	var recs []cloudflare.Mapped
+	for _, rec := range m.Records {
+		if rec.Dangling {
+			recs = append(recs, rec)
+		}
+	}
+	if len(recs) == 0 {
+		return nil, nil
+	}
+	probes, err := s.st.DanglingProbes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byZone := map[string]*cfDangZone{}
+	var out []*cfDangZone
+	for _, rec := range recs {
+		z := byZone[rec.Zone]
+		if z == nil {
+			z = &cfDangZone{Zone: rec.Zone}
+			byZone[rec.Zone] = z
+			out = append(out, z)
+		}
+		row := cfDangling{Mapped: rec}
+		if a, err := netip.ParseAddr(rec.Content); err == nil {
+			row.Probe = probes[a.Unmap()]
+		}
+		if row.Probe.State == store.ProbeAnswers {
+			z.Answers++
+		}
+		if validHostname(rec.Name) {
+			row.Link = "https://" + rec.Name
+		}
+		z.Rows = append(z.Rows, row)
+	}
+	res := make([]cfDangZone, 0, len(out))
+	for _, z := range out {
+		slices.SortStableFunc(z.Rows, func(a, b cfDangling) int {
+			if c := cmp.Compare(probeRank(a.Probe), probeRank(b.Probe)); c != 0 {
+				return c
+			}
+			return strings.Compare(a.Name, b.Name)
+		})
+		res = append(res, *z)
+	}
+	slices.SortFunc(res, func(a, b cfDangZone) int { return strings.Compare(a.Zone, b.Zone) })
+	return res, nil
+}
+
+// validHostname: a plain DNS name worth linking: two or more labels of
+// [a-z0-9-] (not starting or ending with "-"), no wildcard, no
+// underscore, at most 253 characters.
+func validHostname(n string) bool {
+	if len(n) == 0 || len(n) > 253 {
+		return false
+	}
+	labels := strings.Split(n, ".")
+	if len(labels) < 2 {
+		return false
+	}
+	for _, l := range labels {
+		if l == "" || len(l) > 63 || l[0] == '-' || l[len(l)-1] == '-' {
+			return false
+		}
+		for _, c := range l {
+			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-' || c >= 'A' && c <= 'Z') {
+				return false
+			}
+		}
+	}
+	if _, err := netip.ParseAddr(n); err == nil {
+		return false
+	}
+	return true
 }
 
 // visibleTo drops the hosts and sites of orgs the viewer can't see.

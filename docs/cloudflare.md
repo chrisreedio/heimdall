@@ -5,7 +5,7 @@
 If your sites sit behind Cloudflare, Heimdall can read your zones with a **read-only** API token and tell you:
 
 - **Origins exposed:** DNS records that aren't proxied (grey cloud) and point straight at one of your hosts, so anyone can find the server's real address and go around Cloudflare.
-- **Dangling records:** A and AAAA records whose address is none of your hosts, not Cloudflare's, not private and not labelled. They're often left over from a server that's gone. If that address now belongs to someone else, they can serve your name.
+- **Dangling records:** A and AAAA records whose address is none of your hosts, not Cloudflare's, not private and not labelled. They're often left over from a server that's gone. If that address now belongs to someone else, they can serve your name. The hub checks whether anything answers there, so you can tell a leftover that's safe to delete from a live server you don't monitor (or someone else's). See [Dangling records](#dangling-records).
 - **Sites not behind Cloudflare:** a site's server name that's in a zone but not proxied, has no record, or isn't in any zone the token can see.
 - **Security events:** for each zone, the last 24 hours of events by action (block, challenge, …), the top countries, networks (ASNs) and paths, and request totals, plus up to 30 days of daily counts.
 - **Web offenders:** the client addresses Cloudflare blocked or challenged, per zone and day, for the threat list. This stores client addresses; see [Web offenders](#web-offenders).
@@ -43,6 +43,7 @@ Heimdall never writes anything to Cloudflare with this token (only [bans](bans.m
    security_events = true
    radar           = true
    connecting_ip   = true     # see below
+   probe_dangling  = true     # see Dangling records
    ```
 
 3. **Store the token.** It never goes in the config file:
@@ -75,9 +76,24 @@ The overview is at **/cloudflare** (operators and admins), and each site page ge
 
 **Never stored:** individual events, query strings, user agents, paths of web offenders' requests, and the address of any request Cloudflare let through. The security summaries hold no client address (their raw-events fallback doesn't even ask for one). Client addresses are stored only as [web offenders](#web-offenders): requests Cloudflare blocked or challenged, from addresses nobody knows. Paths in the summaries are clipped to 120 characters.
 
-Every request goes over HTTPS to `api.cloudflare.com` or `www.cloudflare.com` only (an in-process allowlist), with timeouts and response size caps. If Cloudflare is down or a request fails, the last good data stays: a failed zone list changes nothing, a zone whose records fail keeps its old ones, and the last sync's error is shown in `status` (and to admins on the overview).
+Every request goes over HTTPS to `api.cloudflare.com` or `www.cloudflare.com` only (an in-process allowlist), with timeouts and response size caps. The one other outbound connection is the [dangling-record probe](#dangling-records)'s TCP connect, which sends nothing. If Cloudflare is down or a request fails, the last good data stays: a failed zone list changes nothing, a zone whose records fail keeps its old ones, and the last sync's error is shown in `status` (and to admins on the overview).
 
 Radar is asked about at most 20 addresses a minute and 2,000 a day, one a second, in the background: a page never waits for Cloudflare. Only public IPv4 addresses that no label or host explains are looked up. A Radar label is a guess of kind *unknown*: it adds context ("AS64500 Example ISP (US)") but never makes an address look known. After a permission error, lookups pause for 6 hours.
+
+## Dangling records
+
+A dangling record is an A or AAAA record whose address is none of your hosts' report addresses, isn't Cloudflare's, isn't private and isn't labelled. To tell what's behind it, the hub (with `probe_dangling = true`, the default) opens a plain TCP connection to the address on port 443, then 80, and closes it the moment it opens. **Nothing is sent**: no HTTP request, no TLS handshake, no payload. Each connect gives up after 3 seconds.
+
+| Shown | Meaning | What to do |
+|---|---|---|
+| **answers on 443** (or 80) | Something accepts connections there, and it isn't a host Heimdall monitors. | If it's yours, add it to Heimdall (or label its address). If it isn't, someone else may be serving your name: delete or fix the record. |
+| **host up, ports closed** | The address replied but refused both ports: a machine is there, serving no web. | Probably someone else's machine, or yours without a web server. Check before deleting. |
+| **no answer** | Nothing replied on 80 or 443 from the hub. | Likely a leftover: safe to delete. |
+| **not checked** | Not probed yet (it runs within 10 minutes of a record appearing), or `probe_dangling = false`. | |
+
+Answering records are listed first. The probe runs every 10 minutes for addresses never checked (a new record shows up after the next zone sync) and re-checks each address every 6 hours, at most 200 addresses a run, 8 at a time. Only public addresses are ever dialled, re-checked at probe time: never private, loopback, link-local, tailnet, Cloudflare's edge or its placeholder addresses. Results are stored per address (state, the port that answered, when) and dropped once the address isn't dangling any more; `probe_dangling = false` drops them all on the next start.
+
+**A hub whose outbound traffic is firewalled** (only the hosts Heimdall's other features need, say) will show every record as "no answer": the probe is a plain TCP connect from the hub itself, so it sees what the hub can reach. Turn the probe off there, or allow outbound 80 and 443. A server that only accepts Cloudflare's ranges (or drops unknown sources) also looks like "no answer", though it is up: the hub isn't Cloudflare.
 
 ## IP lists
 
@@ -233,6 +249,7 @@ Zones aren't owned by an org, so the UI shows a record only to people who can se
 - **"no permission" for security events**: add Zone > Analytics > Read.
 - **Radar: no permission**: add Account > Radar > Read (and, if that's not enough, User Details Read), or set `radar = false`.
 - **IP lists: "the token can't read IP lists"**: add Account > Account Filter Lists > Read to the read-only token (no Edit), then save the mapping or wait for the hourly sync.
+- **Every dangling record says "no answer"**: the hub's outbound 80 and 443 are probably blocked; see [Dangling records](#dangling-records).
 - **A record shows as dangling but it's yours**: label the address (it's then known), or check that the server reports from that address. A host that reports over IPv6 or through NAT has a different report address than its A record.
 - **Report addresses all show Cloudflare**: turn on `ingest.behind_proxy` and check `status` says "CF-Connecting-IP trusted only from Cloudflare's edge".
 

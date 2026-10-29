@@ -217,3 +217,30 @@ func TestWithoutCloudflare(t *testing.T) {
 		t.Errorf("rank or view: %+v", m.Rows)
 	}
 }
+
+// The dangling flag carries the hub's probe: an answering address stays
+// medium and says so; one where nothing answers drops to info.
+func TestDanglingProbe(t *testing.T) {
+	flag := func(in Input) Flag {
+		for _, f := range byName(Build(in))["old.example.net"].Flags {
+			if f.Kind == "dangling" {
+				return f
+			}
+		}
+		t.Fatal("no dangling flag")
+		return Flag{}
+	}
+	in := fixture()
+	if f := flag(in); f.Level != Medium || strings.Contains(f.Note, "answers") {
+		t.Errorf("not checked: %+v", f)
+	}
+	a := netip.MustParseAddr("203.0.113.199")
+	in.Probes = map[netip.Addr]store.DanglingProbe{a: {Addr: a, State: store.ProbeAnswers, Port: 443}}
+	if f := flag(in); f.Level != Medium || !strings.Contains(f.Note, "answers on port 443") {
+		t.Errorf("answers: %+v", f)
+	}
+	in.Probes[a] = store.DanglingProbe{Addr: a, State: store.ProbeSilent}
+	if f := flag(in); f.Level != Info || !strings.Contains(f.Note, "safe to delete") {
+		t.Errorf("silent: %+v", f)
+	}
+}

@@ -12,10 +12,13 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/realmwatch/heimdall/internal/config"
+	"github.com/realmwatch/heimdall/internal/ipinfo"
 	"github.com/realmwatch/heimdall/internal/store"
 )
 
@@ -148,7 +151,7 @@ func TestCloudflareStatusAndSync(t *testing.T) {
 	defer s.Close()
 	defer func() { cloudflareEdge = nil }()
 	r, syncers := newIPResolver(cfg, s, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	// Cloudflare's own: edge, zones, IP lists and radar syncers; the radar source.
+	// Cloudflare's own: edge, zones, IP lists, dangling probe and radar syncers; the radar source.
 	cf := func(name string) bool { return strings.HasPrefix(name, "cloudflare") }
 	var nSync, nSrc int
 	for _, x := range syncers {
@@ -161,7 +164,13 @@ func TestCloudflareStatusAndSync(t *testing.T) {
 			nSrc++
 		}
 	}
-	if nSync != 4 || nSrc != 1 || cloudflareLists == nil {
+	hasProbe := func(ss []ipinfo.Syncer) bool {
+		return slices.ContainsFunc(ss, func(x ipinfo.Syncer) bool { return x.Name() == "cloudflare:probe" })
+	}
+	if !hasProbe(syncers) {
+		t.Error("probe_dangling defaults on, but no probe syncer")
+	}
+	if nSync != 5 || nSrc != 1 || cloudflareLists == nil {
 		t.Errorf("cloudflare syncers %d sources %d", nSync, nSrc)
 	}
 	if f := cloudflareTrustedEdge(); f == nil || !f(netip.MustParseAddr("104.16.0.1")) || f(netip.MustParseAddr("192.0.2.1")) {
@@ -171,5 +180,15 @@ func TestCloudflareStatusAndSync(t *testing.T) {
 	newIPResolver(cfg, s, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if cloudflareTrustedEdge() != nil {
 		t.Error("connecting_ip = false still trusts the edge")
+	}
+	// probe_dangling = false: no probe, and old results are dropped.
+	a := netip.MustParseAddr("198.51.100.5")
+	s.SetDanglingProbes(t.Context(), []store.DanglingProbe{{Addr: a, State: store.ProbeSilent, CheckedAt: time.Now()}})
+	cfg.Cloudflare.ProbeDangling = false
+	if _, syncers := newIPResolver(cfg, s, slog.New(slog.NewTextHandler(io.Discard, nil))); hasProbe(syncers) {
+		t.Error("probe_dangling = false still probes")
+	}
+	if got, _ := s.DanglingProbes(t.Context()); len(got) != 0 {
+		t.Errorf("probe_dangling = false kept %d results", len(got))
 	}
 }

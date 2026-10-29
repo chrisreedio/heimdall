@@ -86,13 +86,18 @@ func newCloudflare(cfg config.Config, s *store.Store, log *slog.Logger, r *ipinf
 		Interval: c.SyncEvery.Duration, Now: time.Now, Log: log, Surface: true, Edge: edge})
 	cloudflareLists = &cloudflare.ListSyncer{Client: client, Store: s, Now: time.Now, Log: log} // IP labels from mapped IP lists
 	syncers = append(syncers, cloudflareLists)
+	if c.ProbeDangling { // does anything answer at dangling records' addresses (TCP connect only)
+		syncers = append(syncers, &cloudflare.Prober{Store: s, Edge: edge, Now: time.Now, Log: log})
+	} else if err := s.PruneDanglingProbes(context.Background(), nil); err != nil {
+		log.Warn("Clearing old dangling-record probes failed", "err", err)
+	}
 	if c.Radar {
 		radar := &cloudflare.Radar{Client: client, Store: s, Edge: edge, Now: time.Now, Log: log}
 		r.Sources = append(r.Sources, radar)
 		syncers = append(syncers, radar)
 	}
 	log.Info("Cloudflare on", "zones", len(c.Zones), "sync_every", c.SyncEvery.Duration.String(),
-		"security_events", c.SecurityEvents, "radar", c.Radar, "connecting_ip", c.ConnectingIP)
+		"security_events", c.SecurityEvents, "radar", c.Radar, "connecting_ip", c.ConnectingIP, "probe_dangling", c.ProbeDangling)
 	return syncers
 }
 
