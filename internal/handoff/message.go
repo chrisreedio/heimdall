@@ -500,13 +500,6 @@ func derefString(s *string) string {
 	return *s
 }
 
-func plural(n int) string {
-	if n == 1 {
-		return ""
-	}
-	return "s"
-}
-
 // sitesLine says how many sites and branches the hand-off covers.
 func sitesLine(sites []SiteEntry) string {
 	unknown := 0
