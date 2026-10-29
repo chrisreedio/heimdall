@@ -197,9 +197,7 @@ func TestHandoffSend(t *testing.T) {
 		t.Errorf("allowed_mentions = %s", am)
 	}
 	content, _ := msg["content"].(string)
-	for _, want := range []string{"<@" + testBotID + ">", `"laravel/framework"`, `"fixed": "11.44.1"`, `"GHSA-test-0000-0001"`,
-		`"repo": null`, "**Repo unknown:**", `"link": "http://127.0.0.1:8080/hosts/acme/app-01/site?root=%2Fhome%2Fforge%2Fexample.com"`,
-		`"command": "composer update laravel/framework --with-dependencies"`} {
+	for _, want := range []string{"<@" + testBotID + ">", "- `laravel/framework` 11.31.0 → **11.44.1**", "**Repository unknown:**"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("message lacks %q:\n%s", want, content)
 		}
@@ -215,7 +213,9 @@ func TestHandoffSend(t *testing.T) {
 		t.Errorf("attachments = %s", att)
 	}
 	var fdata handoff.FileData
-	if err := json.Unmarshal([]byte(file), &fdata); err != nil || fdata.Format != handoff.FileFormat || len(fdata.Packages) == 0 ||
+	if err := json.Unmarshal([]byte(file), &fdata); err != nil || fdata.Format != handoff.FileFormat || len(fdata.Packages) == 0 || fdata.Repo != nil ||
+		fdata.Link != "http://127.0.0.1:8080/hosts/acme/app-01/site?root=%2Fhome%2Fforge%2Fexample.com" ||
+		fdata.Command != "composer update laravel/framework --with-dependencies" ||
 		len(fdata.Advisories) == 0 || fdata.Advisories[0].URL != "https://github.com/advisories/GHSA-test-0000-0001" || len(fdata.Steps) == 0 {
 		t.Errorf("attached file (%v): %s", err, file)
 	}
