@@ -99,6 +99,9 @@ func parsePrivilege(v string, now time.Time) []store.PrivilegeEvent {
 				continue
 			}
 			ev.Source = parts[3]
+			if a, err := netip.ParseAddr(ev.Source); err == nil {
+				ev.Source = a.Unmap().String() // one spelling per address, as labels and the IP pages expect
+			}
 		}
 		if !seen[ev] {
 			seen[ev] = true

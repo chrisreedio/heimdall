@@ -54,6 +54,10 @@ func Who(ev store.PrivilegeEvent) string {
 	return ev.User
 }
 
+// maxSummaryUsers is how many of a privileged_access anomaly's "alice from
+// 203.0.113.7"s its summary names; the rest are counted.
+const maxSummaryUsers = 4
+
 // Rules raises privilege watch anomalies.
 type Rules struct {
 	Store *store.Store
@@ -140,7 +144,9 @@ func (e *Rules) OnReport(ctx context.Context, host store.IngestHost, snapshotID 
 			}
 			s := fmt.Sprintf("%d privileged access%s outside a maintenance window on %s (UTC): %s",
 				total, map[bool]string{true: "", false: "es"}[total == 1], on, Counts(counts))
-			if len(users) > 0 {
+			if len(users) > maxSummaryUsers {
+				s += fmt.Sprintf(" by %s +%d more", strings.Join(users[:maxSummaryUsers], ", "), len(users)-maxSummaryUsers)
+			} else if len(users) > 0 {
 				s += " by " + strings.Join(users, ", ")
 			}
 			return s

@@ -39,6 +39,9 @@ func TestParsePrivilege(t *testing.T) {
 		ts(-time.Second) + ":root-ssh:root:2001:db8::1",
 		ts(-time.Second) + ":su:deploy:bastion.example.com",
 		ts(-time.Second) + ":su:ops:?",
+		// Spelled out, and IPv4 on an IPv6 socket: stored the short way.
+		ts(-2*time.Second) + ":sudo:chris:2001:db8:0:0:0:0:0:7",
+		ts(-2*time.Second) + ":su:chris:::ffff:203.0.113.8",
 		ts(-time.Second) + ":sudo:eve:999.1.1.1",    // not an address
 		ts(-time.Second) + ":sudo:eve:fe80::1%eth0", // zone
 		ts(-time.Second) + ":sudo:eve:a b",          // space
@@ -52,6 +55,8 @@ func TestParsePrivilege(t *testing.T) {
 		{At: now.Add(-time.Second).UTC(), Kind: "root-ssh", User: "root", Source: "2001:db8::1"},
 		{At: now.Add(-time.Second).UTC(), Kind: "su", User: "deploy", Source: "bastion.example.com"},
 		{At: now.Add(-time.Second).UTC(), Kind: "su", User: "ops", Source: "?"},
+		{At: now.Add(-2 * time.Second).UTC(), Kind: "sudo", User: "chris", Source: "2001:db8::7"},
+		{At: now.Add(-2 * time.Second).UTC(), Kind: "su", User: "chris", Source: "203.0.113.8"},
 	}
 	if fmt.Sprint(got) != fmt.Sprint(want) {
 		t.Errorf("parsePrivilege = %v\nwant %v", got, want)

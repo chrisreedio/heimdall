@@ -124,6 +124,85 @@ func (s *Store) AckAnomaly(ctx context.Context, actor string, userID, id int64, 
 	})
 }
 
+// AnomalyTarget is an anomaly's rule and host, for triaging several at
+// once.
+type AnomalyTarget struct {
+	ID   int64
+	Rule string
+	Open bool // not acknowledged yet
+	Host IngestHost
+}
+
+// AnomalyTargets returns those of ids that exist, in id order. Callers
+// check each one's org; ids that aren't anomalies are left out.
+func (s *Store) AnomalyTargets(ctx context.Context, ids []int64) ([]AnomalyTarget, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := s.rd.QueryContext(ctx, `
+		SELECT a.id, a.rule, a.acknowledged_at IS NULL, h.id, h.org_id, o.slug, h.name FROM anomalies a
+		JOIN hosts h ON h.id = a.host_id JOIN organizations o ON o.id = h.org_id
+		WHERE a.id IN (?`+strings.Repeat(", ?", len(ids)-1)+`) ORDER BY a.id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AnomalyTarget
+	for rows.Next() {
+		var t AnomalyTarget
+		if err := rows.Scan(&t.ID, &t.Rule, &t.Open, &t.Host.ID, &t.Host.OrgID, &t.Host.OrgSlug, &t.Host.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+// AckAnomalies acknowledges several anomalies with one note, in one
+// transaction, auditing each as AckAnomaly does. Ones already
+// acknowledged (or gone) are skipped; it returns how many it closed.
+func (s *Store) AckAnomalies(ctx context.Context, actor string, userID int64, ids []int64, note string, at time.Time) (int, error) {
+	note, err := normalizeName("note", note)
+	if err != nil {
+		return 0, err
+	}
+	var by sql.NullInt64
+	if userID != 0 {
+		by = sql.NullInt64{Int64: userID, Valid: true}
+	}
+	n := 0
+	err = s.tx(ctx, func(tx *sql.Tx) error {
+		n = 0
+		for _, id := range ids {
+			var orgID int64
+			var name string
+			err := tx.QueryRowContext(ctx, `
+				UPDATE anomalies SET acknowledged_at = ?, acknowledged_by = ?, ack_note = ?
+				WHERE id = ? AND acknowledged_at IS NULL
+				RETURNING (SELECT h.org_id FROM hosts h WHERE h.id = anomalies.host_id),
+				          (SELECT h.name FROM hosts h WHERE h.id = anomalies.host_id)`,
+				at.UTC().Format(timeLayout), by, note, id).Scan(&orgID, &name)
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			if err != nil {
+				return err
+			}
+			n++
+			if err := audit(ctx, tx, AuditEntry{Actor: actor, Action: "anomaly.ack", OrgID: orgID, Target: name,
+				Detail: map[string]any{"anomaly": id, "note": note}}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	return n, err
+}
+
 // AutoResolver is the actor, and detail["resolved_by"], of anomalies
 // Heimdall closed itself because what they flagged stopped holding.
 const AutoResolver = "heimdall"

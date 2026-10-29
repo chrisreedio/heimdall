@@ -17,19 +17,103 @@ umask 022
 RECORD_USERS=0 # set by install.sh --watch-privilege-users
 EVENTS_DIR=/var/lib/heimdall-privilege
 
+# ssh_peer prints the client address of the SSH connection this sudo or su
+# runs under, or nothing. It walks up from the hook's parent to the topmost
+# root-owned sshd (sshd-session from OpenSSH 9.8) process with an
+# established TCP connection: the privilege-separation monitor, which holds
+# only the client's connection (forwarded ones belong to its unprivileged
+# child), so the address is the kernel's, not anything the user can set.
+# The listener is skipped (it holds listening sockets): for a moment after
+# each accept it also holds another client's connection.
+# Reading another process's fds takes root's CAP_SYS_PTRACE, which root has
+# on a server (not in a default Docker container).
+ssh_peer() {
+	pid=$PPID n=0 top=
+	while [ "$n" -lt 32 ]; do
+		case $pid in '' | 0 | 1 | *[!0-9]*) break ;; esac
+		n=$((n + 1))
+		comm=$(cat "/proc/$pid/comm" 2>/dev/null) || break
+		ids=$(awk '$1 == "PPid:" { p = $2 } $1 == "Uid:" { u = $2 } END { print p "/" u }' "/proc/$pid/status" 2>/dev/null) || break
+		case $comm in
+		sshd | sshd-session) [ "${ids#*/}" != 0 ] || top="$pid $top" ;;
+		esac
+		pid=${ids%/*}
+	done
+	[ -n "$top" ] || return 0
+	# Little-endian (most servers): /proc/net/tcp prints each 32-bit word of
+	# an address in host byte order.
+	le=0
+	[ "$(printf '\001\000' | od -An -tu2 2>/dev/null | tr -d ' ')" != 1 ] || le=1
+	for pid in $top; do
+		# shellcheck disable=SC2012 # fd names are numbers; ls shows the link targets
+		inos=$(ls -l "/proc/$pid/fd" 2>/dev/null | sed -n 's/.*socket:\[\([0-9][0-9]*\)\]$/\1/p' | tr '\n' ' ')
+		[ -n "$inos" ] || continue
+		peer=$(cat /proc/net/tcp /proc/net/tcp6 2>/dev/null | awk -v inos=" $inos" -v le="$le" '
+			function hex(s, i, v) {
+				v = 0
+				for (i = 1; i <= length(s); i++) v = v * 16 + index("0123456789ABCDEF", substr(s, i, 1)) - 1
+				return v
+			}
+			function word(w, k, j) { # 8 hex digits into bytes b[k..k+3], network order
+				for (j = 0; j < 4; j++) b[k + j] = hex(le ? substr(w, 7 - 2 * j, 2) : substr(w, 1 + 2 * j, 2))
+			}
+			!index(inos, " " $10 " ") { next }
+			$4 == "0A" { listener = 1 }
+			$4 == "01" && peer == "" { peer = $3 }
+			END {
+				if (listener || peer == "") exit
+				split(toupper(peer), a, ":")
+				h = a[1]
+				if (length(h) == 8) {
+					word(h, 1)
+					print b[1] "." b[2] "." b[3] "." b[4]
+					exit
+				}
+				if (length(h) != 32) exit
+				for (i = 0; i < 4; i++) word(substr(h, 8 * i + 1, 8), 4 * i + 1)
+				z = 0
+				for (i = 1; i <= 10; i++) z += b[i]
+				if (z == 0 && b[11] == 255 && b[12] == 255) { # an IPv4 client on an IPv6 socket
+					print b[13] "." b[14] "." b[15] "." b[16]
+					exit
+				}
+				# Groups, with the longest run of two or more zero groups as "::".
+				best = 0; bs = 0; run = 0
+				for (i = 1; i <= 8; i++) {
+					g[i] = b[2 * i - 1] * 256 + b[2 * i]
+					if (g[i] == 0) { run++; if (run > best) { best = run; bs = i - run + 1 } } else run = 0
+				}
+				out = ""
+				for (i = 1; i <= 8; i++) {
+					if (best >= 2 && i == bs) { out = out "::"; i += best - 1; continue }
+					if (out != "" && substr(out, length(out)) != ":") out = out ":"
+					out = out sprintf("%x", g[i])
+				}
+				print out
+				exit
+			}')
+		if [ -n "$peer" ]; then
+			printf '%s' "$peer"
+			return 0
+		fi
+	done
+}
+
 # source_of KIND prints where the session came from: an SSH login's remote
-# address (PAM_RHOST), or for sudo and su the remote host of the terminal's
-# login session (from utmp, via who). "-" when there's none (a local
-# console, cron, or a terminal utmp doesn't list such as tmux), "?" when
-# it doesn't look like an address or host name.
+# address (PAM_RHOST), or for sudo and su the SSH connection they run under
+# (ssh_peer), else the remote host of the terminal's login session (from
+# utmp, via who, on systems that still keep utmp). "-" when there's none (a
+# local console, cron, or a terminal that's in neither, such as one inside
+# tmux), "?" when it doesn't look like an address or host name.
 source_of() {
 	if [ "$1" = root-ssh ]; then
 		src=${PAM_RHOST:-}
 	else
 		# sudo sets PAM_RHOST to this host's own name, so it's no use here.
+		src=$(ssh_peer)
 		tty=${PAM_TTY:-}
 		tty=${tty#/dev/}
-		src=
+		[ -z "$src" ] || tty=
 		case $tty in
 		'' | *[!a-z0-9/]*) ;;
 		*) src=$(who 2>/dev/null | awk -v t="$tty" '$2 == t { h = $NF } END { if (h ~ /^\(.*\)$/) print substr(h, 2, length(h) - 2) }') ;;
