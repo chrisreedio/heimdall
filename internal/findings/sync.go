@@ -205,11 +205,17 @@ const advisoryKeep = 30 * 24 * time.Hour
 
 // HostRuntimes derives language runtimes from a host's packages. The
 // runtime names match endoflife.date product slugs (php, nodejs, python).
-func HostRuntimes(inv store.HostInventory) []ecosystem.Runtime {
-	pm := inv.PackageManager
-	if pm == "" {
-		pm = inferPackageManager(inv.OSID, inv.OSIDLike)
+// PackageManager is the host's package manager (dpkg, rpm, apk), as
+// reported or inferred from its OS ("" if unknown).
+func PackageManager(inv store.HostInventory) string {
+	if inv.PackageManager != "" {
+		return inv.PackageManager
 	}
+	return inferPackageManager(inv.OSID, inv.OSIDLike)
+}
+
+func HostRuntimes(inv store.HostInventory) []ecosystem.Runtime {
+	pm := PackageManager(inv)
 	pkgs := make([]snapshot.Package, len(inv.Packages))
 	for i, p := range inv.Packages {
 		pkgs[i] = snapshot.Package{Name: p.Name, Version: p.Version, Arch: p.Arch,

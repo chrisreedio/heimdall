@@ -47,8 +47,24 @@
   <div class="fact">{{template "icon" "power"}}<div><div class="k">Reboot</div><div class="v">{{if eq .Reboot "required"}}Required{{else if eq .Reboot "not required"}}Not needed{{else}}Unknown{{end}}</div><div class="pills">{{if eq .Reboot "required"}}<span class="pill warn">restart to finish updates</span>{{else if eq .Reboot "not required"}}<span class="pill ok">up to date</span>{{end}}</div></div></div>
   <div class="fact">{{template "icon" "package"}}<div><div class="k">Packages</div><div class="v">{{.Summary.Packages}} installed</div><div class="pills">{{if .Summary.PendingUpdates}}<span class="pill warn">{{.Summary.PendingUpdates}} update{{if ne .Summary.PendingUpdates 1}}s{{end}}</span>{{else}}<span class="pill ok">all current</span>{{end}}{{if .Summary.PendingSecurity}}<span class="pill bad">{{.Summary.PendingSecurity}} security</span>{{end}}</div></div></div>
   <div class="fact">{{template "icon" "chip"}}<div><div class="k">Collector</div><div class="v">{{.Summary.CollectorVersion}}</div>{{if .CollectorKnown}}<div class="pills">{{if .CollectorBehind}}<span class="pill warn" title="On the server: sudo heimdall-collect upgrade">update available</span>{{else}}<span class="pill ok">current</span>{{end}}</div>{{end}}{{if .ChangeWatch}}<div class="pills">{{if eq .ChangeWatch "on"}}<span class="pill ok" title="Reports as soon as packages change">change watch on</span>{{else}}<span class="pill warn" title="Changes are only reported on the schedule">change watch off</span>{{end}}</div>{{end}}</div></div>
-  {{if .Report.Runtimes}}<div class="runtimes-row">{{template "icon" "layers"}}<span class="k">Runtimes</span>{{range .Report.Runtimes}}<span class="runtime"><strong>{{.Name}}</strong> {{.Version}} {{template "lifepill" .Life}}</span>{{end}}</div>{{end}}
+  {{if .Report.Runtimes}}<div class="runtimes-row">{{template "icon" "layers"}}<span class="k">Runtimes</span>{{range .Report.Runtimes}}<span class="runtime"><strong>{{.Name}}</strong> {{.Version}} {{template "lifepill" .Life}}{{with .Use}}{{if .Unused}}<a class="pill warn" href="#php-unused" title="No site's PHP-FPM uses it and its PHP-FPM isn't running{{if .CLI}}; the command line's php does, and can point to {{.CLITo}}{{end}}">not used</a>{{else if .Sites}}<span class="pill muted" title="{{join .Sites ", "}}">{{len .Sites}} site{{if gt (len .Sites) 1}}s{{end}}</span>{{else if .FPMRunning}}<span class="pill muted" title="Its PHP-FPM is running, though no site Heimdall knows uses it">PHP-FPM running</span>{{else if .CLI}}<span class="pill muted" title="The command line's php, and the only PHP version installed">command line</span>{{end}}{{end}}</span>{{end}}</div>{{end}}
 </section>
+{{$unused := false}}{{range .Report.Runtimes}}{{with .Use}}{{if .Unused}}{{$unused = true}}{{end}}{{end}}{{end}}
+{{if $unused}}<section class="card php-unused" id="php-unused" aria-labelledby="php-unused-h">
+  <h2 id="php-unused-h">Unused PHP</h2>
+  <p class="muted small">Installed, but no site's PHP-FPM uses the versions below and their PHP-FPM isn't running. Removing one takes its packages, and their advisories, off the server. On {{.Name}}, in order:</p>
+  {{range .Report.Runtimes}}{{with .Use}}{{if .Unused}}<div class="php-ver">
+    <h3>PHP {{.Minor}} <span class="muted small">{{len .Packages}} package{{if ne (len .Packages) 1}}s{{end}}</span></h3>
+    <ol class="small">
+      <li>Check that nothing calls <code>php{{.Minor}}</code> by name (cron, supervisor or systemd; Heimdall can't see those). It should print nothing:
+        <div class="codebox fix-cmd"><pre id="php-{{.Minor}}-check">{{.Check}}</pre><button type="button" class="copy" data-copy="php-{{.Minor}}-check" hidden>Copy</button></div></li>
+      <li>See what would be removed (nothing changes). Unversioned packages such as <code>php-cli</code> or <code>php-redis</code> can be in the list when they depend on this version:
+        <div class="codebox fix-cmd"><pre id="php-{{.Minor}}-dry">{{.DryRun}}</pre><button type="button" class="copy" data-copy="php-{{.Minor}}-dry" hidden>Copy</button></div></li>
+      <li>{{if .CLITo}}Point the command line's <code>php</code> (cron, <code>artisan</code>, queue workers) at PHP {{.CLITo}}, then remove PHP {{.Minor}}:{{else}}Remove it:{{end}}
+        <div class="codebox fix-cmd"><pre id="php-{{.Minor}}-rm">{{join .Commands "\n"}}</pre><button type="button" class="copy" data-copy="php-{{.Minor}}-rm" hidden>Copy</button></div></li>
+    </ol>
+  </div>{{end}}{{end}}{{end}}
+</section>{{end}}
 {{template "aitriage" .AI}}
 
 {{if .News}}

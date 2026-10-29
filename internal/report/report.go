@@ -48,6 +48,9 @@ type Host struct {
 	// NewerKernel is the newer kernel that's installed but not running
 	// yet, when a reboot is pending.
 	NewerKernel string `json:"newer_kernel,omitempty"`
+	// PHPKnown: the collector reported what uses PHP, so the PHP
+	// runtimes' Use is set (php.go).
+	PHPKnown bool `json:"php_known,omitempty"`
 }
 
 type Container struct {
@@ -93,6 +96,9 @@ type Runtime struct {
 	Version string     `json:"version"`
 	Package string     `json:"package"`
 	Life    *Lifecycle `json:"lifecycle,omitempty"`
+	// Use is what uses a PHP version, when the host's collector reports
+	// it (see php.go).
+	Use *PHPUse `json:"use,omitempty"`
 }
 
 type Counts struct {
@@ -184,6 +190,10 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 		if tallies, err = st.OpenFindingCounts(ctx); err != nil {
 			return nil, err
 		}
+	}
+	phps, err := st.HostPHPs(ctx)
+	if err != nil {
+		return nil, err
 	}
 	eolCache := map[string][]eol.Cycle{}
 	cycles := func(product string) ([]eol.Cycle, error) {
@@ -296,6 +306,9 @@ func Build(ctx context.Context, st *store.Store, f Filter, now time.Time) (*Repo
 				return nil, err
 			}
 			host.Sites = append(host.Sites, site)
+		}
+		if p, ok := phps[h.ID]; ok && findings.PackageManager(inv) == "dpkg" {
+			phpUse(&host, p, inv.Packages)
 		}
 		r.Hosts = append(r.Hosts, host)
 	}

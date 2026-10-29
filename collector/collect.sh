@@ -28,7 +28,7 @@ export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
-VERSION=0.4.47
+VERSION=0.4.48
 FORMAT=heimdall.snapshot/v4
 
 die() { printf 'heimdall-collect: %s\n' "$*" >&2; exit 1; }
@@ -941,6 +941,33 @@ site_branch() {
 	git_head "$tree/.git" "$tree"
 }
 
+# ── PHP in use (sent as X-Heimdall-PHP) ────────────────────────────────────
+
+# php_state: the X-Heimdall-PHP value, "v1 cli=<x.y> fpm=<x.y>,...", with
+# "-" for none. cli is the version the command line's php runs (where
+# /usr/bin/php leads; the alternatives link on Debian and Ubuntu), fpm the
+# versions whose PHP-FPM is running (a /run/php pid file whose process
+# exists). With the sites' FastCGI sockets, the hub can tell an installed
+# PHP version nothing uses. Read-only; never fails the push.
+php_state() {
+	cli=-
+	t=$(readlink -f /usr/bin/php 2>/dev/null) || t=
+	case ${t##*/} in
+	php[5-9].[0-9] | php[5-9].[0-9][0-9]) cli=${t##*/php} ;;
+	esac
+	fpm=
+	for f in /run/php/php*-fpm.pid; do
+		[ -r "$f" ] || continue
+		v=${f##*/php}
+		v=${v%-fpm.pid}
+		case $v in [5-9].[0-9] | [5-9].[0-9][0-9]) ;; *) continue ;; esac
+		pid=$(tr -cd 0-9 <"$f" 2>/dev/null | cut -c1-10)
+		if [ -z "$pid" ] || [ ! -d "/proc/$pid" ]; then continue; fi
+		fpm=${fpm:+$fpm,}$v
+	done
+	printf 'v1 cli=%s fpm=%s' "$cli" "${fpm:--}"
+}
+
 # site_branches: the X-Heimdall-Site-Branches value for the sites in a
 # snapshot on stdin, "v1 <root> <ref>,..." (just "v1" when none are
 # known), at most about 4 KB.
@@ -1285,6 +1312,8 @@ EOF
 	repos_header="header = \"X-Heimdall-Site-Repos: $(site_repos <"$tmp/snapshot.json" | tr -cd 'A-Za-z0-9._~:/@+, -' | cut -c1-4096)\""
 	# Each site's checked-out branch, from .git/HEAD (site_branches).
 	branches_header="header = \"X-Heimdall-Site-Branches: $(site_branches <"$tmp/snapshot.json" | tr -cd 'A-Za-z0-9._~:/@+, -' | cut -c1-4096)\""
+	# The PHP versions in use outside the sites' sockets (php_state).
+	php_header="header = \"X-Heimdall-PHP: $(php_state | tr -cd 'a-z0-9.=, -' | cut -c1-200)\""
 
 	# The token goes to curl on stdin via --config (printf is a shell
 	# builtin), so it never appears in any process's arguments. The reply
@@ -1294,7 +1323,7 @@ EOF
 	status=$(printf '%s\n' \
 		"header = \"Authorization: Bearer $token\"" \
 		'header = "Content-Type: application/json"' \
-		"$encoding" "$cacert" "$hostname_header" "$machine_header" "$triggers_header" "$repos_header" "$branches_header" "$(privilege_config)" "$(logins_config)" |
+		"$encoding" "$cacert" "$hostname_header" "$machine_header" "$triggers_header" "$repos_header" "$branches_header" "$php_header" "$(privilege_config)" "$(logins_config)" |
 		"$curl" --config - --silent --show-error \
 			--proto '=https,http' --tlsv1.2 \
 			--connect-timeout 10 --max-time 120 \
@@ -1536,7 +1565,7 @@ set_hub() {
 usage() {
 	cat >&2 <<'EOF'
 usage: heimdall-collect --print | --push | --site-repos | --site-branches |
-                        --deploy-watches | --logins | --version
+                        --php | --deploy-watches | --logins | --version
        heimdall-collect deployed
        sudo heimdall-collect upgrade [vX.Y.Z] [--watch-privilege-users |
                                      --watch-privilege | --no-watch-privilege]
@@ -1549,6 +1578,8 @@ usage: heimdall-collect --print | --push | --site-repos | --site-branches |
   --site-repos  print the site repositories --push would send
   --site-branches
                 print the sites' checked-out branches --push would send
+  --php         print the PHP versions in use --push would send (the command
+                line's and the running PHP-FPMs')
   --deploy-watches
                 print the paths watched for site deploys (install.sh puts
                 them in heimdall-collect-changes.path)
@@ -1591,7 +1622,7 @@ case $1 in
 deployed) deployed; exit 0 ;; # any user, root too: it only touches a file
 # For heimdall-collect-soon.service (root), not for people:
 event-allowed) if event_allowed; then exit 0; else exit 1; fi ;;
---print | --push | --site-repos | --site-branches | --deploy-watches | --logins) ;;
+--print | --push | --site-repos | --site-branches | --php | --deploy-watches | --logins) ;;
 *) usage ;;
 esac
 
@@ -1604,6 +1635,7 @@ case $1 in
 --push) push ;;
 --site-repos) sites_json | site_repos; echo ;;
 --site-branches) sites_json | site_branches; echo ;;
+--php) php_state; echo ;;
 --deploy-watches) deploy_watches ;;
 --logins) logins_header "${HEIMDALL_LOGIN_COUNTS:-/var/lib/heimdall-logins/counts}" | sed -n 's/^header = "X-Heimdall-Logins: \(.*\)"$/\1/p' ;;
 esac
