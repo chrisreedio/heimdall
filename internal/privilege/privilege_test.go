@@ -81,3 +81,17 @@ func TestMixedDayCountsNonExempt(t *testing.T) {
 		t.Fatalf("anomalies = %v", got)
 	}
 }
+
+func TestAccessSummaryNamesSources(t *testing.T) {
+	e := newRuleEnv(t)
+	e.report(ev(-time.Hour, "sudo", "alice", "203.0.113.7"), ev(-time.Hour, "sudo", "alice", ""))
+	if got := e.accessSummaries(); len(got) != 1 || !strings.HasSuffix(got[0], ": 2 sudo by alice, alice from 203.0.113.7") {
+		t.Fatalf("anomalies = %v", got)
+	}
+	// Many people and places: the first few are named, the rest counted.
+	e.report(ev(-50*time.Minute, "sudo", "bob", "203.0.113.8"), ev(-49*time.Minute, "sudo", "carol", "203.0.113.9"),
+		ev(-48*time.Minute, "su", "dave", "203.0.113.10"), ev(-47*time.Minute, "su", "erin", "203.0.113.11"))
+	if got := e.accessSummaries(); len(got) != 1 || !strings.HasSuffix(got[0], ": 4 sudo, 2 su by alice, alice from 203.0.113.7, bob from 203.0.113.8, carol from 203.0.113.9 +2 more") {
+		t.Fatalf("anomalies = %v", got)
+	}
+}

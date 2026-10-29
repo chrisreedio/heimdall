@@ -200,6 +200,7 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("GET /hosts/{org}/{host}/changes", s.requireAuth(s.changesPage))
 	mux.HandleFunc("GET /anomalies", s.requireAuth(s.anomaliesPage))
 	mux.HandleFunc("POST /anomalies/{id}/{action}", s.requireAuth(s.anomalyAction))
+	mux.HandleFunc("POST /anomalies/bulk", s.requireAuth(s.anomalyBulk))
 	mux.HandleFunc("GET /drift", s.requireAuth(s.withScope(s.driftPage)))
 	mux.HandleFunc("GET /plans", s.requireAuth(s.plansPage))
 	mux.HandleFunc("POST /plans", s.requireAuth(s.planCreate))

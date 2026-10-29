@@ -228,3 +228,47 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   });
 });
+
+// Anomalies: a select-all box, shift-click to tick a run of rows, and a
+// count on the bulk form. Without JavaScript the row boxes still post with
+// the form; only these niceties are missing.
+document.addEventListener("DOMContentLoaded", function () {
+  var form = document.querySelector("form[data-bulk]");
+  if (!form) return;
+  var rows = Array.prototype.slice.call(document.querySelectorAll("input[data-bulk-row]"));
+  var alls = Array.prototype.slice.call(document.querySelectorAll("input[data-bulk-all]"));
+  var count = form.querySelector("[data-bulk-count]");
+  var hint = count ? count.textContent : "";
+  var buttons = form.querySelectorAll("button[type=submit]");
+  var last = null;
+  function update() {
+    var n = rows.filter(function (r) { return r.checked; }).length;
+    if (count) count.textContent = n ? n + (n === 1 ? " anomaly" : " anomalies") + " selected." : hint;
+    alls.forEach(function (all) {
+      all.checked = n > 0 && n === rows.length;
+      all.indeterminate = n > 0 && n < rows.length;
+    });
+    buttons.forEach(function (b) { b.disabled = n === 0; });
+  }
+  rows.forEach(function (box) {
+    box.addEventListener("click", function (ev) {
+      if (ev.shiftKey && last && last !== box) {
+        var a = rows.indexOf(last), b = rows.indexOf(box);
+        rows.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(function (r) { r.checked = box.checked; });
+      }
+      last = box;
+      update();
+    });
+  });
+  if (rows.length) {
+    alls.forEach(function (all) {
+      (all.closest("label[hidden]") || all).hidden = false;
+      all.hidden = false;
+      all.addEventListener("change", function () {
+        rows.forEach(function (r) { r.checked = all.checked; });
+        update();
+      });
+    });
+  }
+  update();
+});

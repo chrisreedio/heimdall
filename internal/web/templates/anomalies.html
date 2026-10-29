@@ -1,17 +1,30 @@
 {{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
 <h1>Anomalies</h1>
 {{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 <p class="muted">Tripwires, not intrusion detection: an alert is worth checking, but no alerts doesn't mean a host is clean. <a href="https://github.com/realmwatch/heimdall/blob/main/docs/anomaly-signals.md">What each signal means</a>.</p>
-{{$rules := .Rules}}
-<div class="scroll"><table>
-  <thead><tr><th>Detected</th><th>Host</th><th>Severity</th><th>Signal</th><th>Summary</th><th>Triage</th></tr></thead>
+{{$rules := .Rules}}{{$bulk := .CanBulk}}
+{{if $bulk}}{{/* the row checkboxes join this form through their form attribute, so it works without JavaScript */}}
+<form method="post" action="/anomalies/bulk" id="bulk" class="row card bulk-form" data-bulk>
+  <input type="hidden" name="csrf" value="{{$csrf}}">
+  <p class="muted small bulk-hint"><strong data-bulk-count>Tick the anomalies to triage together.</strong> Acknowledge them with one note, or mute their signals on their hosts and acknowledge them. Up to {{.MaxBulk}} at a time.</p>
+  <label class="check bulk-all" hidden><input type="checkbox" data-bulk-all> Select all</label>
+  <label class="bulk-note">Note <input name="note" required maxlength="200" placeholder="What you found"></label>
+  <button type="submit" name="action" value="ack">Acknowledge selected</button>
+  <label class="bulk-days">Mute for <input name="days" type="number" min="1" max="365" value="7"> days</label>
+  <button type="submit" name="action" value="suppress" class="secondary">Mute selected</button>
+</form>
+{{end}}
+<div class="scroll"><table class="anomaly-list cards-sm">
+  <thead><tr>{{if $bulk}}<th class="sel"><input type="checkbox" data-bulk-all hidden aria-label="Select every anomaly you can triage" title="Select all"></th>{{end}}<th>Detected</th><th>Host</th><th>Severity</th><th>Signal</th><th>Summary</th><th>Triage</th></tr></thead>
   <tbody>{{range .Items}}<tr>
+    {{if $bulk}}<td class="sel" data-label="">{{if .CanOperate}}<input type="checkbox" name="id" value="{{.ID}}" form="bulk" data-bulk-row aria-label="Select {{.Rule}} on {{.Host.Name}}">{{end}}</td>{{end}}
     <td>{{time .DetectedAt}}</td>
     <td><a href="{{hostURL .Host.OrgSlug .Host.Name}}">{{.Host.Name}}</a></td>
     <td><span class="badge sev-{{sev .Severity}}">{{.Severity}}</span></td>
     <td>{{.Rule}}</td>
-    <td>{{.Summary}}</td>
-    <td>{{if .CanOperate}}
+    <td class="full">{{.Summary}}</td>
+    <td class="full">{{if .CanOperate}}
       <form method="post" action="/anomalies/{{.ID}}/ack" class="row">
         <input type="hidden" name="csrf" value="{{$csrf}}">
         <input name="note" required maxlength="200" placeholder="What you found">
@@ -25,7 +38,7 @@
         <button type="submit">Mute</button>
       </form></details>
     {{else}}<span class="muted">operator role needed</span>{{end}}</td>
-  </tr>{{else}}<tr><td colspan="6" class="muted">No open anomalies.</td></tr>{{end}}</tbody>
+  </tr>{{else}}<tr><td colspan="{{if $bulk}}7{{else}}6{{end}}" class="muted">No open anomalies.</td></tr>{{end}}</tbody>
 </table></div>
 
 <section class="card" aria-labelledby="closed-h">
