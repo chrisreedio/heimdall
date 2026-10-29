@@ -75,9 +75,9 @@ func permission(err error) error {
 }
 
 func (s *ListSyncer) sync(ctx context.Context) (int, error) {
-	accounts, err := s.Client.Accounts(ctx)
+	accounts, err := s.Client.TokenAccounts(ctx)
 	if err != nil {
-		return 0, fmt.Errorf("listing accounts: %w", permission(err))
+		return 0, fmt.Errorf("finding the token's accounts: %w", permission(err))
 	}
 	if len(accounts) == 0 {
 		return 0, errors.New(ListsPermission)
