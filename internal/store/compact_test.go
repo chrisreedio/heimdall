@@ -12,6 +12,7 @@ import (
 )
 
 func TestAdvisoryRecordRoundTrip(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	rec := []byte(`{"id":"UBUNTU-CVE-2099-0001","affected":[` + strings.Repeat(`{"package":{"ecosystem":"Ubuntu:24.04:LTS","name":"linux"}},`, 500) + `{}]}`)
@@ -43,6 +44,7 @@ func TestAdvisoryRecordRoundTrip(t *testing.T) {
 // Refreshing an advisory used to delete and reinsert it, which cascaded to
 // every host's findings for it.
 func TestPutAdvisoryKeepsFindings(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	h := addFindingHost(t, s, "acme", "web-01", "DEBIAN-CVE-2099-0001", "CVE-2099-0001")
@@ -78,6 +80,7 @@ func putLegacy(t *testing.T, s *Store, id, raw string) {
 }
 
 func TestSlimAdvisoriesConvertsLegacyRows(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	big := strings.Repeat("x", 3<<20) // three of these exceed one batch
@@ -149,6 +152,7 @@ func TestSlimAdvisoriesConvertsLegacyRows(t *testing.T) {
 }
 
 func TestWorthCompacting(t *testing.T) {
+	t.Parallel()
 	const mib = 1 << 20 / 4096 // pages
 	for _, tt := range []struct {
 		pages, free int64
@@ -168,6 +172,7 @@ func TestWorthCompacting(t *testing.T) {
 }
 
 func TestPruneAdvisories(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	addFindingHost(t, s, "acme", "web-01", "FINDING-1")

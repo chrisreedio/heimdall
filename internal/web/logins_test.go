@@ -24,6 +24,7 @@ func failLogins(t *testing.T, e *env, host store.IngestHost, ip string, n int, s
 }
 
 func TestOffendersPage(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	web := e.seed()
 	ctx := t.Context()
@@ -78,6 +79,7 @@ func TestOffendersPage(t *testing.T) {
 }
 
 func TestHostPageLogins(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	web := e.seed()
 	ctx := t.Context()

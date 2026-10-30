@@ -47,6 +47,7 @@ func addFindingHost(t *testing.T, s *Store, org, host, advisory string, aliases 
 }
 
 func TestReplaceNewsKeepsIDsAndPrunes(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	if _, err := s.ReplaceNews(ctx, testSource, testNewsItems(), `"v1"`, "", newsNow); err != nil {
@@ -102,6 +103,7 @@ func TestReplaceNewsKeepsIDsAndPrunes(t *testing.T) {
 }
 
 func TestMatchNews(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	// acme's host has the CVE as an alias of a distro advisory; globex's
@@ -154,6 +156,7 @@ func TestMatchNews(t *testing.T) {
 }
 
 func TestNewsRanksFindings(t *testing.T) {
+	t.Parallel()
 	fs := []ReportFinding{
 		{AdvisoryID: "A", Severity: "critical", FixedVersion: "2"},
 		{AdvisoryID: "B", Severity: "low", InNews: true},

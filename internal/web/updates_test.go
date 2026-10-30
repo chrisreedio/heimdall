@@ -12,6 +12,7 @@ import (
 )
 
 func TestUpdateBannerForAdminsOnly(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.Version = "v0.4.0"
 		c.Updates = func() (updates.Release, bool) {

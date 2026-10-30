@@ -16,6 +16,7 @@ import (
 )
 
 func TestAnomalyTriage(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	host := e.seed()
 	e.st.CreateLocalUser(t.Context(), "test", "admin@example.com", "", true, "$argon2id$x", []byte("secretsecretsecret12"))
@@ -45,6 +46,7 @@ func TestAnomalyTriage(t *testing.T) {
 }
 
 func TestAnomalyBulkTriage(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	host := e.seed()
 	e.seedOrg("other", "web-02")

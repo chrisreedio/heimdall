@@ -57,6 +57,7 @@ func (e *env) seedSites() store.IngestHost {
 }
 
 func TestSitesPage(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seedSites()
 	w := e.get("/sites", signedIn(e))
@@ -80,6 +81,7 @@ func TestSitesPage(t *testing.T) {
 }
 
 func TestHostPageSites(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seedSites()
 	w := e.get("/hosts/acme/app-01", signedIn(e))
@@ -114,6 +116,7 @@ func TestHostPageSites(t *testing.T) {
 }
 
 func TestAttnText(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		fixable, watch int
 		want           string
@@ -125,6 +128,7 @@ func TestAttnText(t *testing.T) {
 }
 
 func TestComposerCommandFiltersNames(t *testing.T) {
+	t.Parallel()
 	if composerCommand("x", nil) != nil {
 		t.Fatal("no findings, no command")
 	}
@@ -141,6 +145,7 @@ func TestComposerCommandFiltersNames(t *testing.T) {
 }
 
 func TestDashboardSitesTile(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seedSites()
 	b := e.get("/", signedIn(e)).Body.String()

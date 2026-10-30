@@ -8,6 +8,7 @@ import (
 )
 
 func TestSiteLabelsAndMoveHost(t *testing.T) {
+	t.Parallel()
 	s, ctx := newStore(t), t.Context()
 	s.CreateOrg(ctx, "test", "acme", "")
 	s.CreateEnv(ctx, "test", "acme", "prod", "")

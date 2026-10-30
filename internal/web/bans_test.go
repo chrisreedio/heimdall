@@ -44,6 +44,7 @@ func newBansEnv(t *testing.T) (e *env, acme, other int64, mine, theirs int64) {
 }
 
 func TestBansPageAdmin(t *testing.T) {
+	t.Parallel()
 	e, _, _, mine, _ := newBansEnv(t)
 	w := e.get("/bans", signedIn(e))
 	if w.Code != http.StatusOK {
@@ -61,6 +62,7 @@ func TestBansPageAdmin(t *testing.T) {
 }
 
 func TestBansScoping(t *testing.T) {
+	t.Parallel()
 	e, acme, _, _, theirs := newBansEnv(t)
 	e.auth.viewer = &auth.Viewer{UserID: 2, SessionToken: goodToken, Scope: store.Scope{Orgs: map[int64]store.Role{acme: store.RoleOperator}}}
 	b := e.get("/bans", signedIn(e)).Body.String()
@@ -87,6 +89,7 @@ func TestBansScoping(t *testing.T) {
 }
 
 func TestBansActions(t *testing.T) {
+	t.Parallel()
 	e, _, _, mine, theirs := newBansEnv(t)
 	ctx := t.Context()
 	path := "/bans/" + strconv.FormatInt(mine, 10) + "/approve"
@@ -153,6 +156,7 @@ func TestBansActions(t *testing.T) {
 }
 
 func TestBansApproveNeedsWriteMode(t *testing.T) {
+	t.Parallel()
 	e, _, _, mine, _ := newBansEnv(t)
 	// The same database behind a hub in shadow mode: nothing is approved
 	// into Cloudflare.

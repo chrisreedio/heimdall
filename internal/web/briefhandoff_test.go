@@ -87,6 +87,7 @@ func briefStep(t *testing.T, page, org string) string {
 // box labelled with each host's sites, and one hand-off button per site,
 // each to its host's own org; a second org's brief links to that org.
 func TestAIBriefHandoffs(t *testing.T) {
+	t.Parallel()
 	fd := newFakeDiscord(t)
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.Agents = []handoff.Agent{fd.agent("pr-bot", testBotID)}
@@ -143,6 +144,7 @@ func TestAIBriefHandoffs(t *testing.T) {
 // Without agents there are no buttons, and a brief stored before commands
 // knew their sites still renders, offering each of the host's sites.
 func TestAIBriefHandoffsOldAndOff(t *testing.T) {
+	t.Parallel()
 	old := `{"summary":"s","actions":[{"title":"Update Laravel on web-01","why":"x","host":"web-01","command":"` + laravelFix + `"}]}`
 	stored := func(e *env, orgID int64) {
 		id, err := e.st.StartAIRun(t.Context(), orgID, 0, store.AIBrief, "user:1", "demo", testNow, time.Minute, time.Hour)
@@ -178,6 +180,7 @@ func TestAIBriefHandoffsOldAndOff(t *testing.T) {
 
 // Two hosts with a site of the same name: those buttons name the host too.
 func TestAIHandoffSameSiteName(t *testing.T) {
+	t.Parallel()
 	h := func(name string) handoffHost {
 		return handoffHost{Org: "acme", Host: report.Host{Name: name,
 			Sites:    []report.Site{{Root: "/var/www/a", ServerNames: []string{"example.com"}}, {Root: "/var/www/b", ServerNames: []string{name + ".example.dev"}}},
@@ -200,6 +203,7 @@ func TestAIHandoffSameSiteName(t *testing.T) {
 // known repository keeps its own. The host page groups the same way, a
 // viewer gets none, and the rate limit holds per repository too.
 func TestAIBriefHandoffsByRepo(t *testing.T) {
+	t.Parallel()
 	fd := newFakeDiscord(t)
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.Agents = []handoff.Agent{fd.agent("pr-bot", testBotID)}
@@ -304,6 +308,7 @@ func TestAIBriefHandoffsByRepo(t *testing.T) {
 // findings, then a production one, then the first by name; the tooltip
 // says when the sites aren't on the same versions.
 func TestAIHandoffRepresentative(t *testing.T) {
+	t.Parallel()
 	const two = "composer update laravel/framework guzzlehttp/guzzle --with-dependencies"
 	site := func(root, name string) report.Site { return report.Site{Root: root, ServerNames: []string{name}} }
 	fix := func(root, pkg, installed string) report.Finding {

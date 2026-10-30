@@ -15,6 +15,7 @@ import (
 // the hub's only writer connection for the 5s busy timeout, as a big
 // first report or a findings recount does.
 func TestPagesRenderDuringLongWrite(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seed()
 	ctx := t.Context()

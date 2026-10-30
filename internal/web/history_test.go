@@ -9,6 +9,7 @@ import (
 )
 
 func TestChangesAndDriftPages(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seed()
 	if w := e.get("/hosts/acme/web-01/changes", signedIn(e)); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "Changes on web-01") {

@@ -70,6 +70,7 @@ func step(title, why, host, cmd string) ai.Action {
 }
 
 func TestAIHostCard(t *testing.T) {
+	t.Parallel()
 	fa := &fakeAI{}
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.AI = fa })
 	host := e.seed()
@@ -125,6 +126,7 @@ func TestAIHostCard(t *testing.T) {
 }
 
 func TestAIFailedRun(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.AI = &fakeAI{} })
 	host := e.seed()
 	id, _ := e.st.StartAIRun(t.Context(), host.OrgID, host.ID, store.AIHost, "user:1", "6.1 sol", testNow, time.Minute, time.Hour)
@@ -141,6 +143,7 @@ func TestAIFailedRun(t *testing.T) {
 }
 
 func TestAIBrief(t *testing.T) {
+	t.Parallel()
 	fa := &fakeAI{}
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.AI = fa })
 	host := e.seed()
@@ -165,6 +168,7 @@ func TestAIBrief(t *testing.T) {
 }
 
 func TestAIOff(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seed()
 	if strings.Contains(e.get("/", signedIn(e)).Body.String(), "ai-brief") || strings.Contains(e.get("/hosts/acme/web-01", signedIn(e)).Body.String(), "ai-triage") {
@@ -179,6 +183,7 @@ func TestAIOff(t *testing.T) {
 // A brief stored before steps had several hosts (one "host" and
 // "command", notes as one string) still renders, its host shown once.
 func TestAIBriefOldShape(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.AI = &fakeAI{} })
 	host := e.seed()
 	id, err := e.st.StartAIRun(t.Context(), host.OrgID, 0, store.AIBrief, "user:1", "demo", testNow, time.Minute, time.Hour)
@@ -209,6 +214,7 @@ func TestAIBriefOldShape(t *testing.T) {
 // One fix on several hosts: the title once, each host once, and the
 // commands grouped by host when they differ.
 func TestAIBriefStepHosts(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.AI = &fakeAI{} })
 	host := e.seed()
 	storeRun(t, e.st, host.OrgID, 0, ai.Result{Summary: "s", Actions: []ai.Action{{

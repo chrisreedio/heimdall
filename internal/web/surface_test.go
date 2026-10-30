@@ -16,6 +16,7 @@ func cfOn(c *Config) { c.Cloudflare = true }
 func idCell(name string) string { return `<td class="sf-name"><span class="id">` + name + `</span>` }
 
 func TestSurfacePageCloudflareOff(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seedCloudflare() // stored, but [cloudflare] is off: ignored
 	w := e.get("/surface", signedIn(e))
@@ -37,6 +38,7 @@ func TestSurfacePageCloudflareOff(t *testing.T) {
 }
 
 func TestSurfacePageCloudflareOn(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, cfOn)
 	acme, other := e.seedCloudflare()
 	ctx := t.Context()
@@ -82,6 +84,7 @@ func TestSurfacePageCloudflareOn(t *testing.T) {
 }
 
 func TestSurfacePageScoping(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, cfOn)
 	acme, other := e.seedCloudflare()
 	e.st.AddSurfaceChanges(t.Context(), []store.SurfaceChange{
@@ -127,6 +130,7 @@ func TestSurfacePageScoping(t *testing.T) {
 }
 
 func TestSurfaceLines(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, cfOn)
 	e.seedCloudflare()
 	b := e.get("/hosts/acme/app-01", signedIn(e)).Body.String()

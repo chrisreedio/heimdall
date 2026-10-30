@@ -9,6 +9,7 @@ import (
 )
 
 func TestHostPageChangeWatch(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seed()
 	if body := e.get("/hosts/acme/web-01", signedIn(e)).Body.String(); strings.Contains(body, "change watch") {

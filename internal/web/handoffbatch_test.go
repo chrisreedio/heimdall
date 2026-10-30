@@ -20,6 +20,7 @@ import (
 // names only one of them: the command lists all three, so all three get a
 // button labelled by repository, plus "All 3".
 func TestAIHandoffCommandSitesWin(t *testing.T) {
+	t.Parallel()
 	const fix = "composer update livewire/livewire --with-dependencies"
 	var sites []report.Site
 	var findings []report.Finding
@@ -104,6 +105,7 @@ func batchForm(t *testing.T, page string) url.Values {
 }
 
 func TestHandoffBatch(t *testing.T) {
+	t.Parallel()
 	e, fd, web1, path := batchEnv(t)
 	w := e.get(path, signedIn(e))
 	page := html.UnescapeString(w.Body.String())
@@ -161,6 +163,7 @@ func TestHandoffBatch(t *testing.T) {
 }
 
 func TestHandoffBatchTargetAndChecks(t *testing.T) {
+	t.Parallel()
 	e, _, web1, path := batchEnv(t)
 	// Each branch: acme/b's site is on dev, so it targets dev; the others
 	// have no known branch and stay on their default branch.

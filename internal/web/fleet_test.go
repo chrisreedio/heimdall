@@ -48,6 +48,7 @@ func tileN(t *testing.T, body, href string) string {
 }
 
 func TestDashboardAttention(t *testing.T) {
+	t.Parallel()
 	e, _ := fleetEnv(t)
 	body := e.get("/", signedIn(e)).Body.String()
 	if n := strings.Count(body, `<a class="tile`); n != 8 {
@@ -86,6 +87,7 @@ func TestDashboardAttention(t *testing.T) {
 }
 
 func TestDashboardEmptyFleet(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.st.CreateOrg(t.Context(), "test", "acme", "Acme")
 	body := e.get("/", signedIn(e)).Body.String()
@@ -96,6 +98,7 @@ func TestDashboardEmptyFleet(t *testing.T) {
 }
 
 func TestHostsFilters(t *testing.T) {
+	t.Parallel()
 	e, _ := fleetEnv(t)
 	names := func(path string) string {
 		t.Helper()
@@ -136,6 +139,7 @@ func TestHostsFilters(t *testing.T) {
 }
 
 func TestHostsRespectScope(t *testing.T) {
+	t.Parallel()
 	e, web := fleetEnv(t)
 	e.auth.viewer = &auth.Viewer{UserID: 2, Email: "bob@example.com", SessionToken: goodToken,
 		Scope: store.Scope{Orgs: map[int64]store.Role{web.OrgID: store.RoleViewer}}}
@@ -151,6 +155,7 @@ func TestHostsRespectScope(t *testing.T) {
 
 // The dashboard's SQL tallies agree with counting every finding.
 func TestCountsOnlyMatchesFullReport(t *testing.T) {
+	t.Parallel()
 	e, _ := fleetEnv(t)
 	ctx := t.Context()
 	full, err := report.Build(ctx, e.st, report.Filter{Scope: store.AllScope}, testNow)
@@ -181,6 +186,7 @@ func TestCountsOnlyMatchesFullReport(t *testing.T) {
 }
 
 func TestCommas(t *testing.T) {
+	t.Parallel()
 	for n, want := range map[int]string{0: "0", 999: "999", 1000: "1,000", 14766: "14,766", 1234567: "1,234,567", -1500: "-1,500"} {
 		if got := commas(n); got != want {
 			t.Errorf("commas(%d) = %q", n, got)

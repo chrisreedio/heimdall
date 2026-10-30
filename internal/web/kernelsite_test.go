@@ -14,6 +14,7 @@ import (
 // A step about one site offers a hand-off for that site only, even when
 // another site has fixable findings in the same packages.
 func TestAIHandoffNamesItsSite(t *testing.T) {
+	t.Parallel()
 	a, b := "/home/forge/affiliates.example.dev/current", "/home/forge/shop.example.com/current"
 	h := report.Host{Findings: []report.Finding{
 		{Site: a, Package: "laravel/framework", Version: "12.64.0", Fixed: "12.68.0", Advisory: "GHSA-aaaa-bbbb-cccc"},
@@ -40,6 +41,7 @@ func TestAIHandoffNamesItsSite(t *testing.T) {
 // Findings on an old kernel that isn't running stay out of the upgrade
 // command (upgrading never clears them); a removal command clears them.
 func TestOldKernelCommands(t *testing.T) {
+	t.Parallel()
 	installed := pending("linux-aws", "linux-image-aws", "openssl")
 	list := []report.Finding{
 		{Package: "linux-aws-6.17", Binaries: []string{"linux-image-6.17.0-1009-aws"}, Fixed: "6.17.0-1017.17", KEV: true, NotRunning: true, KernelStatus: kernel.StatusNotRunning},

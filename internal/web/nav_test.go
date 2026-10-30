@@ -11,6 +11,7 @@ import (
 )
 
 func TestNavPerm(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name string
 		v    auth.Viewer
@@ -29,6 +30,7 @@ func TestNavPerm(t *testing.T) {
 }
 
 func TestNavCountsCached(t *testing.T) {
+	t.Parallel()
 	var c navCache
 	c.byID = map[int64]navEntry{7: {at: time.Now(), c: navCounts{Anomalies: 3}}}
 	c.forget(7)

@@ -47,6 +47,7 @@ func (e *env) adminPost(action string, form url.Values) *httptest.ResponseRecord
 }
 
 func TestAdminPageAccess(t *testing.T) {
+	t.Parallel()
 	e := adminEnv(t)
 	w := e.get("/admin/users", signedIn(e))
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "bob@example.com") ||
@@ -72,6 +73,7 @@ func TestAdminPageAccess(t *testing.T) {
 }
 
 func TestAdminActionsNeedCSRF(t *testing.T) {
+	t.Parallel()
 	e := adminEnv(t)
 	form := url.Values{"email": {"bob@example.com"}, "org": {"acme"}, "role": {"viewer"}}
 	if w := e.post("/admin/users/grant", form, signedIn(e), origin("http://127.0.0.1:8080")); w.Code != http.StatusForbidden {
@@ -87,6 +89,7 @@ func TestAdminActionsNeedCSRF(t *testing.T) {
 }
 
 func TestAdminGrantRevokeDisable(t *testing.T) {
+	t.Parallel()
 	e := adminEnv(t)
 	ctx := t.Context()
 	w := e.adminPost("grant", url.Values{"email": {"bob@example.com"}, "org": {"acme"}, "role": {"operator"}})
@@ -148,6 +151,7 @@ func TestAdminGrantRevokeDisable(t *testing.T) {
 }
 
 func TestAdminAddEntraUser(t *testing.T) {
+	t.Parallel()
 	e := adminEnv(t)
 	w := e.adminPost("entra", url.Values{"tenant": {testTenant}, "email": {"Carol@Example.com"}, "name": {"Carol"}, "admin": {"on"}})
 	if w.Code != http.StatusSeeOther {
@@ -173,6 +177,7 @@ func TestAdminAddEntraUser(t *testing.T) {
 }
 
 func TestAdminDeleteUser(t *testing.T) {
+	t.Parallel()
 	e := adminEnv(t)
 	ctx := t.Context()
 	del := func(id string, confirm bool) *httptest.ResponseRecorder {
@@ -266,6 +271,7 @@ func (e *env) seedOrg(org, host string) {
 }
 
 func TestScopeLimitsWhatViewersSee(t *testing.T) {
+	t.Parallel()
 	var gotScope store.Scope
 	sf := func(_ context.Context, q string, sc store.Scope) (*search.Result, error) {
 		gotScope = sc
@@ -300,6 +306,7 @@ func TestScopeLimitsWhatViewersSee(t *testing.T) {
 }
 
 func TestEmptyScopeMessage(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seedOrg("acme", "acme-web")
 	e.auth.viewer = &auth.Viewer{UserID: 2, Email: "new@example.com", SessionToken: goodToken}

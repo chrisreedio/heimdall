@@ -14,6 +14,7 @@ import (
 )
 
 func TestFindingsView(t *testing.T) {
+	t.Parallel()
 	var list []report.Finding
 	for i := range 120 { // 120 packages x 2 findings
 		sev := []string{"low", "medium", "high", "critical"}[i%4]
@@ -101,6 +102,7 @@ func pending(names ...string) report.Pkgs {
 }
 
 func TestFixCommandUsesBinaryNames(t *testing.T) {
+	t.Parallel()
 	list := []report.Finding{
 		{Package: "openssl", Binaries: []string{"libssl3", "openssl"}, Fixed: "3.0.2-0ubuntu1.20"},
 		{Package: "glibc", Binaries: []string{"libc6"}, Fixed: "2.35-0ubuntu3.9", FixPending: true},
@@ -118,6 +120,7 @@ func TestFixCommandUsesBinaryNames(t *testing.T) {
 }
 
 func TestFixCommandKernel(t *testing.T) {
+	t.Parallel()
 	set := pending
 	awsKernel := report.Finding{Package: "linux-aws-6.17", Fixed: "6.17.0-1019.19~24.04.1",
 		Binaries: []string{"linux-aws-6.17-headers-6.17.0-1009", "linux-headers-6.17.0-1009-aws", "linux-modules-6.17.0-1009-aws", "linux-tools-6.17.0-1009-aws"}}
@@ -164,6 +167,7 @@ func TestFixCommandKernel(t *testing.T) {
 }
 
 func TestDayAgo(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 25, 15, 0, 0, 0, time.UTC)
 	at := func(y int, m time.Month, d int) *time.Time {
 		v := time.Date(y, m, d, 9, 0, 0, 0, time.UTC)
@@ -186,6 +190,7 @@ func TestDayAgo(t *testing.T) {
 }
 
 func TestFullDateKeepsPlainDates(t *testing.T) {
+	t.Parallel()
 	fullDate := funcs["fullDate"].(func(*time.Time) string)
 	d := time.Date(2025, 2, 4, 0, 0, 0, 0, time.UTC) // a lifecycle date
 	if got := fullDate(&d); got != "Tuesday, February 4, 2025" {
@@ -196,6 +201,7 @@ func TestFullDateKeepsPlainDates(t *testing.T) {
 // With nothing fixable or worth watching, the host page says so and hides
 // the rest; an EPSS score crossing the bar brings a finding back.
 func TestHostPageCalm(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	host := e.seed()
 	ctx := t.Context()
@@ -239,6 +245,7 @@ func TestHostPageCalm(t *testing.T) {
 // Instants carry their UTC time for app.js to redraw in the viewer's time
 // zone, with UTC as the tooltip; plain dates and attributes stay text.
 func TestLocalTimes(t *testing.T) {
+	t.Parallel()
 	at := time.Date(2026, 10, 29, 19, 14, 0, 0, time.UTC)
 	if got, want := string(tsHTML(at)), `<time datetime="2026-10-29T19:14:00Z" data-ts="datetime" title="Oct 29, 2026 7:14 PM UTC">Oct 29, 2026 7:14 PM UTC</time>`; got != want {
 		t.Errorf("tsHTML = %s\nwant %s", got, want)

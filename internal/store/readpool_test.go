@@ -18,6 +18,7 @@ import (
 // through the read pool, so they finish anyway and see the last commit,
 // not the write's uncommitted rows.
 func TestReadsDontWaitForWriter(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	if _, err := s.CreateOrg(ctx, "test", "acme", "Acme"); err != nil {
@@ -84,6 +85,7 @@ func TestReadsDontWaitForWriter(t *testing.T) {
 // The read pool can't write, not even temp tables (which is why the
 // methods that use them stay on the writer).
 func TestReadPoolIsReadOnly(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	for _, q := range []string{
