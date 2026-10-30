@@ -96,7 +96,7 @@ func TestTailscaleSyncAndStatus(t *testing.T) {
 	}
 
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	if out := c.ok("tailscale", "status"); !strings.Contains(out, "Tailscale: off") {
 		t.Errorf("status when off: %s", out)
 	}

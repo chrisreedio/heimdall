@@ -8,8 +8,9 @@ import (
 )
 
 func TestIPCommands(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	c.ok("migrate")
 	c.ok("org", "create", "acme")
 

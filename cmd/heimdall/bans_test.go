@@ -53,8 +53,9 @@ func TestBansSetToken(t *testing.T) {
 }
 
 func TestBansCommands(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	c.ok("migrate")
 	c.ok("org", "create", "acme")
 	c.ok("env", "create", "--org", "acme", "prod")

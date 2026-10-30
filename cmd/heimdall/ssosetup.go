@@ -139,7 +139,7 @@ app's Overview, and create a secret under Certificates & secrets.
 	}
 	var secret string
 	if *secretStdin {
-		b, err := io.ReadAll(io.LimitReader(stdin, 4097))
+		b, err := io.ReadAll(io.LimitReader(a.stdin, 4097))
 		if err != nil {
 			return err
 		}

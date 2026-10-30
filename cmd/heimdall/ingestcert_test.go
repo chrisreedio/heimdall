@@ -76,6 +76,7 @@ func TestIngestCert(t *testing.T) {
 }
 
 func TestReadBlock(t *testing.T) {
+	t.Parallel()
 	done := func(l string) bool { return strings.TrimSpace(l) == "-----END X-----" }
 	if _, err := readBlock(bufioReader("a\nb\n"), done); err == nil {
 		t.Error("missing END accepted")

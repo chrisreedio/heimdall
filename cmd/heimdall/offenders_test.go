@@ -13,8 +13,9 @@ import (
 )
 
 func TestOffendersCommand(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	c.ok("migrate")
 	c.ok("org", "create", "acme")
 	c.ok("env", "create", "--org", "acme", "prod")

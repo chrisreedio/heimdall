@@ -3,22 +3,26 @@
 package main
 
 import (
-	"io"
-
 	"bytes"
 	"errors"
-	"filippo.io/age"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"filippo.io/age"
+
+	"github.com/realmwatch/heimdall/internal/config"
 	"github.com/realmwatch/heimdall/internal/secret"
+	"github.com/realmwatch/heimdall/internal/store/storetest"
 )
 
 type cli struct {
 	t      *testing.T
 	config string
+
+	newTOTPSecret func() []byte // for commands run with c.user
 }
 
 func newCLI(t *testing.T) *cli {
@@ -40,7 +44,19 @@ func (c *cli) ok(args ...string) string {
 	return out
 }
 
+// init writes what c.ok("init") would, with a copy of a database migrated
+// once per test binary: migrating takes most of a second under the race
+// detector. TestEndToEnd runs the real init.
+func (c *cli) init() {
+	c.t.Helper()
+	if err := writeExclusive(c.config, config.Template("heimdall.db"), 0o640); err != nil {
+		c.t.Fatal(err)
+	}
+	storetest.WriteFile(c.t, filepath.Join(filepath.Dir(c.config), "heimdall.db"))
+}
+
 func TestEndToEnd(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
 	c.ok("init")
 
@@ -89,8 +105,9 @@ func TestEndToEnd(t *testing.T) {
 }
 
 func TestUsageErrors(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	for _, args := range [][]string{
 		{},
 		{"bogus"},
@@ -108,8 +125,9 @@ func TestUsageErrors(t *testing.T) {
 // With one org and one env (the usual one-install-per-org setup), --org
 // and --env can be left out; with several, they're required.
 func TestDefaultOrgAndEnv(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	if _, _, err := c.run("env", "create", "prod"); err == nil || !strings.Contains(err.Error(), "org create") {
 		t.Fatalf("no orgs: %v", err)
 	}
@@ -132,6 +150,7 @@ func TestDefaultOrgAndEnv(t *testing.T) {
 }
 
 func TestCommandsNeedInit(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
 	if _, _, err := c.run("org", "list"); err == nil {
 		t.Fatal("expected error without config")
@@ -139,8 +158,9 @@ func TestCommandsNeedInit(t *testing.T) {
 }
 
 func TestEntraUserAndRoles(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	c.ok("org", "create", "acme")
 	if _, _, err := c.run("user", "create", "--entra", "alice@example.com"); err == nil || !strings.Contains(err.Error(), "--tenant") {
 		t.Fatalf("missing tenant: %v", err)
@@ -187,8 +207,9 @@ func TestEntraSecret(t *testing.T) {
 }
 
 func TestBackupRoundTrip(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	c.ok("org", "create", "acme")
 	id, err := age.GenerateX25519Identity()
 	if err != nil {
@@ -218,6 +239,7 @@ func TestBackupRoundTrip(t *testing.T) {
 }
 
 func TestWriteQR(t *testing.T) {
+	t.Parallel()
 	var buf bytes.Buffer
 	uri := "otpauth://totp/Heimdall:you@example.com?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=Heimdall&algorithm=SHA1&digits=6&period=30"
 	if err := writeQR(&buf, uri); err != nil {

@@ -31,6 +31,7 @@ func oldConfig(t *testing.T, path, database string, drop ...string) string {
 }
 
 func TestConfigUpdate(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
 	old := oldConfig(t, c.config, "heimdall.db", "news", "ai", "notify")
 
@@ -76,8 +77,9 @@ func TestConfigUpdate(t *testing.T) {
 }
 
 func TestConfigUpdateUpToDate(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	before, _ := os.ReadFile(c.config)
 	c.ok("config", "update")
 	after, _ := os.ReadFile(c.config)
@@ -90,6 +92,7 @@ func TestConfigUpdateUpToDate(t *testing.T) {
 }
 
 func TestConfigUpdateInvalidLeavesFile(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
 	old := oldConfig(t, c.config, "heimdall.db", "ai")
 	old += "bogus = 1\n" // an unknown key: the result won't load
@@ -106,8 +109,9 @@ func TestConfigUpdateInvalidLeavesFile(t *testing.T) {
 }
 
 func TestMigrateUpdatesConfig(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	oldConfig(t, c.config, "heimdall.db", "news", "ai")
 	_, errOut, err := c.run("migrate")
 	if err != nil || !strings.Contains(errOut, "config: added [news], [ai] (off)\n") {
@@ -116,12 +120,13 @@ func TestMigrateUpdatesConfig(t *testing.T) {
 }
 
 func TestMigrateUnwritableConfigHints(t *testing.T) {
+	t.Parallel()
 	if os.Geteuid() == 0 {
 		t.Skip("root can write anywhere")
 	}
 	c := newCLI(t)
 	other := newCLI(t)
-	other.ok("init")
+	other.init()
 	db := filepath.Join(filepath.Dir(other.config), "heimdall.db")
 	old := oldConfig(t, c.config, db, "ai")
 	dir := filepath.Dir(c.config)

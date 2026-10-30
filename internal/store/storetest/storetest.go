@@ -32,20 +32,27 @@ func New(t testing.TB) *store.Store {
 // NewPath is New, also returning the database file's path.
 func NewPath(t testing.TB) (*store.Store, string) {
 	t.Helper()
-	once.Do(func() { template, initErr = build() })
-	if initErr != nil {
-		t.Fatal(initErr)
-	}
 	path := filepath.Join(t.TempDir(), "h.db")
-	if err := os.WriteFile(path, template, 0o600); err != nil {
-		t.Fatal(err)
-	}
+	WriteFile(t, path)
 	st, err := store.Open(t.Context(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
 	return st, path
+}
+
+// WriteFile writes a fresh, migrated database at path (owner-only), for
+// tests that open it some other way, such as through a hub config file.
+func WriteFile(t testing.TB, path string) {
+	t.Helper()
+	once.Do(func() { template, initErr = build() })
+	if initErr != nil {
+		t.Fatal(initErr)
+	}
+	if err := os.WriteFile(path, template, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // build migrates an empty database and returns the file's bytes. Closing

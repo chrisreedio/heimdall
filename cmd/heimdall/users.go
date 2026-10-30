@@ -18,12 +18,9 @@ import (
 	"github.com/realmwatch/heimdall/internal/store"
 )
 
-// Overridable in tests: where passwords and codes are read from, and how
-// TOTP secrets are generated.
-var (
-	stdin         io.Reader = os.Stdin
-	newTOTPSecret           = auth.NewTOTPSecret
-)
+// stdin is what run gives commands to read passwords, codes and secrets
+// from. Overridable in tests.
+var stdin io.Reader = os.Stdin
 
 const totpIssuer = "Heimdall"
 
@@ -35,9 +32,9 @@ type input struct {
 }
 
 func newInput(a *app, passwordStdin bool) (*input, error) {
-	in := &input{a: a, r: bufio.NewReader(stdin)}
+	in := &input{a: a, r: bufio.NewReader(a.stdin)}
 	if !passwordStdin {
-		f, ok := stdin.(*os.File)
+		f, ok := a.stdin.(*os.File)
 		if !ok || !isTerminal(f) {
 			return nil, errors.New("stdin is not a terminal; use --password-stdin to pipe the password (and then the code)")
 		}
@@ -50,7 +47,7 @@ func (in *input) line(prompt string, hidden bool) (string, error) {
 	if in.terminal {
 		fmt.Fprint(in.a.stderr, prompt)
 		if hidden {
-			s, err := readHidden(stdin.(*os.File), in.r)
+			s, err := readHidden(in.a.stdin.(*os.File), in.r)
 			fmt.Fprintln(in.a.stderr)
 			return s, err
 		}
@@ -86,7 +83,11 @@ func (in *input) newPassword() (string, error) {
 // enrollTOTP shows a new secret and requires a valid code before returning
 // it, so nobody ends up with an account they can't sign in to.
 func (in *input) enrollTOTP(email string) (secret []byte, step int64, err error) {
-	secret = newTOTPSecret()
+	if in.a.newTOTPSecret != nil {
+		secret = in.a.newTOTPSecret()
+	} else {
+		secret = auth.NewTOTPSecret()
+	}
 	uri := auth.TOTPURI(totpIssuer, email, secret)
 	fmt.Fprintf(in.a.stderr, "\nAdd this account to your authenticator app (1Password, Aegis, Google Authenticator, ...)")
 	// Draw a scannable code only on a real terminal (never into a file or pipe).

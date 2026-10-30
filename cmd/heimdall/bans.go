@@ -163,7 +163,7 @@ func cmdBansSetToken(a *app, args []string) error {
 	}
 	var token string
 	if *fromStdin {
-		b, err := io.ReadAll(io.LimitReader(stdin, 4097))
+		b, err := io.ReadAll(io.LimitReader(a.stdin, 4097))
 		if err != nil {
 			return err
 		}

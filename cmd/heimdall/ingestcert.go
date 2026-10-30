@@ -139,7 +139,7 @@ func pemInput(a *app, in *input, path string, hidden bool, prompt string, done f
 	}
 	fmt.Fprintln(a.stderr, prompt)
 	if hidden && in.terminal {
-		s, err := readHiddenBlock(stdin.(*os.File), in.r, done)
+		s, err := readHiddenBlock(a.stdin.(*os.File), in.r, done)
 		fmt.Fprintln(a.stderr)
 		return s, err
 	}
