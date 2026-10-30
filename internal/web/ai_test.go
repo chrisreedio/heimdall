@@ -21,7 +21,7 @@ type fakeAI struct {
 	err           error
 }
 
-func (f *fakeAI) Deployment() string   { return "6.1 sol" }
+func (f *fakeAI) Deployment() string   { return "my-deployment" }
 func (f *fakeAI) Stale() time.Duration { return 3 * time.Minute }
 func (f *fakeAI) StartHost(_ context.Context, actor string, org store.Org, h store.IngestHost) error {
 	f.hosts = append(f.hosts, actor+" "+org.Slug+"/"+h.Name)
@@ -39,7 +39,7 @@ func storeRun(t *testing.T, st *store.Store, orgID, hostID int64, res ai.Result,
 	if hostID != 0 {
 		kind = store.AIHost
 	}
-	id, err := st.StartAIRun(t.Context(), orgID, hostID, kind, "user:1", "6.1 sol", at, time.Minute, time.Hour)
+	id, err := st.StartAIRun(t.Context(), orgID, hostID, kind, "user:1", "my-deployment", at, time.Minute, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestAIHostCard(t *testing.T) {
 	storeRun(t, e.st, host.OrgID, host.ID, hostile(), testNow.Add(-3*time.Hour))
 	page = e.get("/hosts/acme/web-01", signedIn(e)).Body.String()
 	for _, want := range []string{"&lt;script&gt;alert(", "Patch &lt;img src=x onerror=alert(1)&gt;", "Regenerate",
-		`data-copy="ai-host-0-0"`, "sudo apt-get install --only-upgrade libssl3 openssl", "by 6.1 sol"} {
+		`data-copy="ai-host-0-0"`, "sudo apt-get install --only-upgrade libssl3 openssl", "by my-deployment"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("host page lacks %q", want)
 		}
@@ -129,14 +129,14 @@ func TestAIFailedRun(t *testing.T) {
 	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.AI = &fakeAI{} })
 	host := e.seed()
-	id, _ := e.st.StartAIRun(t.Context(), host.OrgID, host.ID, store.AIHost, "user:1", "6.1 sol", testNow, time.Minute, time.Hour)
+	id, _ := e.st.StartAIRun(t.Context(), host.OrgID, host.ID, store.AIHost, "user:1", "my-deployment", testNow, time.Minute, time.Hour)
 	e.st.FinishAIRun(t.Context(), id, "error", "", 0, 0, ai.ErrRateLimited.String(), nil, testNow)
 	page := e.get("/hosts/acme/web-01", signedIn(e)).Body.String()
 	if !strings.Contains(page, "rate limiting") || !strings.Contains(page, "ai-error") || strings.Contains(page, "goroutine") {
 		t.Error("calm error state missing")
 	}
 	// A run in progress shows the working state.
-	e.st.StartAIRun(t.Context(), host.OrgID, host.ID, store.AIHost, "user:1", "6.1 sol", testNow.Add(2*time.Minute), time.Minute, time.Hour)
+	e.st.StartAIRun(t.Context(), host.OrgID, host.ID, store.AIHost, "user:1", "my-deployment", testNow.Add(2*time.Minute), time.Minute, time.Hour)
 	if page := e.get("/hosts/acme/web-01", signedIn(e)).Body.String(); !strings.Contains(page, "data-ai-running") || !strings.Contains(page, "disabled") {
 		t.Error("running state missing")
 	}

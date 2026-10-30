@@ -138,7 +138,7 @@ type hostBody struct {
 	Pending         []store.InventoryPackage
 	PendingSecurity int
 	OSView          findingsView
-	CollectorBehind bool // the host's collector is older than this hub's release
+	CollectorBehind bool // upgrading the host's collector would change it (updates.CollectorChanged)
 	CollectorKnown  bool // this hub is a release build, so the comparison means something
 	ShowAll         bool // show every finding instead of the first findingsCap
 	Packages        []store.InventoryPackage
@@ -291,7 +291,7 @@ func (s *server) hostPage(w http.ResponseWriter, r *http.Request, v *auth.Viewer
 	body.OSView.OldKernelCmd = oldKernelCommand(body.Report.OldKernels, body.OSView.OldKernelFindings)
 	if v := strings.TrimSpace(sum.CollectorVersion); v != "" && releaseTag.MatchString(s.cfg.Version) {
 		body.CollectorKnown = true
-		body.CollectorBehind = updates.Newer(s.cfg.Version, "v"+strings.TrimPrefix(v, "v"))
+		body.CollectorBehind = updates.CollectorBehind(v)
 	}
 	if raw, err := s.st.HostTriggers(ctx, host.ID); err == nil {
 		if t, err := triggers.Parse(raw); err == nil {

@@ -69,7 +69,7 @@ func TestAITestAndStatus(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "heimdall.toml")
 	// httptest serves https on 127.0.0.1, which validation accepts.
-	os.WriteFile(cfgPath, []byte("database = \"h.db\"\n[ai]\nenabled = true\nendpoint = \""+srv.URL+"\"\ndeployment = \"6.1 sol\"\n"), 0o600)
+	os.WriteFile(cfgPath, []byte("database = \"h.db\"\n[ai]\nenabled = true\nendpoint = \""+srv.URL+"\"\ndeployment = \"my-deployment\"\n"), 0o600)
 	var out, errb bytes.Buffer
 	keyPath := filepath.Join(dir, "ai-key")
 	os.WriteFile(keyPath, []byte("sekret-key\n"), 0o600)

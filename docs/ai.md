@@ -17,7 +17,7 @@ The output is **advisory text only**. Heimdall never runs a command a model sugg
    [ai]
    enabled    = true
    endpoint   = "https://myres.openai.azure.com"   # https only; optionally ending in /openai/v1
-   deployment = "6.1 sol"                          # your deployment's name, exactly
+   deployment = "my-deployment"                    # your deployment's name, exactly
    api        = "responses"                        # or "chat"
    ```
 3. Store the key. It never goes in the config file:

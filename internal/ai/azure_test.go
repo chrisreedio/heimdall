@@ -43,7 +43,7 @@ func fakeAzure(t *testing.T, api string, handle func(w http.ResponseWriter, body
 		handle(w, body, n)
 	}))
 	t.Cleanup(srv.Close)
-	return &Azure{Endpoint: srv.URL, DeploymentName: "6.1 sol", API: api, Key: testKey, MaxOutputTokens: 4000,
+	return &Azure{Endpoint: srv.URL, DeploymentName: "my-deployment", API: api, Key: testKey, MaxOutputTokens: 4000,
 		HTTP: srv.Client(), MaxRetryWait: 50 * time.Millisecond}, &calls
 }
 
@@ -75,7 +75,7 @@ var testReq = Request{System: "sys", User: "user", SchemaName: SchemaName, Schem
 
 func TestAzureResponses(t *testing.T) {
 	a, _ := fakeAzure(t, "responses", func(w http.ResponseWriter, body map[string]any, _ int) {
-		if body["model"] != "6.1 sol" || body["instructions"] != "sys" || body["max_output_tokens"] != float64(4000) || body["store"] != false {
+		if body["model"] != "my-deployment" || body["instructions"] != "sys" || body["max_output_tokens"] != float64(4000) || body["store"] != false {
 			t.Errorf("body: %v", body)
 		}
 		for _, k := range []string{"temperature", "top_p", "max_tokens", "reasoning"} {

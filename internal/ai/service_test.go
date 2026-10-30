@@ -68,7 +68,7 @@ type fakeProvider struct {
 	err  error
 }
 
-func (f *fakeProvider) Deployment() string { return "6.1 sol" }
+func (f *fakeProvider) Deployment() string { return "my-deployment" }
 func (f *fakeProvider) Complete(_ context.Context, r Request) (*Response, error) {
 	f.got = append(f.got, r)
 	if f.err != nil {
