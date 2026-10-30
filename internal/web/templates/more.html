@@ -7,6 +7,7 @@
   {{template "sidenav" .}}
   <div class="side-label">Account</div>
   {{template "navitem" (navItem . "/account/devices" "devices" "Devices" 0 "")}}
+  {{template "navitem" (dict "Href" "/account/notifications" "Icon" "alerts" "Label" "Notifications" "Current" (eq .Nav "notifications"))}}
 </nav>
 <div class="more-foot card">
   <span class="muted small">{{.Viewer.Email}}</span>

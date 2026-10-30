@@ -34,7 +34,7 @@ On a phone, or any screen narrower than about 760 pixels, a tab bar at the botto
 - **Hosts:** the host list, and each host's page.
 - **Alerts:** open anomalies, privileged access from unknown addresses in the last 7 days, and incidents in the news that affect your hosts, newest first. Operators acknowledge or mute an anomaly right there (see below).
 - **Defense:** for operators, ban proposals waiting, to approve or dismiss there, and the bans in force with when each ends; then repeat offenders from the failed-login watch.
-- **More:** every other page, your devices, the theme switch and sign out.
+- **More:** every other page, your devices and [notifications](#notifications), the theme switch and sign out.
 
 Everything else works as it does on a computer, with the same roles and permissions; the pages are the same pages. Times are shown in the phone's time zone. On a computer, Alerts and Defense are in the sidebar too, under Security and Network.
 
@@ -64,7 +64,37 @@ Every change to the setting is in the audit log (`setting.stepup`), as is every 
 
 **Offline:** when the hub can't be reached (Tailscale is off, or the phone has no signal), the app shows "Can't reach the hub. Is Tailscale connected?" with a **Try again** button, rather than the browser's error page.
 
-**Not yet:** push notifications. Alerts reach you through [Slack, Discord or a webhook](deployment.md#notifications) for now.
+## Notifications
+
+The app can notify your phone (or a computer's browser) when something needs you. The hub sends them itself, with the browser's standard Web Push: there's no relay, no app-store account, and nothing for an admin to set up. Each message is encrypted for the one device that asked for it, so the push service in between (Apple's, Google's, Mozilla's or Microsoft's) sees only ciphertext. They're separate from the [Slack, Discord and webhook alerts](deployment.md#notifications), which keep working as before.
+
+**Turning them on:** open **More → Notifications** (or the link on **Devices**) on the device, and tap **Turn on notifications**. The browser asks for permission; say Allow. **Send a test notification** checks it works. Do this on each device you want notified; **Turn off on this device** stops them there. A device's notifications belong to its sign-in: signing out, revoking the device on **Devices**, or the session ending turns them off, so tick **Keep me signed in on this device** on a phone.
+
+- **iPhone and iPad:** notifications work only in the app added to the Home Screen (iOS and iPadOS 16.4 or later), not in a Safari tab. [Install it](#install-it) first, open it from the Home Screen, then turn them on. The page says so when it's opened in Safari.
+- **Android:** Chrome, Edge, Firefox and Samsung Internet all work, in the installed app or the browser.
+- **Computers:** Chrome, Edge, Firefox and Safari work too, as long as the hub is on HTTPS.
+
+**What you're told about.** Only events in organizations your role lets you see, and never if your account is disabled. For each kind you choose **Immediate**, **Daily digest** or **Off**:
+
+| Event | What it means | Default |
+|---|---|---|
+| Known-exploited finding | A finding that CISA lists as exploited in the wild newly appears on a host. | Immediate |
+| Threat news | An incident being exploited now (see [threat news](threat-news.md)) newly matches one of your hosts. | Immediate |
+| Anomaly | A high or critical anomaly fires, or one the chat alerts always send (change reporting switched off, privileged access outside a window...). The same rule as `[notify] alert_anomalies`. | Immediate |
+| Privileged access from an unknown address | sudo or root SSH from an address nothing is known about ([IP awareness](ip-awareness.md)). | Immediate |
+| Ban proposal | A ban is waiting for an operator's approval (operators only). Tapping it opens Defense at that ban; nothing is approved from the notification itself. | Immediate |
+| Host stopped reporting | No report from a host past the stale threshold. | Immediate |
+| Fleet summary | Hosts with pending security updates, software within 90 days of its end of life, and collectors to upgrade. | Daily digest |
+
+The **daily digest** comes at 8 AM in your time zone: what you set to Daily digest since the last one, and the fleet summary. It isn't sent when there's nothing in it. Several hosts with the same kind of event at once come as one notification ("Known-exploited findings on 5 hosts"), and repeats of the same event on the same host within 10 minutes become one with a count ("3 anomalies on web-01"), replacing the first on your lock screen.
+
+**Quiet hours** (10 PM to 7 AM by default, in your time zone) hold notifications until they end, then deliver them as one ("During quiet hours: 2 anomalies, 1 host stopped reporting"). Known-exploited findings and privileged access from an unknown address come through anyway. The time zone is taken from the browser when you turn notifications on; change it, the hours, or turn quiet hours off on the same page. A digest due during quiet hours waits for them to end.
+
+**Lock-screen privacy.** **Kind and host** (the default) shows what happened and where: "Known-exploited finding on web-01". **Hidden** shows only "Heimdall needs attention" (or your hub's name), and the notification opens the home page. Either way a notification never contains package names, addresses, usernames or an anomaly's own summary: at most the kind of event, a host's name and a count. Tapping one opens the hub's page for it, behind the usual sign-in.
+
+**Egress:** if you limit the hub's outbound traffic, allow HTTPS (443) to the push services of the browsers your people use: `fcm.googleapis.com` (Chrome, Edge and Samsung Internet on Android, Chrome on computers), `*.push.apple.com` (Safari, the iPhone and iPad app), `*.push.services.mozilla.com` (Firefox) and `*.notify.windows.com` (Edge on Windows). The hub accepts subscriptions only on those hosts, over HTTPS, and checks again on every send, so a subscription can't point it anywhere else; its outbound client is allowlisted the same way (`internal/netx`). A push service that answers that a subscription is gone (404 or 410) has it deleted; other failures are retried a couple of times and shown on the Notifications page.
+
+The hub signs its messages with a key pair (VAPID) it makes on first use and keeps in its database; push services see only the public half. Restoring a backup keeps it. A new database means a new key, and each device has to turn notifications on again.
 
 ## What's stored on the phone
 
@@ -78,6 +108,6 @@ A service worker (`/sw.js`) keeps copies of the hub's static files: its styleshe
 
 ## Security notes
 
-- The app is the hub's UI under the same strict Content Security Policy: no inline scripts or styles, nothing from other sites. The policy allows a service worker and a manifest from the hub itself (`worker-src 'self'; manifest-src 'self'`). The service worker's own script gets `connect-src 'self'`, so it can pass the hub's pages through.
+- The app is the hub's UI under the same strict Content Security Policy: no inline scripts or styles, nothing from other sites. The policy allows a service worker and a manifest from the hub itself (`worker-src 'self'; manifest-src 'self'`). The service worker's own script gets `connect-src 'self'`, so it can pass the hub's pages through, and `img-src 'self'` for notifications' icons. The service worker shows a pushed notification and opens only a page of the hub when it's tapped (any other link becomes the home page); it keeps nothing from it.
 - The manifest (`/manifest.webmanifest`), the icons and the offline page are public, as the sign-in page is: they show the hub's name and icons and nothing else.
 - A device session is still a cookie that's `HttpOnly`, `Secure` and `SameSite=Strict`, as normal sessions are. The difference is only how long it lasts.

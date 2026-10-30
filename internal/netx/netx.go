@@ -47,6 +47,26 @@ var (
 	DiscordHosts = []string{"discord.com"}
 )
 
+// PushHosts are the browsers' push services Web Push may reach
+// (internal/push): an exact name, or ".suffix" for any name under one.
+// Chrome, Edge on Android and Samsung Internet use Google's; Safari uses
+// Apple's, Firefox Mozilla's and Edge on Windows Microsoft's.
+var PushHosts = []string{"fcm.googleapis.com", ".push.apple.com", ".push.services.mozilla.com", ".notify.windows.com"}
+
+// PushHost reports whether a lowercased host name is on PushHosts. IP
+// literals never are.
+func PushHost(host string) bool {
+	if net.ParseIP(host) != nil {
+		return false
+	}
+	for _, h := range PushHosts {
+		if host == h || (h[0] == '.' && strings.HasSuffix(host, h) && len(host) > len(h)) {
+			return true
+		}
+	}
+	return false
+}
+
 // ErrNotAllowed is returned for any request outside the allowlist.
 var ErrNotAllowed = errors.New("outbound request not allowed")
 
@@ -59,12 +79,18 @@ type Client struct {
 
 // New returns a client that may only reach the given hosts over HTTPS.
 func New(allowedHosts []string, userAgent string) *Client {
+	return NewMatching(func(host string) bool { return slices.Contains(allowedHosts, host) }, userAgent)
+}
+
+// NewMatching is New with the allowlist as a function of the lowercased
+// host name, for a list with wildcards (PushHost).
+func NewMatching(allowed func(host string) bool, userAgent string) *Client {
 	check := func(r *http.Request) error {
 		scheme := r.URL.Scheme
 		if scheme == "http" && devLoopbackHTTP && isLoopback(r.URL.Hostname()) {
 			scheme = "https" // dev builds only (dev.go): a local fake server on the allowlist
 		}
-		if scheme != "https" || !slices.Contains(allowedHosts, strings.ToLower(r.URL.Hostname())) {
+		if scheme != "https" || !allowed(strings.ToLower(r.URL.Hostname())) {
 			return fmt.Errorf("%w: %s://%s", ErrNotAllowed, r.URL.Scheme, r.URL.Host)
 		}
 		return nil

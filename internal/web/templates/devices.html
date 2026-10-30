@@ -1,7 +1,7 @@
 {{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
 <h1>Devices</h1>
 {{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
-<p class="muted">Where you're signed in: each browser, and the app on each phone. Revoke one you don't recognize or no longer use, and it's signed out at once. Ticking <strong>Keep me signed in on this device</strong> when you sign in keeps that device signed in for 30 days from its last use; otherwise a session ends after {{.Idle}} without use.</p>
+<p class="muted">Where you're signed in: each browser, and the app on each phone. Revoke one you don't recognize or no longer use, and it's signed out at once. Ticking <strong>Keep me signed in on this device</strong> when you sign in keeps that device signed in for 30 days from its last use; otherwise a session ends after {{.Idle}} without use. To get alerts on a device, turn on <a href="/account/notifications">Notifications</a> there.</p>
 {{if .Devices}}<ul class="device-list">{{range .Devices}}
   <li class="card device{{if .Current}} current{{end}}">
     <div class="device-main">
