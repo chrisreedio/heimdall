@@ -328,8 +328,9 @@ func (s *server) banAction(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 	case "unban":
 		err = s.st.Unban(ctx, id, actorOf(v), s.now())
 	}
+	back := backTo(r, "/bans", "/defense")
 	if store.IsBanState(err) {
-		http.Redirect(w, r, fmt.Sprintf("/bans#ban-%d", id), http.StatusSeeOther) // decided meanwhile: show it
+		http.Redirect(w, r, fmt.Sprintf("%s#ban-%d", back, id), http.StatusSeeOther) // decided meanwhile: show it
 		return
 	}
 	if err != nil {
@@ -338,7 +339,17 @@ func (s *server) banAction(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 	}
 	s.log.Info("ban decided", "ban", id, "target", b.Target, "action", action, "by", v.UserID)
 	s.cfg.Bans.Kick()
-	http.Redirect(w, r, fmt.Sprintf("/bans?done=%s#ban-%d", action, id), http.StatusSeeOther)
+	http.Redirect(w, r, fmt.Sprintf("%s?done=%s#ban-%d", back, action, id), http.StatusSeeOther)
+}
+
+// backTo is where an action's redirect goes: the page the form was on,
+// when its "back" field names one of pages (the phone tabs that act too),
+// else def.
+func backTo(r *http.Request, def string, pages ...string) string {
+	if b := r.PostForm.Get("back"); slices.Contains(pages, b) {
+		return b
+	}
+	return def
 }
 
 // banPause flips the "pause all" switch: any operator may pull it.

@@ -216,7 +216,7 @@ Admins can make a hub look like their own on **Admin → Branding** (`/admin/bra
 - **Display name**, up to 30 characters: the sidebar, the sign-in page, browser tabs and the phone app's name. Without one it's `[mcp] name` if you set it, else "Heimdall".
 - **Logo**: a PNG of up to 512 KB, in the sidebar header and on the sign-in page in place of Heimdall's mark. Larger images are scaled to fit 512 pixels.
 - **App icon**: a square PNG, at least 512 × 512 and up to 1 MB. The hub makes the 512, 192, 180 (iPhone home screen) and 32 pixel (browser tab) versions from it.
-- **Accent color**: buttons and highlights, in both themes. The hub refuses a color that wouldn't keep white button text readable (WCAG AA, 4.5:1) or that wouldn't stand out against the dark theme's page (3:1), and says which.
+- **Accent colors**: buttons and highlights, one for the light theme and one for the dark. Each must keep white button text readable (WCAG AA, 4.5:1) and stand out against its theme's page (3:1); the hub refuses one that doesn't, and says which. Pick only the light theme's and the hub makes the dark theme's from it: the same hue, lightened just until it passes in the dark theme. The page shows the color it made; tick **Choose the dark theme's too** to pick it yourself. Without either, the accents are Heimdall's own (`#1f4e8c` light, `#3b6fb6` dark). They reach the pages as `/branding/accent.css`, which sets the light accent and, for the dark theme (chosen in the browser or by the system), the dark one.
 
 Uploads are PNG only. The hub decodes each one and encodes it again before storing it in the database, so only the pixels are kept: no metadata, nothing hidden after the image. The files are served from the hub itself under `/branding/`, with the branding's version in their URL, so browsers cache them until the next change. The sign-in page shows the logo and name, so they're visible to anyone who can reach the UI.
 
@@ -407,4 +407,5 @@ Compact facts about your hosts (names, OS, package names and versions, CVEs, cou
 - [ ] Disk or volume encryption on the hub
 - [ ] Encrypted backups shipped off-box
 - [ ] `auth.local_login = false` once SSO works (break-glass via the CLI)
+- [ ] Step-up codes on (**Admin → Security**) if people act from phones or shared machines; see [The mobile app](mobile.md#step-up-codes)
 - [ ] Egress limited to the feed hosts (firewall or proxy): `api.osv.dev`, `www.cisa.gov`, `endoflife.date`, `api.first.org`, `api.github.com` (update check), `login.microsoftonline.com` with SSO, your `[news]` source hosts (e.g. `pwn.watch`) if threat news is on, your `[ai]` endpoint's host if AI analysis is on, and `hooks.slack.com` / `discord.com` (or your webhook's host) for the notify destinations you use

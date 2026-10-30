@@ -126,6 +126,15 @@ type AuthRequest struct {
 
 // Begin starts a sign-in: PKCE S256, scope "openid profile email".
 func (c *Client) Begin(ctx context.Context) (AuthRequest, error) {
+	return c.begin(ctx, "select_account")
+}
+
+// BeginReauth starts a sign-in that makes the user enter their
+// credentials again (prompt=login), even with a Microsoft session: the
+// hub's step-up for SSO users.
+func (c *Client) BeginReauth(ctx context.Context) (AuthRequest, error) { return c.begin(ctx, "login") }
+
+func (c *Client) begin(ctx context.Context, prompt string) (AuthRequest, error) {
 	meta, err := c.metadata(ctx)
 	if err != nil {
 		return AuthRequest{}, err
@@ -141,7 +150,7 @@ func (c *Client) Begin(ctx context.Context) (AuthRequest, error) {
 		"nonce":                 {req.Nonce},
 		"code_challenge":        {pkceChallenge(req.Verifier)},
 		"code_challenge_method": {"S256"},
-		"prompt":                {"select_account"},
+		"prompt":                {prompt},
 	}
 	req.URL = meta.AuthorizationEndpoint + "?" + q.Encode()
 	return req, nil

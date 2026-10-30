@@ -1,18 +1,96 @@
-// Progressive enhancement only: copy buttons for upgrade commands.
-// Buttons stay hidden unless the Clipboard API is available.
+// Progressive enhancement only: copy buttons for commands. The Clipboard
+// API needs HTTPS, which tailscale serve gives the app; without it, or if
+// the browser refuses, the text is copied the old way, and failing that
+// it's left selected, ready to copy by hand (a long press on a phone).
 document.addEventListener("DOMContentLoaded", function () {
-  if (!navigator.clipboard) return;
+  function oldCopy(text) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.className = "copy-buffer";
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length); // iOS
+    var ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) {}
+    ta.remove();
+    return ok;
+  }
+  function select(el) {
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
   document.querySelectorAll("button[data-copy]").forEach(function (btn) {
     var target = document.getElementById(btn.getAttribute("data-copy"));
     if (!target) return;
     btn.hidden = false;
     btn.addEventListener("click", function () {
-      navigator.clipboard.writeText(target.textContent).then(function () {
-        btn.textContent = "Copied";
+      var text = target.textContent;
+      function done(ok) {
+        if (!ok) select(target);
+        btn.textContent = ok ? "Copied" : "Selected";
         setTimeout(function () { btn.textContent = "Copy"; }, 1500);
-      });
+      }
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(oldCopy(text)); });
+      } else {
+        done(oldCopy(text));
+      }
     });
   });
+});
+
+// Step-up codes (stepup.go): when the page says which actions need a
+// fresh code (body data-stepup), a form sent to one of them asks for it in
+// a dialog first and goes with the code, so nothing typed or chosen is
+// lost. Without JavaScript, or a browser without <dialog>, the hub asks on
+// a page of its own instead.
+document.addEventListener("DOMContentLoaded", function () {
+  var paths = (document.body.getAttribute("data-stepup") || "").split(" ").filter(Boolean);
+  var dialog = document.querySelector("dialog.stepup-dialog");
+  if (!paths.length || !dialog || !dialog.showModal) return;
+  var input = dialog.querySelector("input[name=stepup_code]");
+  var pending = null;
+  function covered(form) {
+    if ((form.getAttribute("method") || "").toLowerCase() !== "post") return false;
+    var path = new URL(form.action, document.baseURI).pathname;
+    return paths.some(function (p) { return path.indexOf(p) === 0; });
+  }
+  function hidden(form, name, value) {
+    var el = document.createElement("input");
+    el.type = "hidden";
+    el.name = name;
+    el.value = value;
+    form.appendChild(el);
+  }
+  document.addEventListener("submit", function (e) {
+    var form = e.target;
+    if (form === dialog.querySelector("form") || !covered(form) || form.querySelector("input[name=stepup_code]")) return;
+    e.preventDefault();
+    pending = { form: form, submitter: e.submitter };
+    input.value = "";
+    dialog.returnValue = "";
+    dialog.showModal();
+  }, true);
+  dialog.addEventListener("close", function () {
+    var p = pending;
+    pending = null;
+    if (!p || dialog.returnValue !== "ok" || !input.value.trim()) return;
+    hidden(p.form, "stepup_code", input.value.trim());
+    // form.submit() doesn't send the clicked button's name and value.
+    if (p.submitter && p.submitter.name) hidden(p.form, p.submitter.name, p.submitter.value);
+    p.form.submit();
+  });
+});
+
+// After a Microsoft sign-in for a step-up, the waiting action is sent on
+// (stepup_resume.html); its Continue button does it without JavaScript.
+document.addEventListener("DOMContentLoaded", function () {
+  var form = document.querySelector("form[data-resume]");
+  if (form) form.submit();
 });
 
 // The installable app (pwa.go): register the service worker, which shows

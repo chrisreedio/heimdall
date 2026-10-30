@@ -202,13 +202,18 @@ func sizeText(n int) string {
 
 // Where the accent is used (app.css): the background of buttons and the
 // patch wizard's current step, under white text (--accent-text), and the
-// edge of AI cards and hand-off notes, in both themes. So a custom accent
-// must carry white text at 4.5:1 (WCAG AA for text) and stand out 3:1
-// (AA for non-text) against the surfaces of both themes. The light
-// theme's surface is white, so the first check covers it.
+// edge of AI cards and hand-off notes. Each theme has its own: the light
+// one must carry white text at 4.5:1 (WCAG AA for text) and stand out 3:1
+// (AA for non-text) against the light page; the dark one the same against
+// the dark theme's surfaces. White text and a dark page leave a narrow
+// band of lightness, so when only the light accent is set, the dark one
+// is derived from it: the same hue, lightened until it passes.
 const (
 	accentText  = "#ffffff"
-	darkSurface = "#1a1e24" // app.css --surface, dark theme
+	lightPage   = "#f6f7f9" // app.css --bg, light theme (its --surface is white)
+	darkSurface = "#1a1e24" // app.css --surface, dark theme (lighter than its --bg)
+	// defaultAccentDark is app.css's dark-theme --accent.
+	defaultAccentDark = "#3b6fb6"
 )
 
 // parseHex reads "#rrggbb" or "#rgb" (case-insensitive) as "#rrggbb".
@@ -252,19 +257,104 @@ func contrast(a, b string) float64 {
 	return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
 }
 
-// checkAccent validates a custom accent color, returning it as "#rrggbb"
-// or a message saying what's wrong with it.
+func ratioText(r float64) string {
+	return strconv.FormatFloat(math.Floor(r*10)/10, 'f', 1, 64) + ":1"
+}
+
+// checkAccent validates the light theme's accent, returning it as
+// "#rrggbb" or a message saying what's wrong with it. (The light page is
+// so light that a color dark enough for white text always stands out on
+// it; the second check is there in case the page's color changes.)
 func checkAccent(s string) (string, error) {
 	hex, ok := parseHex(s)
 	if !ok {
 		return "", errors.New("enter the accent as a hex color, like #2f6db5")
 	}
-	ratio := func(r float64) string { return strconv.FormatFloat(math.Floor(r*10)/10, 'f', 1, 64) + ":1" }
 	if r := contrast(hex, accentText); r < 4.5 {
-		return "", fmt.Errorf("%s is too light: white button text on it is %s, and needs 4.5:1. Try a darker shade", hex, ratio(r))
+		return "", fmt.Errorf("%s is too light: white button text on it is %s, and needs 4.5:1. Try a darker shade", hex, ratioText(r))
 	}
-	if r := contrast(hex, darkSurface); r < 3 {
-		return "", fmt.Errorf("%s is too dark for the dark theme: %s against the page, and needs 3:1. Try a lighter shade", hex, ratio(r))
+	if r := contrast(hex, lightPage); r < 3 {
+		return "", fmt.Errorf("%s doesn't stand out on the light page: %s, and needs 3:1. Try a darker shade", hex, ratioText(r))
 	}
 	return hex, nil
+}
+
+// checkAccentDark validates the dark theme's accent.
+func checkAccentDark(s string) (string, error) {
+	hex, ok := parseHex(s)
+	if !ok {
+		return "", errors.New("enter the dark theme's accent as a hex color, like #3b6fb6")
+	}
+	if r := contrast(hex, accentText); r < 4.5 {
+		return "", fmt.Errorf("%s is too light for the dark theme: white button text on it is %s, and needs 4.5:1. Try a darker shade", hex, ratioText(r))
+	}
+	if r := contrast(hex, darkSurface); r < 3 {
+		return "", fmt.Errorf("%s is too dark for the dark theme: %s against the page, and needs 3:1. Try a lighter shade", hex, ratioText(r))
+	}
+	return hex, nil
+}
+
+// darkAccent is the dark theme's accent for a light one: light itself if
+// it passes checkAccentDark, else light with its HSL lightness raised
+// until it does (the first that passes, so as close to it as can be).
+// Heimdall's own dark accent if none does.
+func darkAccent(light string) string {
+	h, sat, l := toHSL(hexColor(light))
+	for ; l <= 1; l += 0.0025 {
+		hex := fromHSL(h, sat, l)
+		if _, err := checkAccentDark(hex); err == nil {
+			return hex
+		}
+	}
+	return defaultAccentDark
+}
+
+// toHSL converts an sRGB color to hue (0-360), saturation and lightness
+// (0-1).
+func toHSL(c color.RGBA) (h, s, l float64) {
+	r, g, b := float64(c.R)/255, float64(c.G)/255, float64(c.B)/255
+	hi, lo := max(r, g, b), min(r, g, b)
+	l = (hi + lo) / 2
+	d := hi - lo
+	if d == 0 {
+		return 0, 0, l
+	}
+	s = d / (1 - math.Abs(2*l-1))
+	switch hi {
+	case r:
+		h = math.Mod((g-b)/d, 6)
+	case g:
+		h = (b-r)/d + 2
+	default:
+		h = (r-g)/d + 4
+	}
+	h *= 60
+	if h < 0 {
+		h += 360
+	}
+	return h, s, l
+}
+
+// fromHSL is toHSL's inverse, as "#rrggbb".
+func fromHSL(h, s, l float64) string {
+	ch := (1 - math.Abs(2*l-1)) * s
+	x := ch * (1 - math.Abs(math.Mod(h/60, 2)-1))
+	m := l - ch/2
+	var r, g, b float64
+	switch {
+	case h < 60:
+		r, g = ch, x
+	case h < 120:
+		r, g = x, ch
+	case h < 180:
+		g, b = ch, x
+	case h < 240:
+		g, b = x, ch
+	case h < 300:
+		r, b = x, ch
+	default:
+		r, b = ch, x
+	}
+	v := func(f float64) int { return int(math.Round(min(max(f+m, 0), 1) * 255)) }
+	return fmt.Sprintf("#%02x%02x%02x", v(r), v(g), v(b))
 }

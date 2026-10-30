@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"math"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -161,9 +162,11 @@ func TestScaleImage(t *testing.T) {
 func TestCheckAccent(t *testing.T) {
 	t.Parallel()
 	for in, want := range map[string]string{
-		"#3b6fb6": "#3b6fb6", // Heimdall's dark-theme accent passes both themes
+		"#1f4e8c": "#1f4e8c", // Heimdall's own light accent: refused before there was a dark one
+		"#3b6fb6": "#3b6fb6",
 		"#2E7D32": "#2e7d32",
 		"2f6db5":  "#2f6db5",
+		"#000000": "#000000", // dark is fine in the light theme
 	} {
 		if got, err := checkAccent(in); err != nil || got != want {
 			t.Errorf("%s: %q %v", in, got, err)
@@ -172,8 +175,6 @@ func TestCheckAccent(t *testing.T) {
 	for in, why := range map[string]string{
 		"#ffff00": "too light",
 		"#7fb3ff": "too light",
-		"#1f4e8c": "too dark for the dark theme", // the light theme's own: too dark on the dark page
-		"#000000": "too dark",
 		"red":     "hex color",
 		"#12345":  "hex color",
 		"#ggg000": "hex color",
@@ -181,6 +182,103 @@ func TestCheckAccent(t *testing.T) {
 		if _, err := checkAccent(in); err == nil || !strings.Contains(err.Error(), why) {
 			t.Errorf("%s: %v, want %q", in, err, why)
 		}
+	}
+	// The dark theme's: white text on it, and 3:1 on the dark page.
+	if got, err := checkAccentDark("#3B6FB6"); err != nil || got != "#3b6fb6" {
+		t.Errorf("Heimdall's dark accent: %q %v", got, err)
+	}
+	for in, why := range map[string]string{
+		"#1f4e8c": "too dark for the dark theme",
+		"#000000": "too dark for the dark theme",
+		"#7fb3ff": "too light for the dark theme",
+		"blue":    "hex color",
+	} {
+		if _, err := checkAccentDark(in); err == nil || !strings.Contains(err.Error(), why) {
+			t.Errorf("dark %s: %v, want %q", in, err, why)
+		}
+	}
+}
+
+// The dark accent derived from a light one passes the dark checks, keeps
+// the hue, and is the light one itself when that already passes.
+func TestDarkAccentDerived(t *testing.T) {
+	t.Parallel()
+	if got := darkAccent("#3b6fb6"); got != "#3b6fb6" {
+		t.Errorf("a light accent that passes in the dark: %s", got)
+	}
+	for _, light := range []string{"#1f4e8c", "#000000", "#2e7d32", "#6a1b9a", "#8f1018", "#004d40", "#5d4037", "#123456"} {
+		dark := darkAccent(light)
+		if _, err := checkAccentDark(dark); err != nil {
+			t.Errorf("%s -> %s: %v", light, dark, err)
+		}
+		if contrast(dark, darkSurface) < contrast(light, darkSurface) {
+			t.Errorf("%s -> %s isn't lighter", light, dark)
+		}
+		h1, _, _ := toHSL(hexColor(light))
+		h2, _, _ := toHSL(hexColor(dark))
+		if d := math.Abs(h1 - h2); d > 4 && d < 356 {
+			t.Errorf("%s -> %s: hue %.0f -> %.0f", light, dark, h1, h2)
+		}
+	}
+	for _, c := range []string{"#1f4e8c", "#ffffff", "#000000", "#a1b2c3", "#00ff7f"} {
+		h, s, l := toHSL(hexColor(c))
+		if got := fromHSL(h, s, l); got != c {
+			t.Errorf("HSL round trip %s: %s", c, got)
+		}
+	}
+}
+
+// accent.css: the light accent, then the dark one for both ways the dark
+// theme is chosen; derived when only the light one is set.
+func TestBrandingDarkAccent(t *testing.T) {
+	t.Parallel()
+	e := adminEnv(t)
+	if w := e.brandPost("accent", url.Values{"accent": {"#1f4e8c"}}, "", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("Heimdall's own light accent refused: %d %s", w.Code, w.Body.String())
+	}
+	derived := darkAccent("#1f4e8c")
+	b, _ := e.st.Branding(t.Context())
+	if b.Accent != "#1f4e8c" || b.AccentDark != "" {
+		t.Fatalf("stored %q %q", b.Accent, b.AccentDark)
+	}
+	css := e.get("/branding/accent.css").Body.String()
+	for _, want := range []string{":root:root:root { --accent: #1f4e8c; --accent-text: #ffffff; }",
+		`@media (prefers-color-scheme: dark) { :root:root:root:not([data-theme="light"]) { --accent: ` + derived + "; } }",
+		`:root:root:root[data-theme="dark"] { --accent: ` + derived + "; }"} {
+		if !strings.Contains(css, want) {
+			t.Errorf("accent.css lacks %s:\n%s", want, css)
+		}
+	}
+	page := e.get("/admin/branding", signedIn(e)).Body.String()
+	if !strings.Contains(page, "Dark: <code>"+derived+"</code> (made from the light one)") || !strings.Contains(page, `fill="`+derived+`"`) {
+		t.Error("the branding page doesn't show the derived dark accent")
+	}
+
+	// Both chosen: the dark one is checked on its own.
+	w := e.brandPost("accent", url.Values{"accent": {"#2e7d32"}, "dark_own": {"1"}, "accent_dark": {"#000000"}}, "", nil)
+	if w.Code != http.StatusBadRequest || !strings.Contains(w.Body.String(), "too dark for the dark theme") {
+		t.Errorf("bad dark accent: %d", w.Code)
+	}
+	if w := e.brandPost("accent", url.Values{"accent": {"#2e7d32"}, "dark_own": {"1"}, "accent_dark": {"#3b6fb6"}}, "", nil); w.Code != http.StatusSeeOther {
+		t.Fatalf("both: %d %s", w.Code, w.Body.String())
+	}
+	if b, _ := e.st.Branding(t.Context()); b.Accent != "#2e7d32" || b.AccentDark != "#3b6fb6" {
+		t.Errorf("stored %q %q", b.Accent, b.AccentDark)
+	}
+	if css := e.get("/branding/accent.css").Body.String(); !strings.Contains(css, `[data-theme="dark"] { --accent: #3b6fb6; }`) {
+		t.Errorf("chosen dark accent not served:\n%s", css)
+	}
+	// Unticked again: back to derived.
+	e.brandPost("accent", url.Values{"accent": {"#2e7d32"}, "accent_dark": {"#3b6fb6"}}, "", nil)
+	if b, _ := e.st.Branding(t.Context()); b.AccentDark != "" {
+		t.Errorf("unticked kept %q", b.AccentDark)
+	}
+	e.brandPost("reset-accent", nil, "", nil)
+	if b, _ := e.st.Branding(t.Context()); b.Accent != "" || b.AccentDark != "" {
+		t.Error("reset kept an accent")
+	}
+	if w := e.get("/branding/accent.css"); w.Code != http.StatusNotFound {
+		t.Errorf("accent.css after reset: %d", w.Code)
 	}
 }
 

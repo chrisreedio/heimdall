@@ -238,6 +238,15 @@ func TestBeginURL(t *testing.T) {
 	if other.State == e.req.State || other.Nonce == e.req.Nonce || other.Verifier == e.req.Verifier {
 		t.Error("per-login secrets must be unique")
 	}
+	// A step-up makes Microsoft ask for the credentials again.
+	re, err := e.c.BeginReauth(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ru, _ := url.Parse(re.URL)
+	if p := ru.Query().Get("prompt"); p != "login" || ru.Query().Get("state") != re.State || re.State == e.req.State {
+		t.Errorf("reauth: prompt %q, state %q", p, ru.Query().Get("state"))
+	}
 }
 
 func TestRejections(t *testing.T) {

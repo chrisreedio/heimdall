@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +31,33 @@ type fakeAuth struct {
 	viewer     *auth.Viewer // overrides the default admin viewer when set
 	identities []store.EntraIdentity
 	keeps      []bool // LoginIdentity's keep, per call
+	// Step-up: the codes StepUp took (each works once, like real TOTP
+	// steps), when the session last stepped up, and the clock that says
+	// when.
+	now       func() time.Time
+	used      map[string]bool
+	steppedUp time.Time
+}
+
+// The fake's StepUp takes six-digit codes starting "24", each once.
+func (f *fakeAuth) StepUp(_ context.Context, v *auth.Viewer, code, ip string) error {
+	if v.Kind == "entra" || len(code) != 6 || !strings.HasPrefix(code, "24") || f.used[code] {
+		return auth.ErrBadCode
+	}
+	if f.used == nil {
+		f.used = map[string]bool{}
+	}
+	f.used[code] = true
+	f.steppedUp = f.now()
+	return nil
+}
+
+func (f *fakeAuth) StepUpIdentity(_ context.Context, v *auth.Viewer, id store.EntraIdentity, ip string) error {
+	if id.ObjectID != "oid-1" {
+		return auth.ErrWrongAccount
+	}
+	f.steppedUp = f.now()
+	return nil
 }
 
 func (f *fakeAuth) LoginIdentity(_ context.Context, id store.EntraIdentity, roles []string, ip, ua string, keep bool) (string, error) {
@@ -52,10 +80,13 @@ func (f *fakeAuth) Login(_ context.Context, email, password, code, ip, ua string
 
 func (f *fakeAuth) Session(_ context.Context, token string) (*auth.Viewer, error) {
 	if token == goodToken && f.viewer != nil {
-		return f.viewer, nil
+		v := *f.viewer
+		v.SteppedUpAt = f.steppedUp
+		return &v, nil
 	}
 	if token == goodToken {
-		return &auth.Viewer{UserID: 1, Email: "admin@example.com", IsAdmin: true, Scope: store.AllScope, SessionToken: token}, nil
+		return &auth.Viewer{UserID: 1, Email: "admin@example.com", IsAdmin: true, Kind: "local", Scope: store.AllScope,
+			SessionToken: token, SteppedUpAt: f.steppedUp}, nil
 	}
 	return nil, auth.ErrNoSession
 }
@@ -73,6 +104,25 @@ type env struct {
 	baseURL string
 	cookie  string
 	dbPath  string
+	clock   *testClock
+}
+
+// testClock is the env's clock: testNow until a test moves it.
+type testClock struct {
+	mu sync.Mutex
+	at time.Time
+}
+
+func (c *testClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.at
+}
+
+func (c *testClock) add(d time.Duration) {
+	c.mu.Lock()
+	c.at = c.at.Add(d)
+	c.mu.Unlock()
 }
 
 var testNow = time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
@@ -90,12 +140,13 @@ func newEnvCfg(t *testing.T, baseURL string, sf SearchFunc, adjust func(*Config)
 	if sf == nil {
 		sf = func(context.Context, string, store.Scope) (*search.Result, error) { return &search.Result{}, nil }
 	}
-	fa := &fakeAuth{}
+	clock := &testClock{at: testNow}
+	fa := &fakeAuth{now: clock.now}
 	cfg := Config{BaseURL: baseURL, StaleAfter: 72 * time.Hour, Version: "test", SessionMax: 12 * time.Hour, LocalLogin: true}
 	if adjust != nil {
 		adjust(&cfg)
 	}
-	h, err := New(cfg, st, fa, sf, slog.New(slog.NewTextHandler(io.Discard, nil)), func() time.Time { return testNow })
+	h, err := New(cfg, st, fa, sf, slog.New(slog.NewTextHandler(io.Discard, nil)), clock.now)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +154,7 @@ func newEnvCfg(t *testing.T, baseURL string, sf SearchFunc, adjust func(*Config)
 	if strings.HasPrefix(baseURL, "https") {
 		cookie = "__Host-heimdall"
 	}
-	return &env{t: t, h: h, st: st, auth: fa, baseURL: baseURL, cookie: cookie, dbPath: dbPath}
+	return &env{t: t, h: h, st: st, auth: fa, baseURL: baseURL, cookie: cookie, dbPath: dbPath, clock: clock}
 }
 
 // seed creates web-01 with a stored snapshot and one KEV-free finding whose

@@ -48,11 +48,19 @@ type Authenticator interface {
 	LoginIdentity(ctx context.Context, id store.EntraIdentity, roles []string, ip, userAgent string, keep bool) (token string, err error)
 	Session(ctx context.Context, token string) (*auth.Viewer, error)
 	Logout(ctx context.Context, token string) error
+	// StepUp checks a signed-in local user's TOTP code (refusing a replay)
+	// and records it on their session; StepUpIdentity records an SSO
+	// sign-in with prompt=login, which must be the session's user
+	// (stepup.go).
+	StepUp(ctx context.Context, v *auth.Viewer, code, ip string) error
+	StepUpIdentity(ctx context.Context, v *auth.Viewer, id store.EntraIdentity, ip string) error
 }
 
 // SSO is the Entra ID OIDC flow (see internal/auth/entra).
 type SSO interface {
 	Begin(ctx context.Context) (entra.AuthRequest, error)
+	// BeginReauth is Begin with prompt=login, for step-up (stepup.go).
+	BeginReauth(ctx context.Context) (entra.AuthRequest, error)
 	Finish(ctx context.Context, code, verifier, nonce string) (entra.Identity, error)
 }
 
@@ -148,8 +156,10 @@ type server struct {
 	tokenLimit tokenLimiter // MCP token creation, per user
 	// handoffLimit: one hand-off per site and agent every few minutes.
 	handoffLimit handoffLimiter
-	nav          navCache   // the sidebar's badges, per user (nav.go)
-	brand        brandCache // the hub's branding (branding.go)
+	nav          navCache      // the sidebar's badges, per user (nav.go)
+	brand        brandCache    // the hub's branding (branding.go)
+	settings     settingsCache // hub settings (stepup.go)
+	stepups      stepUpStore   // actions waiting for an SSO step-up (stepup.go)
 }
 
 // New returns the UI handler.
@@ -245,6 +255,11 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("GET /admin/branding", s.requireAuth(s.requireAdmin(s.brandingPage)))
 	mux.HandleFunc("POST /admin/branding/{action}", s.requireAuthUpload(s.requireAdmin(s.brandingAction)))
 	mux.HandleFunc("GET /branding/{file}", s.brandFile)
+	mux.HandleFunc("GET /admin/security", s.requireAuth(s.requireAdmin(s.securityPage))) // step-up codes (stepup.go)
+	mux.HandleFunc("POST /admin/security", s.requireAuth(s.requireAdmin(s.securityAction)))
+	mux.HandleFunc("POST /stepup", s.requireAuth(s.stepUpSubmit))
+	mux.HandleFunc("POST /stepup/sso", s.requireAuth(s.stepUpSSO))
+	mux.HandleFunc("GET /stepup/done", s.requireAuth(s.stepUpDone))
 	// The installable app: manifest, service worker, offline page (pwa.go).
 	mux.HandleFunc("GET /manifest.webmanifest", s.manifest)
 	// The phone layout's tabs (phone.go); Home is the dashboard, Hosts /hosts.
@@ -333,6 +348,9 @@ func (s *server) authed(maxBody int64, h authedHandler) http.HandlerFunc {
 		}
 		if v.Kept && v.Renewed { // a device session's expiry moved: so does its cookie's
 			s.setSession(w, v.SessionToken, s.sessionAge(true))
+		}
+		if r.Method == http.MethodPost && !s.stepUp(w, r, v) { // stepup.go
+			return
 		}
 		h(w, r, v)
 	}
@@ -508,6 +526,7 @@ type page struct {
 	Perm    navPerm          // which sidebar links to show (nav.go)
 	Counts  navCounts        // the sidebar's badges
 	Brand   brandView        // the hub's name, logo and icons (branding.go)
+	StepUp  string           // paths app.js asks a step-up code for (stepup.go), or ""
 	Body    any
 }
 
@@ -515,6 +534,7 @@ func (s *server) render(w http.ResponseWriter, r *http.Request, status int, name
 	p := page{Title: title, Nav: nav, Viewer: v, Body: body}
 	if v != nil {
 		p.Perm, p.Counts = navPermOf(v), s.navCountsFor(r, v)
+		p.StepUp = s.stepUpDialog(r, v)
 	}
 	if v != nil && v.IsAdmin && s.cfg.Updates != nil {
 		if rel, ok := s.cfg.Updates(); ok {
@@ -579,16 +599,17 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, v *auth.Viewer, er
 func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
 		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "enroll", "site", "news", "handoff", "handoffbatch"}
-	names = append(names, "assistants")                // AI assistants (MCP tokens)
-	names = append(names, "ips", "ip", "person")       // IP awareness (ips.go, people.go)
-	names = append(names, "cloudflare")                // Cloudflare overview (cloudflare.go)
-	names = append(names, "offenders")                 // failed logins (logins.go)
-	names = append(names, "surface")                   // attack-surface map (surface.go)
-	names = append(names, "bans")                      // bans (bans.go)
-	names = append(names, "branding")                  // branding (branding.go)
-	names = append(names, "devices")                   // sessions (devices.go)
-	names = append(names, "offline")                   // the app's offline page (pwa.go)
-	names = append(names, "alerts", "defense", "more") // the phone layout's tabs (phone.go)
+	names = append(names, "assistants")                          // AI assistants (MCP tokens)
+	names = append(names, "ips", "ip", "person")                 // IP awareness (ips.go, people.go)
+	names = append(names, "cloudflare")                          // Cloudflare overview (cloudflare.go)
+	names = append(names, "offenders")                           // failed logins (logins.go)
+	names = append(names, "surface")                             // attack-surface map (surface.go)
+	names = append(names, "bans")                                // bans (bans.go)
+	names = append(names, "branding")                            // branding (branding.go)
+	names = append(names, "devices")                             // sessions (devices.go)
+	names = append(names, "security", "stepup", "stepup_resume") // step-up codes (stepup.go)
+	names = append(names, "offline")                             // the app's offline page (pwa.go)
+	names = append(names, "alerts", "defense", "more")           // the phone layout's tabs (phone.go)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/ai.html", "templates/"+n+".html")

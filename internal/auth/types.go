@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"time"
 
 	"github.com/realmwatch/heimdall/internal/store"
 )
@@ -22,6 +23,7 @@ type Viewer struct {
 	SessionToken string      // raw cookie value; never logged or rendered
 	Kept         bool        // a device session ("Keep me signed in on this device")
 	Renewed      bool        // ...whose expiry this request moved out (renew the cookie)
+	SteppedUpAt  time.Time   // when the user last proved it's them on this session (StepUp); zero if never
 }
 
 var (
@@ -35,6 +37,11 @@ var (
 	// ErrNotProvisioned means a valid Entra sign-in for someone who hasn't
 	// been added to Heimdall (or was disabled).
 	ErrNotProvisioned = errors.New("your account hasn't been set up in Heimdall; ask an admin to add you")
+	// ErrBadCode is a step-up code that's wrong or was already used.
+	ErrBadCode = errors.New("that code didn't work: it's wrong, or it was already used. Wait for the next one and try again")
+	// ErrWrongAccount is a step-up sign-in as someone other than the
+	// session's user.
+	ErrWrongAccount = errors.New("that sign-in was for a different account than the one signed in here")
 )
 
 // CSRFToken derives a session's CSRF token. It's one-way, so a token that

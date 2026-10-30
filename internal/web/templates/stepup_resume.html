@@ -1,0 +1,11 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<section class="card stepup" aria-labelledby="sr-h">
+  <h1 id="sr-h">Confirmed</h1>
+  <p>Thanks. {{.What}}…</p>
+  <form method="post" action="{{.Action}}" class="row" data-resume>
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    {{range .Fields}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">
+    {{end}}<button type="submit">Continue</button>
+  </form>
+</section>
+{{end}}{{end}}

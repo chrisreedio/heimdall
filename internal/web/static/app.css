@@ -1275,3 +1275,52 @@ h3.dang-zone { margin: 18px 0 6px; font-size: 15px; }
   .desk-home { display: none; }
   .home-cards { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Acting from the phone (phone.go): ban proposals as cards on Defense,
+   Acknowledge on Alerts, big enough to tap. */
+.ban-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.ban-cards .ban-card { margin: 0; padding: 14px 16px; border-left: 4px solid var(--high-fg); }
+.ban-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.ban-target { font-size: 17px; font-weight: 700; overflow-wrap: anywhere; }
+.ban-for { margin: 6px 0 10px; }
+.ban-facts { display: grid; gap: 4px; margin: 0 0 12px; font-size: 13.5px; }
+.ban-facts > div { display: grid; grid-template-columns: 6.5em minmax(0, 1fr); gap: 8px; }
+.ban-facts dt { color: var(--muted); }
+.ban-facts dd { margin: 0; overflow-wrap: anywhere; }
+.ban-actions { display: flex; gap: 10px; }
+.ban-actions form { flex: 1 1 0; margin: 0; }
+.ban-actions button { width: 100%; min-height: 44px; font-weight: 600; font-size: 15px; }
+.alert-ack { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
+.alert-ack input[name=note] { flex: 1 1 12em; min-width: 0; min-height: 40px; }
+.alert-ack button { min-height: 40px; font-weight: 600; }
+.alert-mute { margin-top: 6px; font-size: 13px; }
+.alert-mute > summary { margin: 0; padding: 6px 0 0; color: var(--link); font-weight: 400; }
+.alert-days { display: flex; align-items: center; gap: 6px; }
+.alert-days input { width: 4.5em; min-height: 40px; }
+
+/* Step-up codes (stepup.go): the prompt page and app.js's dialog. */
+.card.stepup { max-width: 34rem; }
+.stepup h1 { margin-top: 0; }
+.stepup-form label, .stepup-dialog label { font-weight: 600; font-size: 14px; }
+.stepup-form input[name=stepup_code], .stepup-dialog input[name=stepup_code] {
+  display: block; width: 9em; margin-top: 4px; padding: 8px 10px; font-size: 20px; letter-spacing: .15em; font-variant-numeric: tabular-nums;
+}
+.stepup-buttons { display: flex; gap: 10px; margin-top: 14px; }
+.stepup-buttons > * { display: inline-flex; align-items: center; justify-content: center; min-width: 7em; min-height: 42px; padding: 0 1rem; font-weight: 600; }
+.stepup-dialog {
+  width: min(22rem, calc(100vw - 32px)); padding: 20px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); color: var(--text); box-shadow: var(--shadow);
+}
+.stepup-dialog::backdrop { background: rgba(0, 0, 0, .45); }
+.stepup-dialog h2 { margin: 0 0 6px; font-size: 18px; }
+.stepup-dialog .row { display: flex; gap: 10px; margin-top: 14px; }
+.stepup-dialog .row button { flex: 1 1 0; min-height: 42px; font-weight: 600; }
+.stepup-set fieldset { display: grid; gap: 8px; margin: 0 0 14px; padding: 0; border: 0; }
+.accent-now { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 12px 0 0; }
+.accent-now > span { display: inline-flex; align-items: center; gap: 6px; }
+.copy-buffer { position: fixed; top: 0; left: 0; width: 1px; height: 1px; opacity: 0; font-size: 16px; }
+.more-nav .side-item.tabbed { display: none; } /* Alerts and Defense are tabs on phones */
+@media (max-width: 760px) {
+  .ban-cards { grid-template-columns: minmax(0, 1fr); }
+  .codebox .copy { top: 6px; right: 6px; min-height: 34px; padding: 4px 14px; font-size: 13px; }
+}

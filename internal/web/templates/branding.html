@@ -17,14 +17,19 @@
 
 <section class="card brand-set" aria-labelledby="ba-h">
   <h2 id="ba-h">Accent color</h2>
-  <p class="muted">Buttons and highlights, in the light and dark themes. It has to keep white text readable (4.5:1) and stand out against both themes' pages (3:1); colors that don't are refused with the reason. Mid-tone blues, greens and purples usually pass.</p>
-  <form method="post" action="/admin/branding/accent" class="row">
+  <p class="muted">Buttons and highlights. Each theme has its own: each has to keep white text readable on it (4.5:1) and stand out against its theme's page (3:1); colors that don't are refused with the reason. Pick only the light theme's and the dark theme's is made from it, the same hue lightened until it passes; or pick both.</p>
+  <form method="post" action="/admin/branding/accent" class="row accent-form">
     <input type="hidden" name="csrf" value="{{$csrf}}">
-    <label>Color <input type="color" name="accent" value="{{or .Accent .DefaultAccent}}"></label>
-    <button type="submit">Save color</button>
+    <label>Light theme <input type="color" name="accent" value="{{or .Accent .DefaultAccent}}"></label>
+    <label class="check"><input type="checkbox" name="dark_own" value="1"{{if .AccentDark}} checked{{end}}> Choose the dark theme's too</label>
+    <label>Dark theme <input type="color" name="accent_dark" value="{{or .AccentDark .DarkInUse .DefaultAccentDark}}"></label>
+    <button type="submit">Save colors</button>
   </form>
-  {{if .Accent}}<p class="small muted">Now <code>{{.Accent}}</code>; Heimdall's is <code>{{.DefaultAccent}}</code> (light) and a lighter blue in the dark theme.</p>
-  {{template "brandreset" (dict "CSRF" $csrf "What" "accent" "Label" "Use Heimdall's color")}}{{end}}
+  <div class="accent-now small">
+    <span>{{template "swatch" (or .Accent .DefaultAccent)}} Light: <code>{{or .Accent .DefaultAccent}}</code>{{if not .Accent}} (Heimdall's){{end}}</span>
+    <span>{{template "swatch" (or .DarkInUse .DefaultAccentDark)}} Dark: <code>{{or .DarkInUse .DefaultAccentDark}}</code>{{if .AccentDark}}{{else if .DarkInUse}} (made from the light one){{else}} (Heimdall's){{end}}</span>
+  </div>
+  {{if or .Accent .AccentDark}}{{template "brandreset" (dict "CSRF" $csrf "What" "accent" "Label" "Use Heimdall's colors")}}{{end}}
 </section>
 
 <section class="card brand-set" aria-labelledby="bl-h">
@@ -51,6 +56,9 @@
   {{if .Icon}}{{template "brandreset" (dict "CSRF" $csrf "What" "icon" "Label" "Use Heimdall's icon")}}{{end}}
 </section>
 {{end}}{{end}}
+
+{{/* swatch: a color sample. An SVG fill, not a style attribute, which the CSP refuses. */}}
+{{define "swatch"}}<svg class="swatch" width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x=".5" y=".5" width="17" height="17" rx="4" fill="{{.}}" stroke="currentColor" stroke-opacity=".25"/></svg>{{end}}
 
 {{/* brandreset: a setting's "back to Heimdall's" button. */}}
 {{define "brandreset"}}<form method="post" action="/admin/branding/reset-{{.What}}" class="inline brand-reset">
