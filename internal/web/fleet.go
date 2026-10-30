@@ -47,6 +47,8 @@ type fleetHost struct {
 	HasPrivilege bool
 
 	OffTailnet bool // reported, and no tailnet device matches it (tailscale.go)
+
+	SSH sshView
 }
 
 // lifeItem is one lifecycle on a host: its OS, a runtime, or a site's PHP
@@ -64,7 +66,7 @@ func (h fleetHost) Attention() bool {
 	c := h.R.Counts
 	return h.Reported && (c.KEV > 0 || h.News > 0 || c.Fixable > 0 || c.Watch > 0 || h.EOL || h.EOLSoon || h.Stale ||
 		h.Anomalies > 0 || h.Reboot || c.RebootPending > 0 || h.PendingSecurity > 0 || h.SitesAttention > 0 || h.CollectorBehind ||
-		h.ChangeWatch == "off")
+		h.ChangeWatch == "off" || h.SSH.Risky())
 }
 
 // tagCap is how many tags a host list row shows before "+N".
@@ -134,6 +136,22 @@ func (s *server) fleet(r *http.Request, v *auth.Viewer, org string) ([]fleetHost
 	if err != nil {
 		return nil, err
 	}
+	sshs, err := s.st.HostSSHs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	watching, err := s.st.LoginWatchHosts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	fails, err := s.st.LoginFailuresSince(ctx, v.Scope, 0, "", s.now().Add(-sshWindow))
+	if err != nil {
+		return nil, err
+	}
+	failsBy := map[int64][]store.HostLoginFailure{}
+	for _, f := range fails {
+		failsBy[f.Host.ID] = append(failsBy[f.Host.ID], f)
+	}
 	reported := make(map[string]report.Host, len(rep.Hosts))
 	for _, h := range rep.Hosts {
 		reported[h.Org+"/"+h.Name] = h
@@ -159,6 +177,9 @@ func (s *server) fleet(r *http.Request, v *auth.Viewer, org string) ([]fleetHost
 				row.ChangeWatch = t.ChangeWatch()
 			}
 			row.Privilege, row.HasPrivilege = coverageOf(st.PackageManager, st.PrivilegeState, st.PrivilegeDetail)
+			ssh, ok := sshs[h.ID]
+			_, w := watching[h.ID]
+			row.SSH = newSSHView(ssh, ok, w, failsBy[h.ID])
 			row.addLife(rh)
 		}
 		byID[h.ID] = len(out)
@@ -575,6 +596,7 @@ var hostFilters = []struct {
 	{"anomalies", "Anomalies", func(h fleetHost) bool { return h.Anomalies > 0 }},
 	{"collector", "Collector", func(h fleetHost) bool { return h.CollectorBehind || h.ChangeWatch == "off" }},
 	{"privilege", "Privilege watch", func(h fleetHost) bool { return h.HasPrivilege && !h.Privilege.Full }},
+	{"ssh", "SSH", func(h fleetHost) bool { return h.SSH.Flag() }},
 	{"tailnet", "Not on tailnet", func(h fleetHost) bool { return h.OffTailnet }},
 	{"waiting", "Waiting", func(h fleetHost) bool { return !h.Reported }},
 }

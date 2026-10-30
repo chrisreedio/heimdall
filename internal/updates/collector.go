@@ -10,7 +10,7 @@ import "strings"
 // release would call it behind after each one, changed or not; a collector
 // at this release or later is current. TestCollectorChanged fails when
 // collector/ changes and this isn't moved up.
-const CollectorChanged = "v0.4.49"
+const CollectorChanged = "v0.4.54"
 
 // CollectorBehind reports whether a collector at version v ("0.4.41" or
 // "v0.4.41") predates CollectorChanged, so upgrading it would change it.

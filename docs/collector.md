@@ -366,6 +366,7 @@ On the hub's own box the collector's settings are in `/etc/heimdall-collect/coll
 | `heimdall-collect --site-repos` | Print the site repositories a push would send (see [Site repositories](#site-repositories)) |
 | `heimdall-collect --site-branches` | Print the sites' checked-out branches a push would send (see [Site branches](#site-branches)) |
 | `heimdall-collect --php` | Print the PHP versions in use a push would send: the command line's and the running PHP-FPMs' (see [PHP in use](#php-in-use)) |
+| `heimdall-collect --ssh` | Print sshd's settings and listening addresses a push would send (see [SSH settings](#ssh-settings)) |
 | `heimdall-collect --deploy-watches` | Print the site paths watched for deploys (see [What's watched automatically](#whats-watched-automatically)) |
 | `heimdall-collect deployed` | Ask for a report in about a minute, from a deploy script, as any user; always exits `0` (see [`heimdall-collect deployed`](#heimdall-collect-deployed)) |
 | `heimdall-collect --version` | Print the collector version |
@@ -578,6 +579,17 @@ On the hub, an installed PHP version is **not used** when no site's PHP-FPM runs
 - `composer.lock` and `package-lock.json` must be in their tools' normal pretty-printed layout. A minified lock file yields no packages.
 - `package-lock.json` is read only from the app root, so a frontend in a subfolder (or a Node app whose document root isn't `public`) isn't found. List that lockfile in `HEIMDALL_LOCKFILES`.
 - Caddy, LiteSpeed and apps inside Docker containers aren't discovered yet. List their roots in `HEIMDALL_SITES`, or wait for M9.
+
+## SSH settings
+
+Each push says how sshd is set up, so the hub can show which servers take passwords over SSH and how widely they listen (collector 0.4.54 and later):
+
+- **Settings:** password login (`PasswordAuthentication`, or keyboard-interactive through PAM), `PermitRootLogin`, and the ports. It asks `sshd -G` for the effective settings, which OpenSSH 9.6 and later (Ubuntu 24.04, Debian 13) answer without root. Older sshd (Ubuntu 22.04) has no `-G`, so the collector reads `sshd_config` and the files its `Include` lines name: the first value wins, `Match` blocks are skipped, and sshd's defaults fill in the rest. Where `sshd_config` is root-only (Rocky and RHEL), it says so and assumes port 22.
+- **Listening addresses:** what listens on those ports, from `/proc/net/tcp` and `tcp6`, so it's right with socket activation (`ssh.socket`) too.
+
+`heimdall-collect --ssh` prints it, for example `v1 src=g port=22 listen=0.0.0.0,0:0:0:0:0:0:0:0 password=no kbd=no pam=yes root=prohibit-password` (`src=none` without sshd). It's sent as `X-Heimdall-SSH`, a header like the PHP one. It runs `sshd -G` and reads files; it changes nothing.
+
+**What it can't see:** a firewall outside the server, such as an Azure network security group or an AWS security group. "Listening on all addresses" means sshd answers wherever the network lets traffic through. Whether the internet actually gets through comes from the [login watch](failed-logins.md): failed logins from internet addresses in the last 14 days mean SSH is reachable from the internet, whatever the firewall rules say. The host page shows both: the settings, and "reached from the internet", "no internet attempts" (the login watch is on and saw none), or "reach unknown" (it's off). A host that's reachable and takes passwords (or root logins with a password) is flagged on the host list; **SSH** in its filter shows every host taking passwords or reached from the internet.
 
 ## Exit codes & messages
 
