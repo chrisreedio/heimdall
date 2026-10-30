@@ -178,6 +178,7 @@ func (e *env) post(path string, form url.Values, opts ...opt) *httptest.Response
 }
 
 func TestUnauthenticatedRedirects(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	for _, p := range []string{"/", "/hosts", "/hosts/acme/web-01", "/sites", "/search?q=x", "/nope"} {
 		w := e.get(p)
@@ -196,6 +197,7 @@ func TestUnauthenticatedRedirects(t *testing.T) {
 }
 
 func TestSafeNext(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]string{
 		"/hosts":                 "/hosts",
 		"/search?q=a%20b":        "/search?q=a%20b",
@@ -214,6 +216,7 @@ func TestSafeNext(t *testing.T) {
 }
 
 func TestLogin(t *testing.T) {
+	t.Parallel()
 	for _, base := range []string{"http://127.0.0.1:8080", "https://heimdall.internal"} {
 		t.Run(base, func(t *testing.T) {
 			e := newEnv(t, base, nil)
@@ -254,6 +257,7 @@ func TestLogin(t *testing.T) {
 }
 
 func TestLoginFailures(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	base := origin(e.baseURL)
 	w := e.post("/login", url.Values{"email": {"admin@example.com"}, "password": {"hunter2-secret"}, "code": {"000000"}}, base)
@@ -279,6 +283,7 @@ func TestLoginFailures(t *testing.T) {
 }
 
 func TestLogoutNeedsCSRFAndOrigin(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	good := auth.CSRFToken(goodToken)
 	cases := []struct {
@@ -310,6 +315,7 @@ func TestLogoutNeedsCSRFAndOrigin(t *testing.T) {
 }
 
 func TestSecurityHeaders(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	for _, p := range []string{"/login", "/static/app.css", "/"} {
 		h := e.get(p).Header()
@@ -339,6 +345,7 @@ func TestSecurityHeaders(t *testing.T) {
 }
 
 func TestDashboard(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seed()
 	w := e.get("/", signedIn(e))
@@ -365,6 +372,7 @@ func TestDashboard(t *testing.T) {
 }
 
 func TestHostPage(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seed()
 	w := e.get("/hosts/acme/web-01", signedIn(e))
@@ -399,6 +407,7 @@ func TestHostPage(t *testing.T) {
 }
 
 func TestUpgradeCommands(t *testing.T) {
+	t.Parallel()
 	pending := []store.InventoryPackage{
 		{Name: "openssl", PendingVersion: "2", PendingSecurity: true},
 		{Name: "tzdata", PendingVersion: "2"},
@@ -414,6 +423,7 @@ func TestUpgradeCommands(t *testing.T) {
 }
 
 func TestSearch(t *testing.T) {
+	t.Parallel()
 	sf := func(_ context.Context, q string, _ store.Scope) (*search.Result, error) {
 		if q == "bad <<" {
 			return nil, errors.New(`unexpected "<<"`)
@@ -434,6 +444,7 @@ func TestSearch(t *testing.T) {
 }
 
 func TestStaticAndNotFound(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	for file, ctype := range map[string]string{
 		"app.css":  "text/css; charset=utf-8",
@@ -456,6 +467,7 @@ func TestStaticAndNotFound(t *testing.T) {
 }
 
 func TestNewRejectsBadBaseURL(t *testing.T) {
+	t.Parallel()
 	for _, u := range []string{"", "ftp://x", "heimdall.internal"} {
 		if _, err := New(Config{BaseURL: u}, nil, nil, nil, nil, time.Now); err == nil {
 			t.Errorf("New(%q) should fail", u)

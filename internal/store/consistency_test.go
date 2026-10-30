@@ -11,6 +11,7 @@ import (
 // Every rule in AnomalyRules is accepted by the anomalies CHECK, and the
 // rebuilt table keeps its index.
 func TestAnomalyRulesMatchSchema(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	h, _ := setupHost(t, s)
 	for _, rule := range AnomalyRules {
@@ -26,6 +27,7 @@ func TestAnomalyRulesMatchSchema(t *testing.T) {
 }
 
 func TestInventoryMatch(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	h, _ := setupHost(t, s)
 	ctx := t.Context()

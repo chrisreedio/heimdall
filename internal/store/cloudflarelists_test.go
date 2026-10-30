@@ -13,6 +13,7 @@ import (
 // 0033 rebuilds ip_labels for the office kind: labels from before stay,
 // with their IDs, and office is accepted after.
 func TestMigrateOfficeKind(t *testing.T) {
+	t.Parallel()
 	ctx := t.Context()
 	path := filepath.Join(t.TempDir(), "h.db")
 	if err := Create(path); err != nil {
@@ -63,6 +64,7 @@ func TestMigrateOfficeKind(t *testing.T) {
 }
 
 func TestCloudflareIPLists(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)

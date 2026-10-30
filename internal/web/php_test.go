@@ -17,6 +17,7 @@ import (
 // A host with PHP 8.1 and 8.4 installed and one site on 8.4: once the
 // collector says what uses PHP, the host page offers to remove 8.1.
 func TestHostPageUnusedPHP(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	ctx := t.Context()
 	e.st.CreateOrg(ctx, "test", "acme", "Acme")

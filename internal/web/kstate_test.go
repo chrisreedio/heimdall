@@ -30,6 +30,7 @@ func preText(body, id string) string {
 
 // The two real AWS kernel cases on the host page.
 func TestKernelCaseHostPages(t *testing.T) {
+	t.Parallel()
 	e := kernelCaseEnv(t)
 
 	// web-01 runs 6.17 with 7.0 installed: reboot, not a metapackage upgrade.
@@ -93,6 +94,7 @@ func TestKernelCaseHostPages(t *testing.T) {
 // running out of the actionable numbers, and the SQL tallies agree with
 // counting every finding.
 func TestKernelCaseCounts(t *testing.T) {
+	t.Parallel()
 	e := kernelCaseEnv(t)
 	ctx := t.Context()
 	full, err := report.Build(ctx, e.st, report.Filter{Scope: store.AllScope}, testNow)

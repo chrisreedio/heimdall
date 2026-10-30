@@ -11,6 +11,7 @@ import (
 // An unclosed block (a merge that drops a "}") silently turns every rule
 // after it into a phone-only @media rule, so check the braces balance.
 func TestCSSBracesBalance(t *testing.T) {
+	t.Parallel()
 	b, err := staticFS.ReadFile("static/app.css")
 	if err != nil {
 		t.Fatal(err)

@@ -16,6 +16,7 @@ import (
 )
 
 func TestAddHost(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.IngestURL, c.Version = "https://ingest.example.com", "v0.4.0"
 	})
@@ -60,6 +61,7 @@ func TestAddHost(t *testing.T) {
 }
 
 func TestAddHostFormDetails(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.IngestURL, c.Version = "https://ingest.example.com", "v0.4.0"
 	})
@@ -82,6 +84,7 @@ func TestAddHostFormDetails(t *testing.T) {
 }
 
 func TestTaggingRoutes(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, nil)
 	e.seed()
 	ctx := t.Context()
@@ -122,6 +125,7 @@ func TestTaggingRoutes(t *testing.T) {
 }
 
 func TestSuggestSiteLabel(t *testing.T) {
+	t.Parallel()
 	for names, want := range map[string]string{
 		"example.com": "production", "www.example.com": "production", "staging.example.com": "staging",
 		"stg-api.example.com": "staging", "uat.example.com": "staging", "dev.example.com": "development",
@@ -138,6 +142,7 @@ func TestSuggestSiteLabel(t *testing.T) {
 }
 
 func TestEnvironmentsAndSiteLabels(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.IngestURL, c.Version = "https://ingest.example.com", "v0.4.0"
 	})
@@ -188,6 +193,7 @@ func TestEnvironmentsAndSiteLabels(t *testing.T) {
 }
 
 func TestHostPageHelpers(t *testing.T) {
+	t.Parallel()
 	pathBreak := funcs["pathBreak"].(func(string) template.HTML)
 	if got := pathBreak(`/home/<b>evil</b>/x`); string(got) != `/<wbr>home/<wbr>&lt;b&gt;evil&lt;/<wbr>b&gt;/<wbr>x` {
 		t.Errorf("pathBreak = %q", got)
@@ -207,6 +213,7 @@ func TestHostPageHelpers(t *testing.T) {
 }
 
 func TestSitePageNotFound(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, nil)
 	e.seed()
 	e.st.AddHost(t.Context(), "test", "acme", "prod", "site-host", nil)

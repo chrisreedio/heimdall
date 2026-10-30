@@ -123,6 +123,7 @@ func confirm(t *testing.T, e *env, agent string) (url.Values, string) {
 }
 
 func TestHandoffOffWithoutAgents(t *testing.T) {
+	t.Parallel()
 	e := handoffEnv(t)
 	e.seedSites()
 	if page := e.get(siteURL("acme", "app-01", siteRoot), signedIn(e)).Body.String(); strings.Contains(page, "Hand off") {
@@ -137,6 +138,7 @@ func TestHandoffOffWithoutAgents(t *testing.T) {
 }
 
 func TestHandoffSend(t *testing.T) {
+	t.Parallel()
 	fd := newFakeDiscord(t)
 	e := handoffEnv(t, fd.agent("pr-bot", testBotID), fd.agent("other-bot", "98765432109876543"))
 	host := e.seedSites()
@@ -244,6 +246,7 @@ func TestHandoffSend(t *testing.T) {
 }
 
 func TestHandoffRoles(t *testing.T) {
+	t.Parallel()
 	fd := newFakeDiscord(t)
 	e := handoffEnv(t, fd.agent("pr-bot", testBotID))
 	host := e.seedSites()
@@ -277,6 +280,7 @@ func TestHandoffRoles(t *testing.T) {
 }
 
 func TestHandoffDiscordFailure(t *testing.T) {
+	t.Parallel()
 	fd := newFakeDiscord(t)
 	fd.status = http.StatusNotFound // a deleted webhook
 	e := handoffEnv(t, fd.agent("pr-bot", testBotID))
@@ -294,6 +298,7 @@ func TestHandoffDiscordFailure(t *testing.T) {
 }
 
 func TestSiteRepoForm(t *testing.T) {
+	t.Parallel()
 	e := handoffEnv(t)
 	host := e.seedSites()
 	asRole(e, host.OrgID, store.RoleOperator)
@@ -326,6 +331,7 @@ func TestSiteRepoForm(t *testing.T) {
 // AI plan steps get a hand-off button only when they're a Composer
 // update for one of the host's sites; OS patching and reboots never do.
 func TestHandoffOnAIPlan(t *testing.T) {
+	t.Parallel()
 	fd := newFakeDiscord(t)
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.Agents = []handoff.Agent{fd.agent("pr-bot", testBotID)}

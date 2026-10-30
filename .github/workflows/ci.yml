@@ -79,7 +79,7 @@ jobs:
           go mod vendor
           git diff --exit-code -- vendor go.mod go.sum
 
-      - run: make -j4 --output-sync=target fmt vet lint vuln
+      - run: make -j4 --output-sync=target fmt vet lint vuln build
 
   test:
     needs: fresh
@@ -95,16 +95,59 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          # Build and module cache, with a key of its own (see lint).
-          cache: true
-          cache-dependency-path: |
-            go.sum
-            .github/workflows/ci.yml
+          # The build cache is restored below instead: setup-go's keys on
+          # go.sum, so once one was saved it was restored as an exact hit and
+          # never saved again, and every run rebuilt everything since.
+          cache: false
 
+      # The build cache of the latest main run, keyed per commit so each
+      # main run saves its own (here, or in warm when fresh skipped this
+      # job). PRs can only read main's.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-test-${{ github.sha }}
+          restore-keys: go-test-
+
+      # -count=1: the cache is for compiling only, and every test runs.
       - name: Test (with race detector)
-        run: CGO_ENABLED=1 go test -race -mod=vendor ./...
+        run: CGO_ENABLED=1 go test -race -mod=vendor -count=1 ./...
 
-      - run: make build
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-test-${{ github.sha }}
+
+  # When fresh skips a main push, test doesn't run to save its cache; build
+  # the same test binaries (running none) so the next PR starts warm.
+  warm:
+    needs: fresh
+    if: ${{ !cancelled() && needs.fresh.outputs.skip == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-test-${{ github.sha }}
+          restore-keys: go-test-
+
+      - run: CGO_ENABLED=1 go test -race -mod=vendor -count=1 -run '^$' ./...
+
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/go-build
+          key: go-test-${{ github.sha }}
 
   check:
     needs: [fresh, lint, test]

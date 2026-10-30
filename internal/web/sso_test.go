@@ -72,6 +72,7 @@ func (e *env) begin(next string) string {
 }
 
 func TestSSOHappyPath(t *testing.T) {
+	t.Parallel()
 	e, _ := newSSOEnv(t, true)
 	state := e.begin("/hosts?org=acme")
 	w := e.get("/auth/callback?code=good&state=" + url.QueryEscape(state))
@@ -98,6 +99,7 @@ func TestSSOHappyPath(t *testing.T) {
 }
 
 func TestSSOStateIsSingleUseAndBound(t *testing.T) {
+	t.Parallel()
 	e, _ := newSSOEnv(t, true)
 	state := e.begin("/")
 	if w := e.get("/auth/callback?code=good&state=" + url.QueryEscape(state)); w.Code != http.StatusOK {
@@ -115,6 +117,7 @@ func TestSSOStateIsSingleUseAndBound(t *testing.T) {
 }
 
 func TestSSOExpiredState(t *testing.T) {
+	t.Parallel()
 	e, _ := newSSOEnv(t, true)
 	// Store a request that is older than the TTL.
 	if err := e.st.PutAuthRequest(t.Context(), sha("old"), store.AuthRequest{Nonce: "n", Verifier: "v",
@@ -127,6 +130,7 @@ func TestSSOExpiredState(t *testing.T) {
 }
 
 func TestSSOFailures(t *testing.T) {
+	t.Parallel()
 	e, sso := newSSOEnv(t, true)
 
 	state := e.begin("/")
@@ -159,6 +163,7 @@ func TestSSOFailures(t *testing.T) {
 // code to pass on, and never echo Microsoft's text or anything else from
 // the query.
 func TestSSOErrorMessages(t *testing.T) {
+	t.Parallel()
 	e, _ := newSSOEnv(t, true)
 	for _, tc := range []struct {
 		query, want string
@@ -198,6 +203,7 @@ func TestSSOErrorMessages(t *testing.T) {
 }
 
 func TestSSONextIsSanitized(t *testing.T) {
+	t.Parallel()
 	e, _ := newSSOEnv(t, true)
 	for _, next := range []string{"//evil.com", "https://evil.com/", "/\\evil.com", "javascript:alert(1)"} {
 		state := e.begin(next)
@@ -209,6 +215,7 @@ func TestSSONextIsSanitized(t *testing.T) {
 }
 
 func TestLoginMethods(t *testing.T) {
+	t.Parallel()
 	// SSO only: no password form, POST /login refused.
 	e, _ := newSSOEnv(t, false)
 	body := e.get("/login").Body.String()

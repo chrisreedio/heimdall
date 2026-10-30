@@ -79,6 +79,7 @@ func checkCounts(t *testing.T, s *Store, hostID int64, step string) map[string]F
 }
 
 func TestFindingCountsStayCurrent(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	h := addFindingHost(t, s, "acme", "web-01", "DEBIAN-CVE-2099-0001", "CVE-2099-0001")

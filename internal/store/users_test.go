@@ -12,6 +12,7 @@ import (
 )
 
 func TestLocalUsers(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	id, err := s.CreateLocalUser(ctx, "test", " Admin@Example.COM ", "Admin", true, "$argon2id$x", []byte("secret"))

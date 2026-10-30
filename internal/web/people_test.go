@@ -68,6 +68,7 @@ func personEnv(t *testing.T) (*env, store.IngestHost, store.IngestHost) {
 }
 
 func TestPersonPage(t *testing.T) {
+	t.Parallel()
 	e, host, other := personEnv(t)
 	// A global admin sees it all, by email or display name.
 	for _, p := range []string{"/ips/person/alice@example.com", "/ips/person/Alice"} {
@@ -122,6 +123,7 @@ func TestPersonPage(t *testing.T) {
 }
 
 func TestPersonLinks(t *testing.T) {
+	t.Parallel()
 	e, _, _ := personEnv(t)
 	// The staff badge links the person; the address keeps its IP page.
 	host := e.get("/hosts/acme/web-01", signedIn(e)).Body.String()
@@ -155,6 +157,7 @@ func TestPersonLinks(t *testing.T) {
 }
 
 func TestLabelItsMe(t *testing.T) {
+	t.Parallel()
 	e, _, _ := personEnv(t)
 	ip := e.get("/ips/203.0.113.9", signedIn(e)).Body.String()
 	if !strings.Contains(ip, `href="/ips?addr=203.0.113.9&amp;me=1"`) {
@@ -178,6 +181,7 @@ func TestLabelItsMe(t *testing.T) {
 }
 
 func TestLabelResolvesUnknownSource(t *testing.T) {
+	t.Parallel()
 	e, host, _ := personEnv(t)
 	for _, src := range []string{"203.0.113.50", "203.0.113.51"} {
 		if _, err := e.st.AddAnomaly(t.Context(), host.ID, 0, store.Anomaly{Rule: "privilege_unknown_source", Severity: "high",

@@ -11,6 +11,7 @@ import (
 )
 
 func TestHostPageTailnet(t *testing.T) {
+	t.Parallel()
 	off := newEnv(t, "http://127.0.0.1:8080", nil)
 	off.seed()
 	if body := off.get("/hosts/acme/web-01", signedIn(off)).Body.String(); strings.Contains(body, `id="tailnet"`) {

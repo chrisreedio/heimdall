@@ -11,6 +11,7 @@ import (
 )
 
 func TestPreSources(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		fix, collector string
 		want           bool
@@ -25,6 +26,7 @@ func TestPreSources(t *testing.T) {
 }
 
 func TestHostPagePrivilege(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	host := e.seed()
 	page := func() string {

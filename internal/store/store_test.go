@@ -67,6 +67,7 @@ func buildTemplate() ([]byte, error) {
 }
 
 func TestCreateIsOwnerOnly(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "h.db")
 	if err := Create(path); err != nil {
 		t.Fatal(err)
@@ -84,6 +85,7 @@ func TestCreateIsOwnerOnly(t *testing.T) {
 }
 
 func TestOpenRefusesLoosePermissions(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "h.db")
 	if err := Create(path); err != nil {
 		t.Fatal(err)
@@ -97,6 +99,7 @@ func TestOpenRefusesLoosePermissions(t *testing.T) {
 }
 
 func TestMigrateIdempotent(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	applied, err := s.Migrate(t.Context())
 	if err != nil || len(applied) != 0 {
@@ -108,6 +111,7 @@ func TestMigrateIdempotent(t *testing.T) {
 }
 
 func TestCheckSchemaOnFreshDB(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "h.db")
 	if err := Create(path); err != nil {
 		t.Fatal(err)
@@ -139,6 +143,7 @@ func setupHost(t *testing.T, s *Store) (Host, string) {
 }
 
 func TestOrgEnvHostLifecycle(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	h, tok := setupHost(t, s)
@@ -192,6 +197,7 @@ func TestOrgEnvHostLifecycle(t *testing.T) {
 }
 
 func TestErrors(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	setupHost(t, s)
@@ -231,6 +237,7 @@ func TestErrors(t *testing.T) {
 
 // The schema itself enforces invariants the Go code relies on.
 func TestSchemaConstraints(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	h, _ := setupHost(t, s)
@@ -302,6 +309,7 @@ func TestSchemaConstraints(t *testing.T) {
 }
 
 func TestCollectorDefaults(t *testing.T) {
+	t.Parallel()
 	s, ctx := newStore(t), t.Context()
 	if _, err := s.CreateOrg(ctx, "test", "acme", ""); err != nil {
 		t.Fatal(err)
@@ -327,6 +335,7 @@ func TestCollectorDefaults(t *testing.T) {
 }
 
 func TestOrgDeleteCascades(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	setupHost(t, s)

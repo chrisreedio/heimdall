@@ -9,6 +9,7 @@ import (
 )
 
 func TestAutoNamedHosts(t *testing.T) {
+	t.Parallel()
 	s, ctx := newStore(t), t.Context()
 	s.CreateOrg(ctx, "test", "acme", "")
 	s.CreateEnv(ctx, "test", "acme", "prod", "")
@@ -63,6 +64,7 @@ func TestAutoNamedHosts(t *testing.T) {
 }
 
 func TestTagging(t *testing.T) {
+	t.Parallel()
 	s, ctx := newStore(t), t.Context()
 	s.CreateOrg(ctx, "test", "acme", "")
 	s.CreateEnv(ctx, "test", "acme", "prod", "")

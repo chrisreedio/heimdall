@@ -14,6 +14,7 @@ import (
 // on the site; an allowlisted lockfile at the same path folds into the
 // site instead of showing up twice, while one elsewhere stays a lockfile.
 func TestSiteNpmPackages(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	setupHost(t, s)

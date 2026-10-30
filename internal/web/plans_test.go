@@ -13,6 +13,7 @@ import (
 )
 
 func TestPlansFlow(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seed()
 	// The fake viewer is user 1; plans record who created and ticked them.
@@ -50,6 +51,7 @@ func TestPlansFlow(t *testing.T) {
 }
 
 func TestPlansRespectScope(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seed()
 	// The fake viewer is user 1; plans record who created and ticked them.

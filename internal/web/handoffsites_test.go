@@ -77,6 +77,7 @@ func siteKeys(f handoff.FileData) []string {
 }
 
 func TestHandoffSites(t *testing.T) {
+	t.Parallel()
 	fd := newFakeDiscord(t)
 	e := handoffEnv(t, fd.agent("pr-bot", testBotID))
 	_, root := seedThreeBranches(t, e)
@@ -176,6 +177,7 @@ func TestHandoffSites(t *testing.T) {
 // "each"; with no branch known at all (a snapshot from before branches, or
 // no .git), "each" is off and refused.
 func TestHandoffUnknownBranch(t *testing.T) {
+	t.Parallel()
 	fd := newFakeDiscord(t)
 	e := handoffEnv(t, fd.agent("pr-bot", testBotID))
 	_, root := seedThreeBranches(t, e)
@@ -209,6 +211,7 @@ func TestHandoffUnknownBranch(t *testing.T) {
 }
 
 func TestSiteBranchForm(t *testing.T) {
+	t.Parallel()
 	e := handoffEnv(t)
 	host := e.seedSites()
 	asRole(e, host.OrgID, store.RoleOperator)

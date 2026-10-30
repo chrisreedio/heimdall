@@ -12,6 +12,7 @@ import (
 // Versions of one runtime share a block, newest first; blocks keep the
 // report's order.
 func TestRuntimeGroups(t *testing.T) {
+	t.Parallel()
 	gs := runtimeGroups([]report.Runtime{
 		{Name: "nodejs", Version: "24.22.2"},
 		{Name: "php", Version: "8.3.36", Use: &report.PHPUse{Unused: true}},
@@ -36,6 +37,7 @@ func TestRuntimeGroups(t *testing.T) {
 
 // A runtime's end of life shows from a year out, not 90 days.
 func TestSupportState(t *testing.T) {
+	t.Parallel()
 	d := time.Date(2027, 12, 31, 0, 0, 0, 0, time.UTC)
 	for _, c := range []struct {
 		l    *report.Lifecycle

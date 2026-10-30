@@ -78,6 +78,7 @@ func (e *env) seedNpmSite() store.IngestHost {
 // fix command; the dev dependency is listed, badged, and left out of the
 // commands and of what needs attention.
 func TestHostPageNpmSite(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seedNpmSite()
 	w := e.get("/hosts/acme/app-01", signedIn(e))
@@ -118,6 +119,7 @@ func TestHostPageNpmSite(t *testing.T) {
 }
 
 func TestSitePageNpm(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seedNpmSite()
 	base := "/hosts/acme/app-01/site?root=" + siteRoot
@@ -152,6 +154,7 @@ func TestSitePageNpm(t *testing.T) {
 }
 
 func TestNpmCommandsFilterNames(t *testing.T) {
+	t.Parallel()
 	if npmCommands("x", nil) != nil {
 		t.Fatal("no findings, no command")
 	}
@@ -194,6 +197,7 @@ func TestNpmCommandsFilterNames(t *testing.T) {
 }
 
 func TestInCaretRange(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		installed, fixed string
 		want             bool

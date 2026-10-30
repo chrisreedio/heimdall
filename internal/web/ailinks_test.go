@@ -11,6 +11,7 @@ import (
 )
 
 func TestAILinker(t *testing.T) {
+	t.Parallel()
 	hosts := []report.Host{
 		{Name: "web-01", Sites: []report.Site{{Root: "/srv/shop", ServerNames: []string{"shop.example.com", "_", "*.example.com"}},
 			{Root: "/srv/shared", ServerNames: []string{"shared.example.com"}}}},
@@ -54,6 +55,7 @@ func TestAILinker(t *testing.T) {
 // A name inside a path, URL or address is part of a larger token and stays
 // plain; one in a sentence is still linked.
 func TestAILinkerPaths(t *testing.T) {
+	t.Parallel()
 	l := newAILinker("acme", []report.Host{
 		{Name: "web-01", Sites: []report.Site{{Root: "/home/deploy/app.example.dev", ServerNames: []string{"app.example.dev"}}}},
 	})

@@ -26,6 +26,7 @@ func pre(t *testing.T, body, id string) string {
 }
 
 func TestAddHostCollectorOptions(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.IngestURL, c.Version = "https://ingest.example.com", "v0.4.0"
 	})
@@ -106,6 +107,7 @@ func TestAddHostCollectorOptions(t *testing.T) {
 }
 
 func TestEnrollCollectorOptions(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.IngestURL, c.Version = "https://ingest.example.com", "v0.4.0"
 	})

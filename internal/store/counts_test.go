@@ -170,6 +170,7 @@ func addSnapshotHost(t *testing.T, s *Store, host, file string) IngestHost {
 // and no dpkg, findings on every mix of kernel, userland and other
 // packages, sites, npm dev dependencies, KEV, news and EPSS.
 func TestFindingCountsMatchJSONSets(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	s.CreateOrg(ctx, "test", "acme", "")
@@ -335,10 +336,17 @@ func writeCounts(tb testing.TB, s *Store, hostID int64, sets map[int64]kernelSet
 }
 
 // A hundred-odd old-kernel names no longer multiply the work per binary:
-// the lookups are index searches, and the counts still agree.
+// the lookups are index searches, and the counts still agree. A tenth the
+// findings under the race detector, which slows this one test to half a
+// minute; the plan check below doesn't depend on the size.
 func TestFindingCountsScale(t *testing.T) {
+	t.Parallel()
+	n := 1000
+	if raceOn {
+		n = 100
+	}
 	s := newStore(t)
-	id, sets := scaleHost(t, s, 141, 1000)
+	id, sets := scaleHost(t, s, 141, n)
 	start := time.Now()
 	writeCounts(t, s, id, sets)
 	took := time.Since(start)
@@ -348,10 +356,10 @@ func TestFindingCountsScale(t *testing.T) {
 		t.Fatalf("counts %v, want %v", got, want)
 	}
 	all, _ := s.OpenFindingCounts(t.Context())
-	if c := all[id][""]; c.Total != 1000 || c.NotRunning != 900 {
+	if c := all[id][""]; c.Total != n || c.NotRunning != n*9/10 {
 		t.Errorf("counts %+v", c)
 	}
-	t.Logf("1000 findings, 141 old-kernel names: %v", took)
+	t.Logf("%d findings, 141 old-kernel names: %v", n, took)
 
 	// The plan searches the sets by key rather than scanning them.
 	rows, err := s.db.QueryContext(t.Context(), `EXPLAIN QUERY PLAN `+countsSQL, id, WatchEPSS)
@@ -399,6 +407,7 @@ func BenchmarkFindingCounts(b *testing.B) {
 // One host's MatchNews recounts only when its matches changed: after an
 // ingest, SetFindings has just counted it against the same incidents.
 func TestMatchNewsRecountsOnlyOnChange(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	h := addFindingHost(t, s, "acme", "web-01", "DEBIAN-CVE-2099-0001", "CVE-2099-0001")

@@ -35,6 +35,7 @@ func saveTestSnapshot(t *testing.T, s *Store, host IngestHost, at time.Time, pen
 }
 
 func TestPlanLifecycle(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	setupHost(t, s) // acme/prod/web-01.example.com
@@ -100,6 +101,7 @@ func TestPlanLifecycle(t *testing.T) {
 }
 
 func TestPlanVisibility(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	s.CreateOrg(ctx, "test", "acme", "")
@@ -123,6 +125,7 @@ func TestPlanVisibility(t *testing.T) {
 }
 
 func TestPruneSnapshots(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	setupHost(t, s)
@@ -146,6 +149,7 @@ func TestPruneSnapshots(t *testing.T) {
 }
 
 func TestPruneKeepsRecentlyReportedSnapshots(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	setupHost(t, s)

@@ -63,6 +63,7 @@ func (e *env) createToken(name string) (string, *httptest.ResponseRecorder) {
 }
 
 func TestAssistantsCreateShowsTokenOnce(t *testing.T) {
+	t.Parallel()
 	e := mcpEnv(t, true)
 	e.asBob()
 	page := e.get("/account/assistants", signedIn(e))
@@ -115,6 +116,7 @@ func auditHas(t *testing.T, e *env, action string) bool {
 }
 
 func TestAssistantsRevoke(t *testing.T) {
+	t.Parallel()
 	e := mcpEnv(t, true)
 	e.asBob()
 	token, _ := e.createToken("laptop")
@@ -142,6 +144,7 @@ func TestAssistantsRevoke(t *testing.T) {
 }
 
 func TestAssistantsCannotRevokeOthersTokens(t *testing.T) {
+	t.Parallel()
 	e := mcpEnv(t, true)
 	adminToken, adminID, err := e.st.CreateMCPToken(t.Context(), "test", 1, "admin laptop")
 	if err != nil {
@@ -165,6 +168,7 @@ func TestAssistantsCannotRevokeOthersTokens(t *testing.T) {
 }
 
 func TestAssistantsCSRFAndOrigin(t *testing.T) {
+	t.Parallel()
 	e := mcpEnv(t, true)
 	e.asBob()
 	form := url.Values{"name": {"x"}}
@@ -187,6 +191,7 @@ func TestAssistantsCSRFAndOrigin(t *testing.T) {
 }
 
 func TestAssistantsCapAndRateLimit(t *testing.T) {
+	t.Parallel()
 	e := mcpEnv(t, true)
 	e.asBob()
 	if _, w := e.createToken(""); w.Code != http.StatusBadRequest {
@@ -215,6 +220,7 @@ func TestAssistantsCapAndRateLimit(t *testing.T) {
 }
 
 func TestTokenLimiterWindow(t *testing.T) {
+	t.Parallel()
 	var l tokenLimiter
 	for range tokenCreateLimit {
 		if !l.allow(7, testNow) {
@@ -230,6 +236,7 @@ func TestTokenLimiterWindow(t *testing.T) {
 }
 
 func TestAssistantsScopeAnyUser(t *testing.T) {
+	t.Parallel()
 	// A user with no role anywhere can still manage tokens (they see
 	// nothing through them, same as in the UI).
 	e := mcpEnv(t, true)
@@ -248,6 +255,7 @@ func TestAssistantsScopeAnyUser(t *testing.T) {
 }
 
 func TestAssistantsDisabled(t *testing.T) {
+	t.Parallel()
 	e := mcpEnv(t, false)
 	// Admins get the "MCP is off" note with the config to turn it on.
 	w := e.get("/account/assistants", signedIn(e))
@@ -275,6 +283,7 @@ func TestAssistantsDisabled(t *testing.T) {
 }
 
 func TestAssistantsBundle(t *testing.T) {
+	t.Parallel()
 	e := mcpEnv(t, true)
 	e.asBob()
 	w := e.get("/account/assistants/heimdall.mcpb", signedIn(e))
@@ -310,6 +319,7 @@ func TestAssistantsBundle(t *testing.T) {
 }
 
 func TestAdminSeesAndRevokesTokens(t *testing.T) {
+	t.Parallel()
 	e := mcpEnv(t, true)
 	bobToken, bobID, _ := e.st.CreateMCPToken(t.Context(), "test", 2, "bob phone")
 	body := e.get("/admin/users", signedIn(e)).Body.String()
@@ -334,6 +344,7 @@ func TestAdminSeesAndRevokesTokens(t *testing.T) {
 }
 
 func TestAssistantsThreatsToken(t *testing.T) {
+	t.Parallel()
 	e := mcpEnv(t, true)
 	e.asBob()
 	if body := e.get("/account/assistants", signedIn(e)).Body.String(); !strings.Contains(body, `<option value="threats"`) {
@@ -368,6 +379,7 @@ func TestAssistantsThreatsToken(t *testing.T) {
 // A hub that names its connection (mcp.name) uses the name everywhere a
 // client keys on it, so connections to two hubs sit side by side.
 func TestAssistantsNamedHub(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.MCP = MCPSetup{Enabled: true, BaseURL: testMCPURL, Name: "heimdall-acme"}
 	})

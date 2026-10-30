@@ -54,6 +54,7 @@ func (e *env) orgID(slug string) int64 {
 }
 
 func TestIPsPageAdminOnly(t *testing.T) {
+	t.Parallel()
 	e := newIPEnv(t)
 	e.seed()
 	e.st.CreateOrg(t.Context(), "test", "beta", "Beta")
@@ -89,6 +90,7 @@ func TestIPsPageAdminOnly(t *testing.T) {
 }
 
 func TestIPLabelAddRemove(t *testing.T) {
+	t.Parallel()
 	e := newIPEnv(t)
 	e.seed()
 	ctx := t.Context()
@@ -155,6 +157,7 @@ func TestIPLabelAddRemove(t *testing.T) {
 }
 
 func TestHostPageVerdicts(t *testing.T) {
+	t.Parallel()
 	e := newIPEnv(t)
 	host := e.seed()
 	ctx := t.Context()
@@ -205,6 +208,7 @@ func TestHostPageVerdicts(t *testing.T) {
 }
 
 func TestIPPageScoping(t *testing.T) {
+	t.Parallel()
 	e := newIPEnv(t)
 	host := e.seed()
 	ctx := t.Context()
@@ -268,6 +272,7 @@ func TestIPPageScoping(t *testing.T) {
 }
 
 func TestTailscaleServeHeaders(t *testing.T) {
+	t.Parallel()
 	type seen struct {
 		ip   string
 		user tsUser
@@ -327,6 +332,7 @@ func TestTailscaleServeHeaders(t *testing.T) {
 // Caddy), CF-Connecting-IP only after a Cloudflare edge hop, and never a
 // tailnet identity.
 func TestBehindProxyHeaders(t *testing.T) {
+	t.Parallel()
 	var ip string
 	var user tsUser
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -370,6 +376,7 @@ func TestBehindProxyHeaders(t *testing.T) {
 
 // A deploy service's account from outside its ranges isn't vouched for.
 func TestBadgeAccountOnly(t *testing.T) {
+	t.Parallel()
 	v := ipinfo.Verdict{Addr: netip.MustParseAddr("203.0.113.60"), Labels: []ipinfo.Label{
 		{Kind: store.IPKindAutomation, Name: "Laravel Forge", Source: "service:forge", Guess: true}}}
 	if b := badgeFor(v); b.Kind != store.IPKindUnknown || b.Text != "unknown address, Laravel Forge account" {

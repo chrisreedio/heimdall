@@ -48,6 +48,7 @@ func newsEnv(t *testing.T) *env {
 }
 
 func TestNewsPage(t *testing.T) {
+	t.Parallel()
 	e := newsEnv(t)
 	w := e.get("/news", signedIn(e))
 	body := w.Body.String()
@@ -85,6 +86,7 @@ func TestNewsPage(t *testing.T) {
 }
 
 func TestNewsScope(t *testing.T) {
+	t.Parallel()
 	e := newsEnv(t)
 	acme, _ := e.st.HostByName(t.Context(), "acme", "web-01")
 	e.auth.viewer = &auth.Viewer{UserID: 2, Email: "bob@example.com", SessionToken: goodToken,
@@ -96,6 +98,7 @@ func TestNewsScope(t *testing.T) {
 }
 
 func TestNewsOnDashboardAndHost(t *testing.T) {
+	t.Parallel()
 	e := newsEnv(t)
 	dash := e.get("/", signedIn(e)).Body.String()
 	if !strings.Contains(dash, `<a class="news-strip" href="/news?affects=me">`) || !strings.Contains(dash, "<strong>1</strong> in the news affects your hosts") {
@@ -124,6 +127,7 @@ func TestNewsOnDashboardAndHost(t *testing.T) {
 }
 
 func TestNewsOff(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seed()
 	if w := e.get("/news", signedIn(e)); w.Code != http.StatusNotFound {

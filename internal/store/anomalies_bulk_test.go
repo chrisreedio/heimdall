@@ -8,6 +8,7 @@ import (
 )
 
 func TestAckAnomalies(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	h, _ := setupHost(t, s)
 	ctx := t.Context()

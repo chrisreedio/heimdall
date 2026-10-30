@@ -16,6 +16,7 @@ const (
 )
 
 func TestScopesAndGrants(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	s.CreateOrg(ctx, "test", "acme", "")
@@ -60,6 +61,7 @@ func TestScopesAndGrants(t *testing.T) {
 }
 
 func TestEntraProvisioningAndBinding(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 
@@ -94,6 +96,7 @@ func TestEntraProvisioningAndBinding(t *testing.T) {
 }
 
 func TestSyncAppRoles(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	s.CreateOrg(ctx, "test", "acme", "")
@@ -130,6 +133,7 @@ func TestSyncAppRoles(t *testing.T) {
 }
 
 func TestAuthRequestsAreSingleUse(t *testing.T) {
+	t.Parallel()
 	s := newStore(t)
 	ctx := t.Context()
 	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
@@ -153,6 +157,7 @@ func TestAuthRequestsAreSingleUse(t *testing.T) {
 }
 
 func TestUserRefDisambiguates(t *testing.T) {
+	t.Parallel()
 	s, ctx := newStore(t), t.Context()
 	if _, err := s.CreateOrg(ctx, "test", "acme", "Acme"); err != nil {
 		t.Fatal(err)
@@ -186,6 +191,7 @@ func TestUserRefDisambiguates(t *testing.T) {
 }
 
 func TestEntraDuplicatesRefused(t *testing.T) {
+	t.Parallel()
 	s, ctx := newStore(t), t.Context()
 	bound, err := s.CreateEntraUser(ctx, "test", tenantA, oidAlice, "alice@example.com", "", false)
 	if err != nil {
@@ -224,6 +230,7 @@ func TestEntraDuplicatesRefused(t *testing.T) {
 // could never bind (sign-in matches the bound row's oid first), so when
 // the bound row was disabled the person was locked out.
 func TestDisabledBoundUserNotShadowedByDuplicate(t *testing.T) {
+	t.Parallel()
 	s, ctx := newStore(t), t.Context()
 	old, err := s.CreateEntraUser(ctx, "test", tenantA, "", "alice@example.com", "", true)
 	if err != nil {
@@ -249,6 +256,7 @@ func TestDisabledBoundUserNotShadowedByDuplicate(t *testing.T) {
 }
 
 func TestDeleteUser(t *testing.T) {
+	t.Parallel()
 	s, ctx := newStore(t), t.Context()
 	if _, err := s.CreateOrg(ctx, "test", "acme", "Acme"); err != nil {
 		t.Fatal(err)

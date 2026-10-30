@@ -10,6 +10,7 @@ import (
 )
 
 func TestSignIns(t *testing.T) {
+	t.Parallel()
 	s, ctx := newStore(t), t.Context()
 	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 	acme, _ := s.CreateOrg(ctx, "test", "acme", "")
@@ -75,6 +76,7 @@ func TestSignIns(t *testing.T) {
 }
 
 func TestIPPolicyAndWhereAddressesAppear(t *testing.T) {
+	t.Parallel()
 	s, ctx := newStore(t), t.Context()
 	now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 	acme, _ := s.CreateOrg(ctx, "test", "acme", "")

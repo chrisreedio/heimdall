@@ -16,6 +16,7 @@ import (
 )
 
 func TestEnrollPage(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
 		c.IngestURL, c.Version = "https://ingest.example.com", "v0.4.0"
 	})
@@ -125,6 +126,7 @@ func TestEnrollPage(t *testing.T) {
 }
 
 func TestEnrollForm(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, nil)
 	e.seed()
 	csrf := auth.CSRFToken(goodToken)
@@ -149,6 +151,7 @@ func TestEnrollForm(t *testing.T) {
 }
 
 func TestExpiresIn(t *testing.T) {
+	t.Parallel()
 	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
 	for d, want := range map[time.Duration]string{
 		30 * time.Second: "in 1 minute", 10 * time.Minute: "in 11 minutes", 23 * time.Hour: "in 23 hours", time.Hour: "in 1 hour",

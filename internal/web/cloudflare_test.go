@@ -70,6 +70,7 @@ func (e *env) seedCloudflare() (acme, other int64) {
 }
 
 func TestCloudflarePageAdmin(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seedCloudflare()
 	w := e.get("/cloudflare", signedIn(e))
@@ -86,6 +87,7 @@ func TestCloudflarePageAdmin(t *testing.T) {
 }
 
 func TestCloudflarePageScoping(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	acme, _ := e.seedCloudflare()
 	// An operator in acme sees acme's records only, no dangling list, and
@@ -114,6 +116,7 @@ func TestCloudflarePageScoping(t *testing.T) {
 }
 
 func TestCloudflareSiteCard(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	path := "/hosts/acme/app-01/site?root=" + siteRoot
 	// Nothing synced: no card.
@@ -145,6 +148,7 @@ func TestCloudflareSiteCard(t *testing.T) {
 }
 
 func TestCloudflareNavLink(t *testing.T) {
+	t.Parallel()
 	for _, on := range []bool{false, true} {
 		e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.Cloudflare = on })
 		e.seed()
@@ -156,6 +160,7 @@ func TestCloudflareNavLink(t *testing.T) {
 }
 
 func TestCloudflareDanglingProbes(t *testing.T) {
+	t.Parallel()
 	e := newEnv(t, "http://127.0.0.1:8080", nil)
 	e.seedCloudflare()
 	ctx := t.Context()
@@ -220,6 +225,7 @@ func TestCloudflareDanglingProbes(t *testing.T) {
 }
 
 func TestValidHostname(t *testing.T) {
+	t.Parallel()
 	for n, want := range map[string]bool{
 		"www.example.com": true, "a-b.example.com": true, "Example.COM": true,
 		"*.example.com": false, "_dmarc.example.com": false, "example": false, "-a.example.com": false,

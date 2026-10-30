@@ -18,6 +18,7 @@ import (
 const cfAccount = "dddddddddddddddddddddddddddddddd"
 
 func TestCloudflareListsMapping(t *testing.T) {
+	t.Parallel()
 	syncs := 0
 	ips := &ipinfo.Resolver{}
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
@@ -107,6 +108,7 @@ func TestCloudflareListsMapping(t *testing.T) {
 
 // Without lists or a token, the card says so.
 func TestCloudflareListsEmpty(t *testing.T) {
+	t.Parallel()
 	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.Cloudflare = true })
 	b := e.get("/cloudflare", signedIn(e)).Body.String()
 	if !strings.Contains(b, "Not read yet: there") || strings.Contains(b, "Save and sync") {
