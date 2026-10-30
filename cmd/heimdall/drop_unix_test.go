@@ -126,6 +126,7 @@ var hubUserCommands = map[string]bool{
 // of the three on purpose: a key-reading command left as the hub user
 // can't read its root-owned file on an installed hub.
 func TestEveryCommandRunsAsTheRightUser(t *testing.T) {
+	t.Parallel()
 	for name := range commands {
 		paths := []string{name}
 		if subs, ok := groupSubs[name]; ok {

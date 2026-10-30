@@ -108,6 +108,7 @@ func TestUpgrade(t *testing.T) {
 }
 
 func TestSetTOMLKeys(t *testing.T) {
+	t.Parallel()
 	src := config.Template("heimdall.db")
 	src = append(src, []byte("\n[extra]\nallowed_tenants = [\n  \"x\",\n]\n")...)
 	out := string(setTOMLKeys(src, "auth.entra", [][2]string{{"enabled", "true"}, {"tenant", `"t"`}, {"allowed_tenants", `["t"]`}, {"new_key", "1"}}))
@@ -240,6 +241,7 @@ func TestPinnedCosign(t *testing.T) {
 // TestSignaturePinsMatch: the cosign pins and the signer identity are the
 // same in every installer as here.
 func TestSignaturePinsMatch(t *testing.T) {
+	t.Parallel()
 	read := func(p string) string {
 		b, err := os.ReadFile(filepath.Join("..", "..", p))
 		if err != nil {

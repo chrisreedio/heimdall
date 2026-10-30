@@ -105,8 +105,11 @@ var errUsage = errors.New("usage")
 type app struct {
 	ctx        context.Context
 	configPath string
+	stdin      io.Reader // passwords, codes and secrets
 	stdout     io.Writer // command output, safe to pipe
 	stderr     io.Writer // messages for humans
+
+	newTOTPSecret func() []byte // tests only; nil is auth.NewTOTPSecret
 }
 
 type command func(a *app, args []string) error
@@ -184,7 +187,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	return cmd(&app{ctx: ctx, configPath: cfgPath, stdout: stdout, stderr: stderr}, fs.Args()[1:])
+	return cmd(&app{ctx: ctx, configPath: cfgPath, stdin: stdin, stdout: stdout, stderr: stderr}, fs.Args()[1:])
 }
 
 // group dispatches "<name> <sub> ..." to a subcommand.

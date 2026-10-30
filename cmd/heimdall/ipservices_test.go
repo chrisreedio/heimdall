@@ -50,7 +50,7 @@ func TestIPServicesStatusSync(t *testing.T) {
 	t.Setenv("HEIMDALL_PLOI_TOKEN_FILE", "")
 	t.Setenv("CREDENTIALS_DIRECTORY", "")
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	b, err := os.ReadFile(c.config)
 	if err != nil {
 		t.Fatal(err)

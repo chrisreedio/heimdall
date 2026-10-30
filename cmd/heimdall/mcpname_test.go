@@ -15,6 +15,7 @@ import (
 // set-name writes mcp.name into the config, keeping its comments, and
 // refuses a name assistants wouldn't accept.
 func TestMCPSetName(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), "heimdall.toml")
 	src := "# my hub\n[ui]\nlisten = \"127.0.0.1:8080\"\nbase_url = \"http://127.0.0.1:8080\"\n\n[mcp]\n# assistants\nenabled = false\n"
 	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {

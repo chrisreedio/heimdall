@@ -20,6 +20,7 @@ import (
 	"github.com/realmwatch/heimdall/internal/config"
 	"github.com/realmwatch/heimdall/internal/ipinfo"
 	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store/storetest"
 )
 
 const cfTestToken = "cf-test-token-0123456789abcdef"
@@ -107,7 +108,7 @@ func TestCloudflareStatusAndSync(t *testing.T) {
 	cfgPath := filepath.Join(dir, "heimdall.toml")
 	os.WriteFile(cfgPath, []byte("database = \"h.db\"\n[cloudflare]\nenabled = true\napi_base = \""+srv.URL+"/api\"\n"), 0o600)
 	var out, errb bytes.Buffer
-	store.Create(filepath.Join(dir, "h.db"))
+	storetest.WriteFile(t, filepath.Join(dir, "h.db"))
 	if err := run(t.Context(), []string{"-c", cfgPath, "migrate"}, &out, &errb); err != nil {
 		t.Fatal(err, errb.String())
 	}

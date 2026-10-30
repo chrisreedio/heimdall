@@ -12,14 +12,16 @@ import (
 	"time"
 
 	"github.com/realmwatch/heimdall/internal/store"
+	"github.com/realmwatch/heimdall/internal/store/storetest"
 )
 
 func TestSurfaceCommand(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "heimdall.toml")
 	os.WriteFile(cfgPath, []byte("database = \"h.db\"\n[cloudflare]\nenabled = true\n"), 0o600)
 	dbPath := filepath.Join(dir, "h.db")
-	store.Create(dbPath)
+	storetest.WriteFile(t, dbPath)
 	var out, errb bytes.Buffer
 	if err := run(t.Context(), []string{"-c", cfgPath, "migrate"}, &out, &errb); err != nil {
 		t.Fatal(err, errb.String())

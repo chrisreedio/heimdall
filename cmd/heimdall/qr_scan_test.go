@@ -17,6 +17,7 @@ import (
 // real decoder can confirm what the terminal shows is scannable. It writes
 // the PNG only when HEIMDALL_QR_PNG is set (decode it with zbarimg).
 func TestQRRenderingScans(t *testing.T) {
+	t.Parallel()
 	out := os.Getenv("HEIMDALL_QR_PNG")
 	if out == "" {
 		t.Skip("set HEIMDALL_QR_PNG=/path.png to export the rendering")

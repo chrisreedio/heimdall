@@ -8,7 +8,6 @@ import (
 	"crypto/sha1"
 	"encoding/binary"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -39,20 +38,19 @@ func totpNow(secret []byte, offset int64) string {
 
 func (c *cli) user(t *testing.T, cmd command, input string, args ...string) (string, error) {
 	t.Helper()
-	stdin = strings.NewReader(input)
-	t.Cleanup(func() { stdin = os.Stdin })
 	var out, errOut bytes.Buffer
-	err := cmd(&app{ctx: t.Context(), configPath: c.config, stdout: &out, stderr: &errOut}, args)
+	err := cmd(&app{ctx: t.Context(), configPath: c.config, stdin: strings.NewReader(input), stdout: &out, stderr: &errOut,
+		newTOTPSecret: c.newTOTPSecret}, args)
 	return out.String() + errOut.String(), err
 }
 
 func TestUserCommands(t *testing.T) {
+	t.Parallel()
 	awayFromStepBoundary()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	secret := []byte("12345678901234567890")
-	newTOTPSecret = func() []byte { return bytes.Clone(secret) }
-	t.Cleanup(func() { newTOTPSecret = auth.NewTOTPSecret })
+	c.newTOTPSecret = func() []byte { return bytes.Clone(secret) }
 
 	// Weak password and wrong code are refused, and nothing is created.
 	if _, err := c.user(t, cmdUserCreate, "short\n", "--password-stdin", "a@example.com"); err == nil {
@@ -125,13 +123,13 @@ func TestUserCommands(t *testing.T) {
 }
 
 func TestUserDelete(t *testing.T) {
+	t.Parallel()
 	awayFromStepBoundary()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	const tenantA, tenantB = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 	secret := []byte("12345678901234567890")
-	newTOTPSecret = func() []byte { return bytes.Clone(secret) }
-	t.Cleanup(func() { newTOTPSecret = auth.NewTOTPSecret })
+	c.newTOTPSecret = func() []byte { return bytes.Clone(secret) }
 	if out, err := c.user(t, cmdUserCreate, "correct horse battery\n"+totpNow(secret, 0)+"\n", "--password-stdin", "--admin", "admin@example.com"); err != nil {
 		t.Fatalf("create admin: %v\n%s", err, out)
 	}
@@ -181,13 +179,13 @@ func TestUserDelete(t *testing.T) {
 }
 
 func TestSharedEmailPickedByKind(t *testing.T) {
+	t.Parallel()
 	awayFromStepBoundary()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	c.ok("org", "create", "acme")
 	secret := []byte("12345678901234567890")
-	newTOTPSecret = func() []byte { return bytes.Clone(secret) }
-	t.Cleanup(func() { newTOTPSecret = auth.NewTOTPSecret })
+	c.newTOTPSecret = func() []byte { return bytes.Clone(secret) }
 	if out, err := c.user(t, cmdUserCreate, "correct horse battery\n"+totpNow(secret, 0)+"\n", "--password-stdin", "chris@example.com"); err != nil {
 		t.Fatalf("create local: %v\n%s", err, out)
 	}
@@ -215,8 +213,9 @@ func TestSharedEmailPickedByKind(t *testing.T) {
 }
 
 func TestTokenPurposeCLI(t *testing.T) {
+	t.Parallel()
 	c := newCLI(t)
-	c.ok("init")
+	c.init()
 	c.ok("user", "create", "--entra", "--tenant", "11111111-1111-1111-1111-111111111111", "chris@example.com")
 	out, errOut, err := c.run("user", "mcp-token", "create", "--purpose", "threats", "--name", "edge firewall", "chris@example.com")
 	if err != nil || !strings.HasPrefix(out, "hmd_threats_") || !strings.Contains(errOut, "/api/v1/threats") || strings.Contains(errOut, "hmd_") {
