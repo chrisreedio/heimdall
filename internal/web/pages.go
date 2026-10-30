@@ -29,6 +29,7 @@ type loginBody struct {
 	Error string
 	Local bool // show the password form
 	SSO   bool // show "Sign in with Microsoft"
+	Keep  bool // "Keep me signed in on this device" was ticked
 }
 
 func (s *server) loginBody(next string) loginBody {
@@ -62,8 +63,9 @@ func (s *server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	email := strings.TrimSpace(r.PostForm.Get("email"))
 	next := safeNext(r.PostForm.Get("next"))
+	keep := r.PostForm.Get("keep") == "on"
 	token, err := s.auth.Login(r.Context(), email, r.PostForm.Get("password"), strings.TrimSpace(otpField(r)),
-		clientIP(r), r.UserAgent())
+		clientIP(r), r.UserAgent(), keep)
 	if err != nil {
 		status, msg := http.StatusUnauthorized, auth.ErrInvalidLogin.Error()
 		switch {
@@ -76,12 +78,12 @@ func (s *server) loginSubmit(w http.ResponseWriter, r *http.Request) {
 			email = ""
 		}
 		body := s.loginBody(next)
-		body.Email, body.Error = email, msg
+		body.Email, body.Error, body.Keep = email, msg, keep
 		s.render(w, r, status, "login", nil, "Sign in", "", body)
 		return
 	}
 	s.noteTailscaleUser(r, token) // tsproxy.go
-	s.setSession(w, token, int(s.cfg.SessionMax.Seconds()))
+	s.setSession(w, token, s.sessionAge(keep))
 	http.Redirect(w, r, next, http.StatusSeeOther)
 }
 

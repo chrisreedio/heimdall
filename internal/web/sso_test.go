@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/realmwatch/heimdall/internal/auth"
 	"github.com/realmwatch/heimdall/internal/auth/entra"
 	"github.com/realmwatch/heimdall/internal/store"
 )
@@ -246,3 +247,21 @@ func TestLoginMethods(t *testing.T) {
 }
 
 func sha(s string) [32]byte { return sha256.Sum256([]byte(s)) }
+
+// "Keep me signed in" survives the trip through Microsoft's page.
+func TestSSOKeepSignedIn(t *testing.T) {
+	t.Parallel()
+	e, _ := newSSOEnv(t, false)
+	if body := e.get("/login").Body.String(); !strings.Contains(body, `action="/auth/entra/login"`) || !strings.Contains(body, `name="keep"`) {
+		t.Fatal("no keep box on the SSO form")
+	}
+	w := e.get("/auth/entra/login?keep=on&next=%2F")
+	loc, _ := url.Parse(w.Header().Get("Location"))
+	w = e.get("/auth/callback?code=good&state=" + url.QueryEscape(loc.Query().Get("state")))
+	if c := w.Result().Cookies(); len(c) != 1 || c[0].MaxAge != int(auth.DeviceSessionMax.Seconds()) {
+		t.Errorf("kept SSO cookie = %+v", c)
+	}
+	if len(e.auth.keeps) != 1 || !e.auth.keeps[0] {
+		t.Errorf("LoginIdentity keep = %v", e.auth.keeps)
+	}
+}

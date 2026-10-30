@@ -33,6 +33,11 @@ const (
 // sessionPrefix marks session cookies so they're recognizable.
 const sessionPrefix = "hmd_sess_"
 
+// DeviceSessionMax is how long a device session ("Keep me signed in on
+// this device") lasts after its last use. Each use renews it, so a phone
+// that opens the app at least monthly stays signed in.
+const DeviceSessionMax = 30 * 24 * time.Hour
+
 // Service implements login, session lookup and logout for local and
 // Entra ID accounts.
 type Service struct {
@@ -52,8 +57,9 @@ type Service struct {
 }
 
 // Login checks email, password and TOTP code and returns a new session
-// token. User-facing failures are only ErrInvalidLogin or ErrThrottled.
-func (s *Service) Login(ctx context.Context, email, password, code, ip, userAgent string) (string, error) {
+// token, for a device session if keep is set. User-facing failures are
+// only ErrInvalidLogin or ErrThrottled.
+func (s *Service) Login(ctx context.Context, email, password, code, ip, userAgent string, keep bool) (string, error) {
 	if s.DisableLocal {
 		return "", ErrInvalidLogin
 	}
@@ -102,18 +108,23 @@ func (s *Service) Login(ctx context.Context, email, password, code, ip, userAgen
 		return fail(u.ID, "replayed_code")
 	}
 
-	token := newSessionToken()
-	if err := s.Store.CreateSession(ctx, sha256.Sum256([]byte(token)), u.ID, now, now.Add(s.SessionMax), ip, userAgent); err != nil {
+	token, err := s.startSession(ctx, u.ID, now, ip, userAgent, keep)
+	if err != nil {
 		return "", err
 	}
 	s.clearFailures(userKey)
-	if err := s.auditLogin(ctx, u.ID, true, "", emailKey, ip, nil); err != nil {
+	note := ""
+	if keep {
+		note = "kept"
+	}
+	if err := s.auditLogin(ctx, u.ID, true, note, emailKey, ip, nil); err != nil {
 		return "", err
 	}
 	return token, nil
 }
 
 // auditLogin records a login attempt and returns ret (or an audit error).
+// reason is why it failed, or for a success "kept" for a device session.
 func (s *Service) auditLogin(ctx context.Context, userID int64, success bool, reason, email, ip string, ret error) error {
 	actor, action := "anon", "login.failure"
 	if userID != 0 {
@@ -122,6 +133,9 @@ func (s *Service) auditLogin(ctx context.Context, userID int64, success bool, re
 	e := store.AuditEntry{Actor: actor, Action: action, Target: truncate(email, 254), IP: ip}
 	if success {
 		e.Action = "login.success"
+		if reason != "" {
+			e.Detail = map[string]any{"session": reason}
+		}
 	} else {
 		e.Detail = map[string]any{"reason": reason}
 	}
@@ -147,19 +161,28 @@ func (s *Service) Session(ctx context.Context, token string) (*Viewer, error) {
 	}
 	now := s.Now()
 	kindOK := u.Kind == "entra" || (u.Kind == "local" && !s.DisableLocal)
-	if !now.Before(sess.ExpiresAt) || now.Sub(sess.LastSeenAt) > s.SessionIdle || u.Disabled || !kindOK {
+	idle := s.SessionIdle
+	if sess.Kept {
+		idle = DeviceSessionMax // and ExpiresAt moves with each use
+	}
+	if !now.Before(sess.ExpiresAt) || now.Sub(sess.LastSeenAt) > idle || u.Disabled || !kindOK {
 		if err := s.Store.DeleteSession(ctx, hash); err != nil {
 			return nil, err
 		}
 		return nil, ErrNoSession
 	}
+	renewed := false
 	if now.Sub(sess.LastSeenAt) >= touchEvery {
 		// Best effort and brief: pages read from the store's read pool, so
 		// a long write (a big first report, a findings recount) mustn't
 		// hold them up just to bump last_seen_at. A missed touch only
 		// brings the idle timeout closer; a later request touches again.
 		tctx, cancel := context.WithTimeout(ctx, touchWait)
-		s.Store.TouchSession(tctx, hash, now)
+		if sess.Kept {
+			renewed = s.Store.TouchDeviceSession(tctx, hash, now, now.Add(DeviceSessionMax)) == nil
+		} else {
+			s.Store.TouchSession(tctx, hash, now)
+		}
 		cancel()
 	}
 	scope, err := s.Store.ScopeFor(ctx, u.ID)
@@ -167,12 +190,13 @@ func (s *Service) Session(ctx context.Context, token string) (*Viewer, error) {
 		return nil, err
 	}
 	return &Viewer{UserID: u.ID, Email: u.Email, DisplayName: u.DisplayName, IsAdmin: u.IsAdmin, Kind: u.Kind,
-		Scope: scope, SessionToken: token}, nil
+		Scope: scope, SessionToken: token, Kept: sess.Kept, Renewed: renewed}, nil
 }
 
-// LoginIdentity starts a session for a validated Entra ID identity. Only
-// pre-provisioned users get in; everyone else gets ErrNotProvisioned.
-func (s *Service) LoginIdentity(ctx context.Context, id store.EntraIdentity, roles []string, ip, userAgent string) (string, error) {
+// LoginIdentity starts a session (a device session if keep is set) for a
+// validated Entra ID identity. Only pre-provisioned users get in; everyone
+// else gets ErrNotProvisioned.
+func (s *Service) LoginIdentity(ctx context.Context, id store.EntraIdentity, roles []string, ip, userAgent string, keep bool) (string, error) {
 	now := s.Now()
 	u, err := s.Store.ResolveEntraUser(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
@@ -193,12 +217,16 @@ func (s *Service) LoginIdentity(ctx context.Context, id store.EntraIdentity, rol
 			return "", err
 		}
 	}
-	token := newSessionToken()
-	if err := s.Store.CreateSession(ctx, sha256.Sum256([]byte(token)), u.ID, now, now.Add(s.SessionMax), ip, userAgent); err != nil {
+	token, err := s.startSession(ctx, u.ID, now, ip, userAgent, keep)
+	if err != nil {
 		return "", err
 	}
+	detail := map[string]any{"method": "entra", "roles": roles}
+	if keep {
+		detail["session"] = "kept"
+	}
 	if err := s.Store.Audit(ctx, store.AuditEntry{Actor: fmt.Sprintf("user:%d", u.ID), Action: "login.success",
-		Target: u.Email, IP: ip, Detail: map[string]any{"method": "entra", "roles": roles}}); err != nil {
+		Target: u.Email, IP: ip, Detail: detail}); err != nil {
 		return "", err
 	}
 	return token, nil
@@ -221,6 +249,21 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 		return err
 	}
 	return s.Store.Audit(ctx, store.AuditEntry{Actor: fmt.Sprintf("user:%d", sess.UserID), Action: "logout"})
+}
+
+// startSession stores a new session and returns its token: a device
+// session lasting DeviceSessionMax from its last use if keep is set, else
+// a normal one bounded by SessionIdle and SessionMax.
+func (s *Service) startSession(ctx context.Context, userID int64, now time.Time, ip, userAgent string, keep bool) (string, error) {
+	token := newSessionToken()
+	hash := sha256.Sum256([]byte(token))
+	var err error
+	if keep {
+		err = s.Store.CreateDeviceSession(ctx, hash, userID, now, now.Add(DeviceSessionMax), ip, userAgent)
+	} else {
+		err = s.Store.CreateSession(ctx, hash, userID, now, now.Add(s.SessionMax), ip, userAgent)
+	}
+	return token, err
 }
 
 func newSessionToken() string {

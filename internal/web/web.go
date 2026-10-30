@@ -13,6 +13,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/netip"
@@ -39,10 +40,12 @@ import (
 
 // Authenticator signs users in and resolves session cookies.
 type Authenticator interface {
-	Login(ctx context.Context, email, password, code, ip, userAgent string) (token string, err error)
+	// Login and LoginIdentity start a device session ("Keep me signed in
+	// on this device") when keep is set.
+	Login(ctx context.Context, email, password, code, ip, userAgent string, keep bool) (token string, err error)
 	// LoginIdentity starts a session for an identity SSO has validated.
 	// auth.ErrNotProvisioned means the user isn't set up in Heimdall.
-	LoginIdentity(ctx context.Context, id store.EntraIdentity, roles []string, ip, userAgent string) (token string, err error)
+	LoginIdentity(ctx context.Context, id store.EntraIdentity, roles []string, ip, userAgent string, keep bool) (token string, err error)
 	Session(ctx context.Context, token string) (*auth.Viewer, error)
 	Logout(ctx context.Context, token string) error
 }
@@ -57,12 +60,13 @@ type SSO interface {
 type SearchFunc func(ctx context.Context, query string, scope store.Scope) (*search.Result, error)
 
 type Config struct {
-	Updates    func() (updates.Release, bool) // newer release for the admin banner; nil = off
-	IngestURL  string                         // ingest.public_url, for install commands
-	BaseURL    string                         // e.g. https://heimdall.internal or http://127.0.0.1:8080
-	StaleAfter time.Duration                  // hosts.stale_after
-	Version    string
-	SessionMax time.Duration // cookie Max-Age
+	Updates     func() (updates.Release, bool) // newer release for the admin banner; nil = off
+	IngestURL   string                         // ingest.public_url, for install commands
+	BaseURL     string                         // e.g. https://heimdall.internal or http://127.0.0.1:8080
+	StaleAfter  time.Duration                  // hosts.stale_after
+	Version     string
+	SessionMax  time.Duration // cookie Max-Age
+	SessionIdle time.Duration // ui.session_idle, for which sessions the Devices list shows
 
 	SSO          SSO      // nil = single sign-on disabled
 	LocalLogin   bool     // password + TOTP sign-in; false hides the form and refuses POST /login
@@ -106,7 +110,7 @@ type Config struct {
 
 // CSP is the Content-Security-Policy sent with every response.
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
-	"form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+	"worker-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
 
 const (
 	maxFormBytes = 16 << 10
@@ -144,7 +148,8 @@ type server struct {
 	tokenLimit tokenLimiter // MCP token creation, per user
 	// handoffLimit: one hand-off per site and agent every few minutes.
 	handoffLimit handoffLimiter
-	nav          navCache // the sidebar's badges, per user (nav.go)
+	nav          navCache   // the sidebar's badges, per user (nav.go)
+	brand        brandCache // the hub's branding (branding.go)
 }
 
 // New returns the UI handler.
@@ -214,6 +219,9 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /account/assistants", s.requireAuth(s.assistantCreate))
 	mux.HandleFunc("POST /account/assistants/revoke", s.requireAuth(s.assistantRevoke))
 	mux.HandleFunc("GET /account/assistants/heimdall.mcpb", s.requireAuth(s.assistantBundle))
+	mux.HandleFunc("GET /account/devices", s.requireAuth(s.devicesPage)) // where you're signed in (devices.go)
+	mux.HandleFunc("POST /account/devices/revoke", s.requireAuth(s.deviceRevoke))
+	mux.HandleFunc("POST /admin/users/session-revoke", s.requireAuth(s.requireAdmin(s.adminSessionRevoke)))
 	// IP awareness: labels and policy (org admins), what's known about an address (ips.go).
 	mux.HandleFunc("GET /ips", s.requireAuth(s.ipsPage))
 	mux.HandleFunc("POST /ips/labels", s.requireAuth(s.ipLabelAdd))
@@ -233,6 +241,18 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /bans/resume", s.requireAuth(s.banPause(false)))
 	mux.HandleFunc("POST /bans/zones", s.requireAuth(s.banZone))
 	mux.HandleFunc("POST /admin/users/mcp-revoke", s.requireAuth(s.requireAdmin(s.adminTokenRevoke)))
+	// Branding: the hub's name, accent, logo and app icon (branding.go).
+	mux.HandleFunc("GET /admin/branding", s.requireAuth(s.requireAdmin(s.brandingPage)))
+	mux.HandleFunc("POST /admin/branding/{action}", s.requireAuthUpload(s.requireAdmin(s.brandingAction)))
+	mux.HandleFunc("GET /branding/{file}", s.brandFile)
+	// The installable app: manifest, service worker, offline page (pwa.go).
+	mux.HandleFunc("GET /manifest.webmanifest", s.manifest)
+	// The phone layout's tabs (phone.go); Home is the dashboard, Hosts /hosts.
+	mux.HandleFunc("GET /alerts", s.requireAuth(s.withScope(s.alertsPage)))
+	mux.HandleFunc("GET /defense", s.requireAuth(s.withScope(s.defensePage)))
+	mux.HandleFunc("GET /more", s.requireAuth(s.morePage))
+	mux.HandleFunc("GET /sw.js", s.serviceWorker)
+	mux.HandleFunc("GET /offline", s.offlinePage)
 	if cfg.AI != nil { // AI analysis: regenerate a brief or explain a host (operator+)
 		mux.HandleFunc("POST /ai/brief/{org}", s.requireAuth(s.aiBriefRun))
 		mux.HandleFunc("POST /hosts/{org}/{host}/ai", s.requireAuth(s.aiHostRun))
@@ -286,7 +306,15 @@ type authedHandler func(http.ResponseWriter, *http.Request, *auth.Viewer)
 
 // requireAuth sends signed-out GETs to the login page, refuses other
 // signed-out requests, and checks Origin and CSRF on every POST.
-func (s *server) requireAuth(h authedHandler) http.HandlerFunc {
+func (s *server) requireAuth(h authedHandler) http.HandlerFunc { return s.authed(maxFormBytes, h) }
+
+// requireAuthUpload is requireAuth for forms that upload a file
+// (multipart, up to maxUploadBytes).
+func (s *server) requireAuthUpload(h authedHandler) http.HandlerFunc {
+	return s.authed(maxUploadBytes, h)
+}
+
+func (s *server) authed(maxBody int64, h authedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		v, err := s.viewer(r)
 		if err != nil {
@@ -298,10 +326,13 @@ func (s *server) requireAuth(h authedHandler) http.HandlerFunc {
 			return
 		}
 		if r.Method == http.MethodPost {
-			if !s.sameOrigin(r) || !s.parseForm(w, r) || !auth.ValidCSRF(v.SessionToken, r.PostForm.Get(csrfField)) {
+			if !s.sameOrigin(r) || !s.parseBody(w, r, maxBody) || !auth.ValidCSRF(v.SessionToken, r.PostForm.Get(csrfField)) {
 				s.forbidden(w, r)
 				return
 			}
+		}
+		if v.Kept && v.Renewed { // a device session's expiry moved: so does its cookie's
+			s.setSession(w, v.SessionToken, s.sessionAge(true))
 		}
 		h(w, r, v)
 	}
@@ -374,7 +405,16 @@ func loopbackAliases(origin string) []string {
 }
 
 func (s *server) parseForm(w http.ResponseWriter, r *http.Request) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+	return s.parseBody(w, r, maxFormBytes)
+}
+
+// parseBody parses a form of up to maxBody bytes, multipart (an upload)
+// only when maxBody allows more than a plain form.
+func (s *server) parseBody(w http.ResponseWriter, r *http.Request, maxBody int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt == "multipart/form-data" && maxBody > maxFormBytes {
+		return r.ParseMultipartForm(maxBody) == nil
+	}
 	return r.ParseForm() == nil
 }
 
@@ -389,6 +429,15 @@ func safeNext(p string) string {
 		return "/"
 	}
 	return p
+}
+
+// sessionAge is the session cookie's Max-Age, in seconds: a device
+// session's (renewed on use) or the configured ui.session_max.
+func (s *server) sessionAge(kept bool) int {
+	if kept {
+		return int(auth.DeviceSessionMax.Seconds())
+	}
+	return int(s.cfg.SessionMax.Seconds())
 }
 
 func (s *server) setSession(w http.ResponseWriter, token string, maxAge int) {
@@ -419,6 +468,7 @@ var staticTypes = map[string]string{
 	".css": "text/css; charset=utf-8",
 	".js":  "text/javascript; charset=utf-8",
 	".svg": "image/svg+xml",
+	".png": "image/png",
 }
 
 func (s *server) static(w http.ResponseWriter, r *http.Request) {
@@ -457,6 +507,7 @@ type page struct {
 	CF      bool             // [cloudflare] is on (shows the Cloudflare link to operators)
 	Perm    navPerm          // which sidebar links to show (nav.go)
 	Counts  navCounts        // the sidebar's badges
+	Brand   brandView        // the hub's name, logo and icons (branding.go)
 	Body    any
 }
 
@@ -493,6 +544,7 @@ func (s *server) renderPage(w http.ResponseWriter, r *http.Request, status int, 
 	p.News = s.cfg.News
 	p.MCP = s.cfg.MCP.Enabled
 	p.CF = s.cfg.Cloudflare
+	p.Brand = s.brandView(r.Context())
 	if p.Viewer != nil {
 		p.CSRF = auth.CSRFToken(p.Viewer.SessionToken)
 	}
@@ -527,12 +579,16 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, v *auth.Viewer, er
 func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
 		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "enroll", "site", "news", "handoff", "handoffbatch"}
-	names = append(names, "assistants")          // AI assistants (MCP tokens)
-	names = append(names, "ips", "ip", "person") // IP awareness (ips.go, people.go)
-	names = append(names, "cloudflare")          // Cloudflare overview (cloudflare.go)
-	names = append(names, "offenders")           // failed logins (logins.go)
-	names = append(names, "surface")             // attack-surface map (surface.go)
-	names = append(names, "bans")                // bans (bans.go)
+	names = append(names, "assistants")                // AI assistants (MCP tokens)
+	names = append(names, "ips", "ip", "person")       // IP awareness (ips.go, people.go)
+	names = append(names, "cloudflare")                // Cloudflare overview (cloudflare.go)
+	names = append(names, "offenders")                 // failed logins (logins.go)
+	names = append(names, "surface")                   // attack-surface map (surface.go)
+	names = append(names, "bans")                      // bans (bans.go)
+	names = append(names, "branding")                  // branding (branding.go)
+	names = append(names, "devices")                   // sessions (devices.go)
+	names = append(names, "offline")                   // the app's offline page (pwa.go)
+	names = append(names, "alerts", "defense", "more") // the phone layout's tabs (phone.go)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/ai.html", "templates/"+n+".html")
@@ -662,6 +718,12 @@ var funcs = template.FuncMap{
 		}
 		return map[string]any{"Href": href, "Icon": nav, "Label": label, "Count": count, "Tone": tone, "Class": cls, "Current": p.Nav == nav}
 	},
+	// tabItem is one tab of the phone layout's tab bar: tab is what
+	// page.Tab returns on its pages, icon a navicon name.
+	"tabItem": func(p page, href, tab, icon, label string, count int, tone any) map[string]any {
+		t, _ := tone.(string)
+		return map[string]any{"Href": href, "Icon": icon, "Label": label, "Count": count, "Tone": t, "Current": p.Tab() == tab}
+	},
 	// attn says how many need attention: "46 fixable now · 16 to watch (no fix yet)".
 	"attn": attnText,
 	"chipsFor": func(c report.Counts, v findingsView) map[string]any {
@@ -708,6 +770,15 @@ var funcs = template.FuncMap{
 	"timep": func(t time.Time) *time.Time { return &t },
 	// unmet: a known-false requirement check (nil means unknown).
 	"unmet": func(b *bool) bool { return b != nil && !*b },
+	// dict builds a partial's input from key, value pairs.
+	"dict": func(kv ...any) map[string]any {
+		m := make(map[string]any, len(kv)/2)
+		for i := 0; i+1 < len(kv); i += 2 {
+			k, _ := kv[i].(string)
+			m[k] = kv[i+1]
+		}
+		return m
+	},
 	"first": func(s []string) string {
 		if len(s) == 0 {
 			return ""

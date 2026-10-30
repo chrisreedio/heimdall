@@ -89,10 +89,10 @@ func TestUserCommands(t *testing.T) {
 	}
 	defer st.Close()
 	svc := &auth.Service{Store: st, Now: time.Now, SessionIdle: time.Hour, SessionMax: time.Hour}
-	if _, err := svc.Login(t.Context(), "admin@example.com", "correct horse battery", totpNow(secret, 0), "127.0.0.1", ""); err == nil {
+	if _, err := svc.Login(t.Context(), "admin@example.com", "correct horse battery", totpNow(secret, 0), "127.0.0.1", "", false); err == nil {
 		t.Error("enrollment code reused for login")
 	}
-	if _, err := svc.Login(t.Context(), "admin@example.com", "correct horse battery", totpNow(secret, 1), "127.0.0.1", ""); err != nil {
+	if _, err := svc.Login(t.Context(), "admin@example.com", "correct horse battery", totpNow(secret, 1), "127.0.0.1", "", false); err != nil {
 		t.Fatalf("login: %v", err)
 	}
 

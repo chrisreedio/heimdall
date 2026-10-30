@@ -6,7 +6,7 @@
 <p class="muted">Local accounts (password + TOTP) are created with <code>heimdall user create</code> on the hub, so the TOTP secret never passes through the browser.</p>
 
 <div class="scroll"><table>
-  <thead><tr><th>Email</th><th>Name</th><th>Kind</th><th>Admin</th><th>Roles</th><th>Last sign-in</th>{{if .MCP}}<th>AI tokens</th>{{end}}<th>Status</th></tr></thead>
+  <thead><tr><th>Email</th><th>Name</th><th>Kind</th><th>Admin</th><th>Roles</th><th>Last sign-in</th><th>Signed in on</th>{{if .MCP}}<th>AI tokens</th>{{end}}<th>Status</th></tr></thead>
   <tbody>{{range .Users}}<tr>
     <td>{{if .Email}}{{.Email}}{{else}}<span class="muted">(no email)</span>{{end}}{{if .Self}} <span class="badge">you</span>{{end}}
       {{with or .Email .DisplayName}}<a class="small" href="{{personURL .}}" title="Their IP addresses, privileged sessions and sign-ins">addresses</a>{{end}}</td>
@@ -19,6 +19,11 @@
         {{if ne .Source "entra_app_role"}}<button type="submit" class="link">revoke</button>{{end}}
       </form>{{else}}<span class="muted">none</span>{{end}}</td>
     <td>{{ts .LastLoginAt}}</td>
+    <td>{{$uid := .ID}}{{range .Sessions}}<form method="post" action="/admin/users/session-revoke" class="inline">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="user" value="{{$uid}}"><input type="hidden" name="ref" value="{{.Ref}}">
+        <span class="badge" title="{{if .Kept}}Kept signed in{{else}}Normal session{{end}}{{with .IP}} · from {{.}}{{end}} · last used {{dayAgoText (timep .LastSeenAt)}}">{{.Label}}{{if .Current}} (this one){{end}}</span>
+        <button type="submit" class="link" aria-label="Sign out {{.Label}}">revoke</button>
+      </form>{{else}}<span class="muted">none</span>{{end}}</td>
     {{if $.Body.MCP}}<td>{{$uid := .ID}}{{range .Tokens}}<form method="post" action="/admin/users/mcp-revoke" class="inline">
         <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="user" value="{{$uid}}"><input type="hidden" name="id" value="{{.ID}}">
         <span class="badge" title="{{if .Threats}}Threat list. {{end}}Last used: {{if .LastUsed}}{{dayAgoText .LastUsed}}{{else}}never{{end}}">{{.Name}}{{if .Threats}} (threat list){{end}}</span>

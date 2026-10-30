@@ -274,6 +274,9 @@ type dashBody struct {
 	AIBrief    *aiBriefs // AI fleet brief (nil when [ai] is off); see ai.go
 	// Privileged sessions from unknown addresses this week (ips.go).
 	UnknownIPs *unknownIPs
+	// Cards are the phone layout's attention cards, most urgent first
+	// (phone.go); none means all clear.
+	Cards []homeCard
 }
 
 // tile is one dashboard number. Every tile links to where it's acted on;
@@ -449,6 +452,13 @@ func (s *server) dashboard(w http.ResponseWriter, r *http.Request, v *auth.Viewe
 		{N: t.sites, Label: plural0(t.sites, "site needing attention", "sites needing attention"), Href: "/sites",
 			Class: classIf(t.sites > 0, "warn"), Sub: "of " + plural(t.siteTotal, "site", "sites")},
 	}
+
+	banWaiting, err := s.banProposals(r.Context(), v)
+	if err != nil {
+		s.fail(w, r, v, err)
+		return
+	}
+	body.Cards = homeCards(t.kev, t.kevHosts, body.News, banWaiting, body.AnomalyAll, high, body.UnknownIPs, t.stale, days(s.cfg.StaleAfter))
 
 	ranked := slices.Clone(fleet)
 	slices.SortStableFunc(ranked, comparePriority)

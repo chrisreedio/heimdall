@@ -1,0 +1,18 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<h1>Devices</h1>
+{{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+<p class="muted">Where you're signed in: each browser, and the app on each phone. Revoke one you don't recognize or no longer use, and it's signed out at once. Ticking <strong>Keep me signed in on this device</strong> when you sign in keeps that device signed in for 30 days from its last use; otherwise a session ends after {{.Idle}} without use.</p>
+{{if .Devices}}<ul class="device-list">{{range .Devices}}
+  <li class="card device{{if .Current}} current{{end}}">
+    <div class="device-main">
+      <strong>{{.Label}}</strong>{{if .Current}} <span class="badge">this device</span>{{end}}{{if .Kept}} <span class="pill ok">kept signed in</span>{{end}}
+      <div class="muted small">Last used {{dayAgo (timep .LastSeenAt)}} · signed in {{dayAgo (timep .CreatedAt)}}{{with .IP}} · from <span class="ver">{{.}}</span>{{end}}</div>
+      <div class="muted small">{{if .Kept}}Stays signed in until {{.Until}} unless it's used before then{{else}}Ends after {{$.Body.Idle}} without use, or {{.Until}} at the latest{{end}}</div>
+    </div>
+    <form method="post" action="/account/devices/revoke" class="inline">
+      <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="ref" value="{{.Ref}}">
+      <button type="submit" class="secondary">{{if .Current}}Sign out here{{else}}Revoke{{end}}</button>
+    </form>
+  </li>{{end}}
+</ul>{{else}}<p class="empty">No sessions.</p>{{end}}
+{{end}}{{end}}

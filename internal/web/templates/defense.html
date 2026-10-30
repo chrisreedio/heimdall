@@ -1,0 +1,18 @@
+{{define "content"}}{{with .Body}}
+<h1>Defense</h1>
+<p class="muted">Who's trying to get in, and what's being done about it: failed SSH logins from servers with the login watch on{{if .Operator}}, and bans at Cloudflare's edge{{end}}.</p>
+{{if .Operator}}<div class="home-cards">
+  <a class="home-card{{if .Proposals}} warn{{end}}" href="/bans"><span class="n">{{num .Proposals}}</span><span class="l">{{if eq .Proposals 1}}ban proposal{{else}}ban proposals{{end}} waiting</span><span class="s">{{if .Proposals}}approve or reject them on Bans{{else}}nothing to decide{{end}}</span></a>
+  <a class="home-card" href="/bans"><span class="n">{{num .Active}}</span><span class="l">{{if eq .Active 1}}ban{{else}}bans{{end}} in force</span><span class="s">or being applied</span></a>
+</div>{{end}}
+<section aria-labelledby="def-off">
+  <div class="section-head"><h2 id="def-off">Repeat offenders, last 24 hours</h2><a class="small" href="/offenders">All →</a></div>
+  {{if .Offenders}}<ul class="dash-list card">{{range .Offenders}}<li>
+    <div class="dl-main"><a href="{{.Href}}" class="ver">{{.IP}}</a> {{template "ipbadge" .Badge}}{{if .Succeeded}} <span class="pill bad" title="A login from this address succeeded after it failed">then succeeded</span>{{end}}<span class="muted small dl-right">{{num .Failures}} failure{{if ne .Failures 1}}s{{end}}</span></div>
+    <div class="muted small">on {{range $i, $h := .Shown}}{{if $i}}, {{end}}{{$h.Name}}{{end}}{{if .HostsMore}} and {{.HostsMore}} more{{end}}{{with .Network}} · {{.}}{{end}}</div>
+  </li>{{end}}</ul>
+  {{if .More}}<p class="more"><a href="/offenders">{{.More}} more</a></p>{{end}}
+  {{else}}<p class="empty">{{if .Failures}}{{num .Failures}} failed logins, none from an address worth ranking.{{else}}No failed logins counted in the last 24 hours. Servers count them once the login watch is on (<code>--watch-logins</code>).{{end}}</p>{{end}}
+</section>
+<p class="more-links"><a href="/offenders">Repeat offenders</a>{{if .Operator}} · <a href="/bans">Bans</a>{{if .CF}} · <a href="/cloudflare">Cloudflare</a>{{end}}{{end}}</p>
+{{end}}{{end}}

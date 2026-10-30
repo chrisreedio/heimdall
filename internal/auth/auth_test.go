@@ -153,7 +153,7 @@ func newEnv(t *testing.T) *env {
 func (e *env) code() string { return totpAt(e.secret, e.now.Unix()/30) }
 
 func (e *env) login(em, pw, code string) (string, error) {
-	return e.svc.Login(e.t.Context(), em, pw, code, "203.0.113.5", "test-agent")
+	return e.svc.Login(e.t.Context(), em, pw, code, "203.0.113.5", "test-agent", false)
 }
 
 func TestLoginAndSession(t *testing.T) {
@@ -236,7 +236,7 @@ func TestThrottling(t *testing.T) {
 	if _, err := e2.login(email, password, e2.code()); !errors.Is(err, ErrThrottled) {
 		t.Fatalf("per-IP: want throttled, got %v", err)
 	}
-	if _, err := e2.svc.Login(t.Context(), email, password, e2.code(), "198.51.100.1", ""); err != nil {
+	if _, err := e2.svc.Login(t.Context(), email, password, e2.code(), "198.51.100.1", "", false); err != nil {
 		t.Fatalf("other IP: %v", err)
 	}
 }

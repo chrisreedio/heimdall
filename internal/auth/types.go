@@ -20,6 +20,8 @@ type Viewer struct {
 	Kind         string      // "local" or "entra"
 	Scope        store.Scope // orgs and roles this user may act on
 	SessionToken string      // raw cookie value; never logged or rendered
+	Kept         bool        // a device session ("Keep me signed in on this device")
+	Renewed      bool        // ...whose expiry this request moved out (renew the cookie)
 }
 
 var (
