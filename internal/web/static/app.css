@@ -1243,6 +1243,10 @@ h3.dang-zone { margin: 18px 0 6px; font-size: 15px; }
 .more-nav .side-label:first-of-type { margin-top: 8px; }
 .more-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .more-foot .theme-toggle { margin-left: 8px; }
+.install-hint h2 { margin: 0 0 6px; font-size: 16px; }
+.card.install-hint { margin-bottom: 14px; }
+.install-hint p { margin: 4px 0; }
+@media (display-mode: standalone) { .install-hint { display: none; } } /* already installed */
 .more-links { margin: 16px 0 0; }
 .dash-list.card { padding: 12px 14px; }
 .side-foot a.email { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
