@@ -21,14 +21,20 @@ type fakeSSO struct {
 	n        int
 	last     entra.AuthRequest
 	finishes int
+	prompts  []string // each sign-in's prompt
 }
 
-func (f *fakeSSO) Begin(context.Context) (entra.AuthRequest, error) {
+func (f *fakeSSO) Begin(context.Context) (entra.AuthRequest, error) { return f.begin("select_account") }
+
+func (f *fakeSSO) BeginReauth(context.Context) (entra.AuthRequest, error) { return f.begin("login") }
+
+func (f *fakeSSO) begin(prompt string) (entra.AuthRequest, error) {
 	f.n++
+	f.prompts = append(f.prompts, prompt)
 	f.last = entra.AuthRequest{
 		State: fmt.Sprintf("state-%d", f.n), Nonce: fmt.Sprintf("nonce-%d", f.n), Verifier: fmt.Sprintf("verifier-%d", f.n),
 	}
-	f.last.URL = "https://login.microsoftonline.com/authorize?state=" + f.last.State
+	f.last.URL = "https://login.microsoftonline.com/authorize?prompt=" + prompt + "&state=" + f.last.State
 	return f.last, nil
 }
 

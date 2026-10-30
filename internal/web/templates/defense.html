@@ -1,10 +1,23 @@
-{{define "content"}}{{with .Body}}
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
 <h1>Defense</h1>
 <p class="muted">Who's trying to get in, and what's being done about it: failed SSH logins from servers with the login watch on{{if .Operator}}, and bans at Cloudflare's edge{{end}}.</p>
-{{if .Operator}}<div class="home-cards">
-  <a class="home-card{{if .Proposals}} warn{{end}}" href="/bans"><span class="n">{{num .Proposals}}</span><span class="l">{{if eq .Proposals 1}}ban proposal{{else}}ban proposals{{end}} waiting</span><span class="s">{{if .Proposals}}approve or reject them on Bans{{else}}nothing to decide{{end}}</span></a>
-  <a class="home-card" href="/bans"><span class="n">{{num .Active}}</span><span class="l">{{if eq .Active 1}}ban{{else}}bans{{end}} in force</span><span class="s">or being applied</span></a>
-</div>{{end}}
+{{with .Flash}}<p class="notice" role="status">{{.}}</p>{{end}}
+{{if .Operator}}
+<section aria-labelledby="def-prop">
+  <div class="section-head"><h2 id="def-prop">Ban proposals waiting</h2><a class="small" href="/bans">Bans →</a></div>
+  {{if .Proposals}}<div class="ban-cards">{{range .Proposals}}{{template "bancard" (dict "Row" . "CSRF" $csrf "Writes" $.Body.Writes)}}{{end}}</div>
+  {{if not .Writes}}<p class="muted small">[bans] mode doesn't write to Cloudflare, so proposals can only be dismissed. Set <code>mode = "propose"</code> to approve them.</p>{{end}}
+  {{else}}<p class="empty">Nothing to decide.</p>{{end}}
+</section>
+<section aria-labelledby="def-active">
+  <h2 id="def-active">Bans in force</h2>
+  {{if .Active}}<ul class="dash-list card">{{range .Active}}<li id="ban-{{.ID}}">
+    <div class="dl-main"><span class="id ban-target">{{.Target}}</span> <span class="pill {{if eq .Action "block"}}bad{{else}}warn{{end}}">{{.Action}}</span>{{if ne .Status "active"}} <span class="pill muted">{{.Status}}</span>{{end}}<span class="muted small dl-right">{{if .Until}}until {{.Until}} ({{.Left}}){{else}}{{.Days}} days once written{{end}}</span></div>
+    <div class="muted small">{{with .Ev.Network}}{{.}} · {{end}}{{num .Ev.Failures}} failures{{with .DecidedBy}} · approved by {{.}}{{end}}</div>
+  </li>{{end}}</ul>
+  {{else}}<p class="empty">No bans in force.</p>{{end}}
+</section>
+{{end}}
 <section aria-labelledby="def-off">
   <div class="section-head"><h2 id="def-off">Repeat offenders, last 24 hours</h2><a class="small" href="/offenders">All →</a></div>
   {{if .Offenders}}<ul class="dash-list card">{{range .Offenders}}<li>
@@ -16,3 +29,24 @@
 </section>
 <p class="more-links"><a href="/offenders">Repeat offenders</a>{{if .Operator}} · <a href="/bans">Bans</a>{{if .CF}} · <a href="/cloudflare">Cloudflare</a>{{end}}{{end}}</p>
 {{end}}{{end}}
+
+{{/* bancard: a ban proposal on Defense, with what's needed to decide it
+   and Approve and Dismiss (the same actions as on /bans). */}}
+{{define "bancard"}}{{$r := .Row}}{{$csrf := .CSRF}}
+<article class="card ban-card" id="ban-{{$r.ID}}">
+  <div class="ban-head"><span class="id ban-target">{{$r.Target}}</span>{{if eq $r.Kind "network"}} <span class="pill info">network</span>{{end}} <span class="pill {{if eq $r.Action "block"}}bad{{else}}warn{{end}}">{{$r.Action}}</span></div>
+  <p class="ban-for">{{if eq $r.Action "block"}}Block{{else}}Challenge{{end}} for <strong>{{$r.Days}} days</strong>{{if gt $r.Offense 1}} (offense {{$r.Offense}}){{end}} · score {{printf "%.1f" $r.Score}}</p>
+  <dl class="ban-facts">
+    <div><dt>Failures</dt><dd>{{num $r.Ev.Failures}}, {{$r.Ev.Usernames}} username{{if ne $r.Ev.Usernames 1}}s{{end}}, on {{$r.Ev.Days}} day{{if ne $r.Ev.Days 1}}s{{end}}; last {{ago $r.Ev.Last}}</dd></div>
+    <div><dt>Network</dt><dd>{{with $r.Ev.Network}}{{.}} · {{end}}{{$r.Ev.Prefix}}</dd></div>
+    <div><dt>Hosts</dt><dd>{{range $i, $h := $r.Hosts}}{{if $i}}, {{end}}<a href="{{hostURL $h.Org $h.Name}}#logins">{{$h.Name}}</a>{{end}}{{if $r.HostsMore}} +{{$r.HostsMore}} in other orgs{{end}}</dd></div>
+    {{with $r.Ev.Members}}<div><dt>Addresses</dt><dd>{{join . ", "}}</dd></div>{{end}}
+    <div><dt>Known</dt><dd>{{$r.Ev.Known}}{{with $r.Ev.Reason}} · {{.}}{{end}}</dd></div>
+  </dl>
+  {{if $r.Ev.Succeeded}}<p class="small"><span class="pill bad">then succeeded</span> A login from it succeeded after it failed.</p>{{end}}
+  <div class="ban-actions">
+    {{if .Writes}}<form method="post" action="/bans/{{$r.ID}}/approve"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="back" value="/defense"><button type="submit">Approve</button></form>{{end}}
+    <form method="post" action="/bans/{{$r.ID}}/reject"><input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="back" value="/defense"><button type="submit" class="secondary">Dismiss</button></form>
+  </div>
+</article>
+{{end}}

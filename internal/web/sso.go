@@ -76,6 +76,14 @@ func (s *server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next := safeNext(req.ReturnTo)
+	if id, p := s.stepups.byState(sha256.Sum256([]byte(state))); p != nil { // a step-up (stepup.go)
+		code := q.Get("code")
+		if q.Get("error") != "" || len(code) > 4096 {
+			code = ""
+		}
+		s.stepUpCallback(w, r, id, p, code, req.Verifier, req.Nonce)
+		return
+	}
 
 	if e := q.Get("error"); e != "" {
 		desc := q.Get("error_description")

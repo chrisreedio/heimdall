@@ -21,11 +21,16 @@ import (
 
 // newBansEnv: Cloudflare on, [bans] in propose mode, the seeded zones.
 // One proposal touches acme (app-01), one only the other org (web-09).
-func newBansEnv(t *testing.T) (e *env, acme, other int64, mine, theirs int64) {
+func newBansEnv(t *testing.T, adjust ...func(*Config)) (e *env, acme, other int64, mine, theirs int64) {
 	t.Helper()
 	svc := &bans.Service{Cfg: config.BansDefaults, Cloudflare: true, TokenNote: "no ban token: run `sudo heimdall bans set-token`"}
 	svc.Cfg.Mode = config.BansPropose
-	e = newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.Cloudflare = true; c.Bans = svc })
+	e = newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
+		c.Cloudflare, c.Bans = true, svc
+		for _, f := range adjust {
+			f(c)
+		}
+	})
 	acme, other = e.seedCloudflare()
 	svc.Engine = &bans.Engine{Store: e.st, Ranker: &logins.Ranker{Store: e.st}, Cfg: svc.Cfg, Now: func() time.Time { return testNow }}
 	ctx := t.Context()

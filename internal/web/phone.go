@@ -117,6 +117,11 @@ type alertItem struct {
 	Detail   string
 	Hosts    []store.IngestHost
 	Href     string
+	// An anomaly's, for Acknowledge and Mute: its ID and signal, and
+	// whether the viewer may triage it (operator in the host's org).
+	ID         int64
+	Rule       string
+	CanOperate bool
 }
 
 type alertsBody struct {
@@ -124,7 +129,10 @@ type alertsBody struct {
 	More     int
 	News     bool // threat news is on
 	ShowOrgs bool
+	Notice   string
 }
+
+var alertNotices = map[string]string{"ack": "Acknowledged.", "suppress": "Muted and acknowledged."}
 
 const maxAlerts = 200
 
@@ -138,7 +146,8 @@ func (s *server) alertsPage(w http.ResponseWriter, r *http.Request, v *auth.View
 	}
 	for _, a := range anoms {
 		items = append(items, alertItem{At: a.DetectedAt, Kind: "anomaly", Severity: a.Severity, Title: ruleLabel(a.Rule),
-			Detail: a.Summary, Hosts: []store.IngestHost{a.Host}, Href: hostURL(a.Host.OrgSlug, a.Host.Name)})
+			Detail: a.Summary, Hosts: []store.IngestHost{a.Host}, Href: hostURL(a.Host.OrgSlug, a.Host.Name),
+			ID: a.ID, Rule: a.Rule, CanOperate: v.Scope.CanOperate(a.Host.OrgID)})
 	}
 
 	srcs, err := s.st.PrivilegeSourcesSince(ctx, v.Scope, 0, s.now().Add(-7*24*time.Hour))
@@ -191,7 +200,7 @@ func (s *server) alertsPage(w http.ResponseWriter, r *http.Request, v *auth.View
 		s.fail(w, r, v, err)
 		return
 	}
-	body := alertsBody{News: s.cfg.News, ShowOrgs: len(orgs) > 1}
+	body := alertsBody{News: s.cfg.News, ShowOrgs: len(orgs) > 1, Notice: alertNotices[r.URL.Query().Get("done")]}
 	if len(items) > maxAlerts {
 		body.More, items = len(items)-maxAlerts, items[:maxAlerts]
 	}
@@ -202,13 +211,15 @@ func (s *server) alertsPage(w http.ResponseWriter, r *http.Request, v *auth.View
 // ── Defense ────────────────────────────────────────────────────────────────
 
 type defenseBody struct {
-	Operator  bool // may see bans
-	Proposals int  // ban proposals waiting
-	Active    int  // bans in force or on their way
+	Operator  bool     // may see bans
+	Proposals []banRow // ban proposals waiting, to approve or dismiss here
+	Active    []banRow // bans in force or on their way
+	Writes    bool     // [bans] mode writes to Cloudflare, so approving is possible
 	Offenders []offenderRow
 	More      int
 	Failures  int // failed logins in the last 24 hours
 	CF        bool
+	Flash     string
 }
 
 const defenseOffenders = 8
@@ -217,7 +228,11 @@ const defenseOffenders = 8
 // top of /offenders and /bans, which it links to.
 func (s *server) defensePage(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
 	ctx := r.Context()
-	body := defenseBody{Operator: canOperateAny(v), CF: s.cfg.Cloudflare}
+	body := defenseBody{Operator: canOperateAny(v), CF: s.cfg.Cloudflare, Writes: s.bansConfig().Writes(),
+		Flash: flashText[r.URL.Query().Get("done")]}
+	if r.URL.Query().Get("done") == "reject" {
+		body.Flash = "Dismissed." // the button here says Dismiss
+	}
 	rk := s.ranker()
 	rep, err := rk.Rank(ctx, logins.Query{Scope: v.Scope, Since: s.now().Add(-24 * time.Hour)})
 	if err != nil {
@@ -227,18 +242,20 @@ func (s *server) defensePage(w http.ResponseWriter, r *http.Request, v *auth.Vie
 	body.Failures = rep.Failures
 	body.Offenders, body.More = s.offenderRows(rep.Offenders, defenseOffenders)
 	if body.Operator {
-		if body.Proposals, err = s.banProposals(ctx, v); err != nil {
-			s.fail(w, r, v, err)
-			return
-		}
-		active, err := s.st.Bans(ctx, store.BanQuery{Statuses: []string{store.BanPending, store.BanActive, store.BanLifting}, Limit: 100000})
+		open, err := s.st.Bans(ctx, store.BanQuery{Statuses: store.BanOpen, Limit: 100000})
 		if err != nil {
 			s.fail(w, r, v, err)
 			return
 		}
-		for _, b := range active {
-			if banVisible(v, b.Orgs) {
-				body.Active++
+		for _, b := range open {
+			if !banVisible(v, b.Orgs) {
+				continue
+			}
+			switch b.Status {
+			case store.BanProposed:
+				body.Proposals = append(body.Proposals, s.banRow(v, b))
+			case store.BanPending, store.BanActive, store.BanLifting:
+				body.Active = append(body.Active, s.banRow(v, b))
 			}
 		}
 	}

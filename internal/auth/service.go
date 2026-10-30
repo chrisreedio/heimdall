@@ -112,6 +112,10 @@ func (s *Service) Login(ctx context.Context, email, password, code, ip, userAgen
 	if err != nil {
 		return "", err
 	}
+	// The code just entered counts as a step-up (stepup.go).
+	if err := s.Store.SetSessionStepUp(ctx, sha256.Sum256([]byte(token)), now); err != nil {
+		return "", err
+	}
 	s.clearFailures(userKey)
 	note := ""
 	if keep {
@@ -190,7 +194,7 @@ func (s *Service) Session(ctx context.Context, token string) (*Viewer, error) {
 		return nil, err
 	}
 	return &Viewer{UserID: u.ID, Email: u.Email, DisplayName: u.DisplayName, IsAdmin: u.IsAdmin, Kind: u.Kind,
-		Scope: scope, SessionToken: token, Kept: sess.Kept, Renewed: renewed}, nil
+		Scope: scope, SessionToken: token, Kept: sess.Kept, Renewed: renewed, SteppedUpAt: sess.SteppedUpAt}, nil
 }
 
 // LoginIdentity starts a session (a device session if keep is set) for a

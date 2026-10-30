@@ -18,6 +18,9 @@ type Session struct {
 	LastSeenAt time.Time
 	ExpiresAt  time.Time
 	Kept       bool // "Keep me signed in on this device": renewed on use
+	// SteppedUpAt is when the user last proved it's them on this session
+	// (a TOTP code, or a Microsoft sign-in with prompt=login); zero if never.
+	SteppedUpAt time.Time
 }
 
 // CreateSession stores a session for a token hash and records the login.
@@ -52,9 +55,10 @@ func (s *Store) createSession(ctx context.Context, hash [32]byte, userID int64, 
 func (s *Store) SessionByHash(ctx context.Context, hash [32]byte) (Session, User, error) {
 	var sess Session
 	var created, seen, expires string
+	var stepped sql.NullString
 	err := s.rd.QueryRowContext(ctx,
-		`SELECT user_id, created_at, last_seen_at, expires_at, kept FROM sessions WHERE id_hash = ?`, hash[:]).
-		Scan(&sess.UserID, &created, &seen, &expires, &sess.Kept)
+		`SELECT user_id, created_at, last_seen_at, expires_at, kept, stepped_up_at FROM sessions WHERE id_hash = ?`, hash[:]).
+		Scan(&sess.UserID, &created, &seen, &expires, &sess.Kept, &stepped)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Session{}, User{}, ErrNotFound
 	}
@@ -62,6 +66,7 @@ func (s *Store) SessionByHash(ctx context.Context, hash [32]byte) (Session, User
 		return Session{}, User{}, err
 	}
 	sess.CreatedAt, sess.LastSeenAt, sess.ExpiresAt = parseTime(created), parseTime(seen), parseTime(expires)
+	sess.SteppedUpAt = parseNullTime(stepped)
 	u, err := s.UserByID(ctx, sess.UserID)
 	if err != nil {
 		return Session{}, User{}, err
@@ -81,6 +86,14 @@ func (s *Store) TouchSession(ctx context.Context, hash [32]byte, at time.Time) e
 func (s *Store) TouchDeviceSession(ctx context.Context, hash [32]byte, at, expires time.Time) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id_hash = ? AND kept = 1`,
 		at.UTC().Format(timeLayout), expires.UTC().Format(timeLayout), hash[:])
+	return err
+}
+
+// SetSessionStepUp records that the session's user proved it's them at at
+// (step-up codes, docs/mobile.md).
+func (s *Store) SetSessionStepUp(ctx context.Context, hash [32]byte, at time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET stepped_up_at = ? WHERE id_hash = ?`,
+		at.UTC().Format(timeLayout), hash[:])
 	return err
 }
 

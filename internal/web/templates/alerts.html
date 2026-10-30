@@ -1,8 +1,9 @@
-{{define "content"}}{{with .Body}}
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
 <h1>Alerts</h1>
-<p class="muted">Open anomalies, privileged access from addresses nobody knows (the last 7 days){{if .News}} and incidents in the news that affect your hosts{{end}}, newest first. <a href="/anomalies">Anomalies</a> is where they're acknowledged{{if .News}}; <a href="/news">News</a> has every incident{{end}}.</p>
+<p class="muted">Open anomalies, privileged access from addresses nobody knows (the last 7 days){{if .News}} and incidents in the news that affect your hosts{{end}}, newest first. Acknowledge an anomaly here or on <a href="/anomalies">Anomalies</a>{{if .News}}; <a href="/news">News</a> has every incident{{end}}.</p>
+{{with .Notice}}<p class="notice" role="status">{{.}}</p>{{end}}
 {{if .Items}}<ul class="alert-list">{{range .Items}}
-  <li class="card alert-item">
+  <li class="card alert-item"{{if eq .Kind "anomaly"}} id="anomaly-{{.ID}}"{{end}}>
     <div class="alert-head">
       {{if eq .Kind "anomaly"}}<span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{else if eq .Kind "news"}}<span class="pill bad">news</span>{{else}}<span class="pill warn">privilege</span>{{end}}
       <a class="alert-title" href="{{.Href}}">{{.Title}}</a>
@@ -10,6 +11,19 @@
     </div>
     {{with .Detail}}<div class="muted small clamp2" title="{{.}}">{{.}}</div>{{end}}
     <div class="small alert-hosts">{{range $i, $h := .Hosts}}{{if lt $i 6}}{{if $i}}, {{end}}<a href="{{hostURL $h.OrgSlug $h.Name}}">{{$h.Name}}</a>{{if $.Body.ShowOrgs}} <span class="muted">{{$h.OrgSlug}}</span>{{end}}{{end}}{{end}}{{if gt (len .Hosts) 6}} <span class="muted">and {{len .Hosts}} in all</span>{{end}}</div>
+    {{if and (eq .Kind "anomaly") .CanOperate}}<form method="post" action="/anomalies/{{.ID}}/ack" class="alert-ack">
+      <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="back" value="/alerts">
+      <input name="note" required maxlength="200" placeholder="What you found" aria-label="Note">
+      <button type="submit">Acknowledge</button>
+    </form>
+    <details class="alert-mute"><summary>Mute this signal on {{(index .Hosts 0).Name}}</summary>
+      <form method="post" action="/anomalies/{{.ID}}/suppress" class="alert-ack">
+        <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="back" value="/alerts"><input type="hidden" name="rule" value="{{.Rule}}">
+        <label class="alert-days">For <input name="days" type="number" min="1" max="365" value="7" aria-label="Days"> days</label>
+        <input name="note" required maxlength="200" placeholder="Why, e.g. runs Livepatch" aria-label="Why">
+        <button type="submit" class="secondary">Mute</button>
+      </form>
+    </details>{{end}}
   </li>{{end}}
 </ul>
 {{if .More}}<p class="more">{{.More}} older not shown. <a href="/anomalies">All anomalies</a></p>{{end}}

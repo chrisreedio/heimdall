@@ -32,11 +32,35 @@ On a phone, or any screen narrower than about 760 pixels, a tab bar at the botto
 
 - **Home:** what needs attention, as cards, most urgent first: known-exploited findings, incidents in the news that affect your hosts, ban proposals waiting for a decision, open anomalies, privileged sessions from addresses nobody knows, and hosts that stopped reporting. Then the hosts most worth a look. When there's nothing, it says so: "All clear, 12 hosts reporting".
 - **Hosts:** the host list, and each host's page.
-- **Alerts:** open anomalies, privileged access from unknown addresses in the last 7 days, and incidents in the news that affect your hosts, newest first. Acknowledge anomalies on the Anomalies page.
-- **Defense:** repeat offenders from the failed-login watch, and for operators, ban proposals waiting and bans in force.
+- **Alerts:** open anomalies, privileged access from unknown addresses in the last 7 days, and incidents in the news that affect your hosts, newest first. Operators acknowledge or mute an anomaly right there (see below).
+- **Defense:** for operators, ban proposals waiting, to approve or dismiss there, and the bans in force with when each ends; then repeat offenders from the failed-login watch.
 - **More:** every other page, your devices, the theme switch and sign out.
 
-Everything else works as it does on a computer, with the same roles and permissions; the pages are the same pages. Times are shown in the phone's time zone.
+Everything else works as it does on a computer, with the same roles and permissions; the pages are the same pages. Times are shown in the phone's time zone. On a computer, Alerts and Defense are in the sidebar too, under Security and Network.
+
+## Acting from the phone
+
+The phone does what the hub's pages already do, with the same roles, checks and audit log; nothing is phone-only.
+
+- **Ban proposals** (Defense): each one is a card with what's needed to decide: the address or network, the action (challenge or block) and for how long, the score, the failed logins (how many, how many usernames, over how many days, the last one), the network and its prefix, the hosts it hit, and what IP awareness knows about it. **Approve** sends it to Cloudflare within a minute; **Dismiss** rejects it, as Reject on the Bans page does. Both need the operator role in an org whose hosts it hit, and both are in the ban audit log. Each card has the anchor `#ban-<id>` (`/defense#ban-42`), so a link can open the app at it. Approve is there only when `[bans] mode` writes to Cloudflare (`propose` or `auto`). Unbanning, pausing Cloudflare writes and the zones' rules stay on the Bans page.
+- **Anomalies** (Alerts): **Acknowledge** with a note on what you found, or **Mute this signal** on that host for some days, as on the Anomalies page. They need the operator role in the host's org and are audited (`anomaly.ack`, `anomaly.suppress`).
+- **Fix commands** (a host's page): the **Copy** buttons work on phones. Without the Clipboard API (a UI on plain HTTP, say), the command is copied the older way, and if the browser refuses that too, it's selected so a long press copies it.
+
+The Discord ban card and its buttons work as before; the phone is one more place to decide.
+
+## Step-up codes
+
+A phone that's kept signed in for 30 days is convenient, and an unlocked phone is a risk. **Admin → Security** (`/admin/security`) lets an admin decide whether actions need a fresh code, not just the session:
+
+- **Off** (the default): the session is enough.
+- **Admin actions only**: before an admin changes users and their sessions, branding, which Cloudflare lists become labels, or this setting.
+- **Every action**: those, and before anyone approves, dismisses or lifts a ban, pauses or resumes Cloudflare writes, turns a zone's ban rule on or off, or acknowledges or mutes an anomaly.
+
+It applies on every screen, phone and computer. A code is fresh for 5 minutes after it's entered, so approving several bans in a row asks once; the code you signed in with counts too. When one's needed, the hub asks in a small dialog before the form is sent, then sends it with the code, so nothing you typed or chose is lost; without JavaScript it asks on a page of its own that keeps the form and carries it out. A wrong code, or one already used (to sign in, or for another step-up), is refused, and five failures in 15 minutes lock step-up for that account for a while, as at sign-in.
+
+People who sign in with Microsoft have no code. For them, fresh means a Microsoft sign-in in the last 5 minutes that asked for their credentials again: the hub sends them to Microsoft with `prompt=login` and, when they're back, carries the action out. It must be the same account; signing in as someone else is refused. Signing in to the hub with Microsoft doesn't count by itself, because Microsoft often signs people in without asking anything.
+
+Every change to the setting is in the audit log (`setting.stepup`), as is every code entered or Microsoft step-up (`stepup.success`, `stepup.failure`, with the reason).
 
 **Offline:** when the hub can't be reached (Tailscale is off, or the phone has no signal), the app shows "Can't reach the hub. Is Tailscale connected?" with a **Try again** button, rather than the browser's error page.
 

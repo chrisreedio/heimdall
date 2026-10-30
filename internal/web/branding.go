@@ -86,7 +86,7 @@ func (s *server) brandView(ctx context.Context) brandView {
 	if len(b.Icon32) > 0 {
 		v.Favicon, v.Touch = u("icon-32.png"), u("icon-180.png")
 	}
-	if b.Accent != "" {
+	if b.Accent != "" || b.AccentDark != "" {
 		v.CSS = u("accent.css")
 	}
 	return v
@@ -110,11 +110,7 @@ func (s *server) brandFile(w http.ResponseWriter, r *http.Request) {
 	case "icon-32.png":
 		body = b.Icon32
 	case "accent.css":
-		if b.Accent != "" {
-			// :root three times outranks the theme blocks in app.css.
-			body = []byte("/* Branding: the accent color an admin chose, in both themes. */\n" +
-				":root:root:root { --accent: " + b.Accent + "; --accent-text: " + accentText + "; }\n")
-		}
+		body = accentCSS(b)
 		ctype = "text/css; charset=utf-8"
 	}
 	if len(body) == 0 {
@@ -138,12 +134,45 @@ func (s *server) brandFile(w http.ResponseWriter, r *http.Request) {
 	w.Write(body)
 }
 
+// accentCSS is /branding/accent.css: the light theme's accent and the
+// dark theme's (chosen, or derived from the light one), or nothing for
+// Heimdall's own. Repeating :root outranks the theme blocks in app.css.
+func accentCSS(b store.Branding) []byte {
+	if b.Accent == "" && b.AccentDark == "" {
+		return nil
+	}
+	css := "/* Branding: the accent colors an admin chose. */\n"
+	if b.Accent != "" {
+		css += ":root:root:root { --accent: " + b.Accent + "; --accent-text: " + accentText + "; }\n"
+	}
+	if dark := accentDark(b); dark != "" {
+		css += "@media (prefers-color-scheme: dark) { :root:root:root:not([data-theme=\"light\"]) { --accent: " + dark + "; } }\n" +
+			":root:root:root[data-theme=\"dark\"] { --accent: " + dark + "; }\n"
+	}
+	return []byte(css)
+}
+
+// accentDark is the dark theme's accent: the one chosen, else derived
+// from the light one, else "" (Heimdall's).
+func accentDark(b store.Branding) string {
+	switch {
+	case b.AccentDark != "":
+		return b.AccentDark
+	case b.Accent != "":
+		return darkAccent(b.Accent)
+	}
+	return ""
+}
+
 // ── The settings page ─────────────────────────────────────────────────────
 
 type brandingBody struct {
 	Name, DefaultName string // the custom name ("" for none) and the one without it
 	Accent            string // the custom accent, or ""
 	DefaultAccent     string
+	AccentDark        string // the dark theme's custom accent, or "" to derive it
+	DarkInUse         string // the dark theme's accent in use, or "" for Heimdall's
+	DefaultAccentDark string
 	Logo, Icon        string // custom images' URLs, or ""
 	MaxName           int
 	Notice, Error     string
@@ -151,7 +180,7 @@ type brandingBody struct {
 
 var brandingNotices = map[string]string{
 	"name":         "Display name saved.",
-	"accent":       "Accent color saved.",
+	"accent":       "Accent colors saved.",
 	"logo":         "Logo saved.",
 	"icon":         "App icon saved. Phones that installed the app pick it up when they next check its manifest; reinstall to see it at once.",
 	"reset-name":   "Display name reset.",
@@ -168,6 +197,7 @@ func (s *server) renderBranding(w http.ResponseWriter, r *http.Request, v *auth.
 	b := s.branding(r.Context())
 	bv := s.brandView(r.Context())
 	body := brandingBody{Name: b.Name, DefaultName: s.defaultName(), Accent: b.Accent, DefaultAccent: defaultAccent,
+		AccentDark: b.AccentDark, DarkInUse: accentDark(b), DefaultAccentDark: defaultAccentDark,
 		Logo: bv.Logo, MaxName: maxBrandName, Notice: notice, Error: errMsg}
 	if len(b.Icon192) > 0 {
 		body.Icon = "/branding/icon-192.png?v=" + strconv.FormatInt(b.Version, 10)
@@ -193,9 +223,19 @@ func (s *server) brandingAction(w http.ResponseWriter, r *http.Request, v *auth.
 			action = "reset-name"
 		}
 	case "accent":
-		var hex string
-		if hex, err = checkAccent(r.PostForm.Get("accent")); err == nil {
-			b.Accent, detail["accent"] = hex, hex
+		// The light theme's accent, and the dark theme's if "dark_own" is
+		// ticked; otherwise the dark one is derived from the light one.
+		var hex, dark string
+		if hex, err = checkAccent(r.PostForm.Get("accent")); err == nil && r.PostForm.Get("dark_own") != "" {
+			dark, err = checkAccentDark(r.PostForm.Get("accent_dark"))
+		}
+		if err == nil {
+			b.Accent, b.AccentDark, detail["accent"] = hex, dark, hex
+			if dark != "" {
+				detail["accent_dark"] = dark
+			} else {
+				detail["accent_dark_derived"] = darkAccent(hex)
+			}
 		}
 	case "logo":
 		var data []byte
@@ -218,7 +258,7 @@ func (s *server) brandingAction(w http.ResponseWriter, r *http.Request, v *auth.
 	case "reset-name":
 		b.Name = ""
 	case "reset-accent":
-		b.Accent = ""
+		b.Accent, b.AccentDark = "", ""
 	case "reset-logo":
 		b.Logo = nil
 	case "reset-icon":

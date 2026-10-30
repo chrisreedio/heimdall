@@ -91,6 +91,10 @@ func (s *server) anomalyAction(w http.ResponseWriter, r *http.Request, v *auth.V
 		return
 	}
 	s.nav.forget(v.UserID) // its badge counts this anomaly
+	if back := backTo(r, "/anomalies", "/alerts"); back != "/anomalies" {
+		http.Redirect(w, r, back+"?done="+r.PathValue("action"), http.StatusSeeOther)
+		return
+	}
 	http.Redirect(w, r, "/anomalies", http.StatusSeeOther)
 }
 

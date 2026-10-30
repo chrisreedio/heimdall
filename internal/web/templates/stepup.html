@@ -1,0 +1,24 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<section class="card stepup" aria-labelledby="su-h">
+  <h1 id="su-h">Confirm it's you</h1>
+  {{with .Error}}<p class="alert" role="alert">{{.}}</p>{{end}}
+  {{if .SSO}}
+  <p>{{.What}} needs a fresh sign-in. Sign in with Microsoft again, and it's done when you're back. You won't be asked again for 5 minutes.</p>
+  {{if .Pending}}<form method="post" action="/stepup/sso" class="row">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <input type="hidden" name="p" value="{{.Pending}}">
+    <button type="submit">Sign in with Microsoft</button>
+    <a class="button secondary" href="{{.Back}}">Cancel</a>
+  </form>{{else}}<p><a class="button secondary" href="{{.Back}}">Back</a></p>{{end}}
+  {{else}}
+  <p>{{.What}} needs the code from your authenticator app. You won't be asked again for 5 minutes.</p>
+  <form method="post" action="{{.Action}}" class="stepup-form">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    {{range .Fields}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">
+    {{end}}<label>Code <input name="stepup_code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]{6,7}" maxlength="7" required autofocus></label>
+    <div class="stepup-buttons"><button type="submit">Confirm</button> <a class="button secondary" href="{{.Back}}">Cancel</a></div>
+  </form>
+  {{end}}
+  {{if .Upload}}<p class="muted small">The file you chose can't be kept while you confirm: choose it again afterwards.</p>{{end}}
+</section>
+{{end}}{{end}}
