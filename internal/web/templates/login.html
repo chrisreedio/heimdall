@@ -11,10 +11,14 @@
     <p class="fine">Dev build only: no password or code.</p>
   </form>{{end}}
   {{if .SSO}}
-  <a class="ms-button" href="/auth/entra/login?next={{.Next}}">
-    <svg width="20" height="20" viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
-    Sign in with Microsoft
-  </a>
+  <form method="get" action="/auth/entra/login" class="sso-form">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <button type="submit" class="ms-button">
+      <svg width="20" height="20" viewBox="0 0 21 21" aria-hidden="true"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+      Sign in with Microsoft
+    </button>
+    {{template "keepbox" .}}
+  </form>
   {{end}}
   {{if .Local}}
   {{if .SSO}}<div class="divider">or</div>
@@ -36,6 +40,10 @@
     <label>Email <input type="email" name="email" value="{{.Email}}" required autocomplete="username" maxlength="254"{{if not .SSO}} autofocus{{end}}></label>
     <label>Password <input type="password" name="password" required autocomplete="current-password" maxlength="256"></label>
     <label>One-time code (authenticator app) <input type="text" id="totp" name="totp" required inputmode="numeric" pattern="[0-9]{6}" minlength="6" maxlength="6" autocomplete="one-time-code" placeholder="123456"></label>
+    {{template "keepbox" .}}
     <button type="submit">Sign in</button>
   </form>
 {{end}}
+
+{{/* keepbox: a device session (30 days from the last use) instead of a normal one. */}}
+{{define "keepbox"}}<label class="check keep" title="For your own phone or computer: stays signed in for 30 days from the last time you use it. You can sign it out from Devices."><input type="checkbox" name="keep" value="on"{{if .Keep}} checked{{end}}> Keep me signed in on this device</label>{{end}}

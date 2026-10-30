@@ -156,6 +156,12 @@ label { display: block; }
   font-weight: 600; text-decoration: none;
 }
 .ms-button:hover { background: var(--ms-hover); }
+.signin button.ms-button { padding: 11px 16px; margin-top: 0; }
+.signin button.ms-button:hover { filter: none; }
+.signin .sso-form { margin-top: 0; }
+.signin label.keep { display: flex; align-items: center; gap: 8px; font-weight: 400; font-size: 14px; margin: 4px 0 14px; }
+.signin .sso-form label.keep { margin: 12px 0 0; justify-content: center; }
+.signin label.keep input { display: inline-block; width: auto; margin: 0; }
 .divider { display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 12px; margin: 20px 0 16px; }
 .divider::before, .divider::after { content: ""; flex: 1; border-top: 1px solid var(--border); }
 .alert {
@@ -1197,3 +1203,75 @@ h3.dang-zone { margin: 18px 0 6px; font-size: 15px; }
 .brand-set .brand-reset { margin-top: 12px; }
 .card.brand-set form.row input[type=color] { min-width: 0; width: 64px; height: 38px; padding: 2px; }
 .card.brand-set form.row input[type=file] { min-width: 0; max-width: 100%; }
+
+/* Phone layout (phone.go). Below 761px a bottom tab bar replaces the
+   sidebar and its Menu drawer, pages leave room for it and for the
+   screen's safe areas (notch, home indicator), and Home shows attention
+   cards instead of the dashboard. Alerts, Defense, More and Devices work
+   on any screen. */
+.tabbar, .phone-home, .mobile-top .theme-toggle { display: none; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.home-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin: 0 0 20px; }
+.home-card {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 14px; align-items: center;
+  padding: 14px 16px; border: 1px solid var(--border); border-left: 4px solid var(--border); border-radius: 10px;
+  background: var(--surface); color: var(--text); text-decoration: none;
+}
+.home-card:hover, .home-card:focus-visible { text-decoration: none; border-color: var(--accent); }
+.home-card .n { grid-row: span 2; min-width: 1.6em; font-size: 28px; font-weight: 700; line-height: 1; text-align: center; }
+.home-card .l { font-weight: 600; line-height: 1.3; }
+.home-card .s { color: var(--muted); font-size: 13px; }
+.home-card.bad { border-left-color: var(--crit-fg); }
+.home-card.bad .n { color: var(--crit-fg); }
+.home-card.warn { border-left-color: var(--high-fg); }
+.home-card.warn .n { color: var(--high-fg); }
+.all-clear { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; padding: 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); font-size: 15px; }
+.alert-list, .device-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.alert-list .card, .device-list .card { margin: 0; padding: 12px 14px; }
+.alert-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.alert-title { flex: 1 1 12em; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.alert-when { margin-left: auto; white-space: nowrap; }
+.alert-hosts { margin-top: 4px; overflow-wrap: anywhere; }
+.clamp2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 4px; overflow-wrap: anywhere; }
+.device { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
+.device.current { border-color: var(--link); }
+.device-main { flex: 1 1 260px; min-width: 0; }
+.device form.inline { margin: 0; }
+.more-search input { width: 100%; padding: 9px 10px; }
+.more-nav { display: flex; flex-direction: column; gap: 1px; padding: 8px; }
+.more-nav .side-item { padding: 10px 8px; font-size: 15px; }
+.more-nav .side-label:first-of-type { margin-top: 8px; }
+.more-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.more-foot .theme-toggle { margin-left: 8px; }
+.more-links { margin: 16px 0 0; }
+.dash-list.card { padding: 12px 14px; }
+.side-foot a.email { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.side-foot a.email:hover { color: var(--text); }
+
+@media (max-width: 760px) {
+  body.has-side { padding-bottom: calc(60px + env(safe-area-inset-bottom)); }
+  .has-side main { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+  .mobile-top { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+  .mobile-top .nav-button, .nav-toggle:checked ~ .side, .side { display: none; }
+  .mobile-top .theme-toggle { display: inline-grid; margin-left: auto; }
+  .tabbar {
+    display: flex; position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    padding: 2px max(4px, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(4px, env(safe-area-inset-left));
+    background: var(--surface); border-top: 1px solid var(--border);
+  }
+  .tab {
+    position: relative; flex: 1 1 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    min-height: 54px; color: var(--muted); font-size: 11px; font-weight: 600; text-decoration: none;
+  }
+  .tab .icon { width: 22px; height: 22px; }
+  .tab:hover, .tab:focus-visible { color: var(--text); text-decoration: none; }
+  .tab[aria-current="page"] { color: var(--link); }
+  .tab-count {
+    position: absolute; top: 4px; left: calc(50% + 6px); min-width: 18px; padding: 0 5px; border-radius: 999px;
+    font-size: 10.5px; line-height: 1.6; text-align: center; background: var(--high-bg); color: var(--high-fg);
+  }
+  .tab-count.bad { background: var(--crit-bg); color: var(--crit-fg); }
+  .phone-home { display: block; }
+  .desk-home { display: none; }
+  .home-cards { grid-template-columns: minmax(0, 1fr); }
+}

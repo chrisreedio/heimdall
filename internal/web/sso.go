@@ -39,7 +39,7 @@ func (s *server) ssoLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err = s.st.PutAuthRequest(r.Context(), sha256.Sum256([]byte(req.State)), store.AuthRequest{
-		Nonce: req.Nonce, Verifier: req.Verifier, ReturnTo: next, CreatedAt: s.now(),
+		Nonce: req.Nonce, Verifier: req.Verifier, ReturnTo: next, Keep: r.URL.Query().Get("keep") == "on", CreatedAt: s.now(),
 	})
 	if err != nil {
 		s.fail(w, r, nil, err)
@@ -113,7 +113,7 @@ func (s *server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := s.auth.LoginIdentity(ctx, store.EntraIdentity{
 		TenantID: id.TenantID, ObjectID: id.ObjectID, Email: id.Email, Name: id.Name,
-	}, id.Roles, clientIP(r), r.UserAgent())
+	}, id.Roles, clientIP(r), r.UserAgent(), req.Keep)
 	if errors.Is(err, auth.ErrNotProvisioned) {
 		s.loginError(w, r, http.StatusForbidden, next, auth.ErrNotProvisioned.Error())
 		return
@@ -124,7 +124,7 @@ func (s *server) ssoCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.noteTailscaleUser(r, token) // tsproxy.go
-	s.setSession(w, token, int(s.cfg.SessionMax.Seconds()))
+	s.setSession(w, token, s.sessionAge(req.Keep))
 	s.renderPage(w, r, http.StatusOK, "signedin", page{Title: "Signed in", Refresh: next, Body: next})
 }
 

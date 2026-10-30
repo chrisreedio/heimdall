@@ -17,7 +17,7 @@ It's meant for people who look after a handful to a few hundred servers spread a
 
 **Status:** pre-1.0. Milestones M0–M11 are implemented. The remaining steps before 1.0 are an independent security review and a run on real servers.
 
-**Guides:** [Getting started](docs/getting-started.md) · [Hosting](docs/hosting.md) · [Deployment](docs/deployment.md) · [SSO and roles](docs/sso.md) · [MCP](docs/mcp.md) · [Threat list](docs/threats.md) · [Collector](docs/collector.md) · [Snapshot format](docs/snapshot-format.md) · [Anomaly signals](docs/anomaly-signals.md)
+**Guides:** [Getting started](docs/getting-started.md) · [Hosting](docs/hosting.md) · [Deployment](docs/deployment.md) · [SSO and roles](docs/sso.md) · [Mobile app](docs/mobile.md) · [MCP](docs/mcp.md) · [Threat list](docs/threats.md) · [Collector](docs/collector.md) · [Snapshot format](docs/snapshot-format.md) · [Anomaly signals](docs/anomaly-signals.md)
 
 ---
 

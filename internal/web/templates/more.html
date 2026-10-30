@@ -1,0 +1,21 @@
+{{define "content"}}
+<h1>More</h1>
+<form class="more-search" action="/search" method="get" role="search">
+  <input type="search" name="q" placeholder="Search: php &lt; 8.2, CVE-…" maxlength="200" aria-label="Search the fleet">
+</form>
+<nav class="more-nav card" aria-label="All pages">
+  {{template "sidenav" .}}
+  <div class="side-label">Account</div>
+  {{template "navitem" (navItem . "/account/devices" "devices" "Devices" 0 "")}}
+</nav>
+<div class="more-foot card">
+  <span class="muted small">{{.Viewer.Email}}</span>
+  <div class="side-actions">
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button type="submit" class="secondary">Sign out</button>
+    </form>
+    {{template "themetoggle"}}
+  </div>
+</div>
+{{end}}

@@ -20,14 +20,14 @@ func TestLoginIdentity(t *testing.T) {
 	e.st.CreateOrg(ctx, "test", "acme", "")
 	id := store.EntraIdentity{TenantID: testTenant, ObjectID: testOID, Email: "alice@example.com", Name: "Alice"}
 
-	if _, err := e.svc.LoginIdentity(ctx, id, nil, "203.0.113.5", "ua"); !errors.Is(err, ErrNotProvisioned) {
+	if _, err := e.svc.LoginIdentity(ctx, id, nil, "203.0.113.5", "ua", false); !errors.Is(err, ErrNotProvisioned) {
 		t.Fatalf("unprovisioned: %v", err)
 	}
 	if _, err := e.st.CreateEntraUser(ctx, "test", testTenant, "", "alice@example.com", "", false); err != nil {
 		t.Fatal(err)
 	}
 	e.svc.SyncAppRoles = true
-	tok, err := e.svc.LoginIdentity(ctx, id, []string{"Heimdall.Viewer"}, "203.0.113.5", "ua")
+	tok, err := e.svc.LoginIdentity(ctx, id, []string{"Heimdall.Viewer"}, "203.0.113.5", "ua", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestDisableLocal(t *testing.T) {
 		t.Fatal(err)
 	}
 	e.st.CreateEntraUser(ctx, "test", testTenant, testOID, "alice@example.com", "", false)
-	sso, err := e.svc.LoginIdentity(ctx, store.EntraIdentity{TenantID: testTenant, ObjectID: testOID}, nil, "ip", "ua")
+	sso, err := e.svc.LoginIdentity(ctx, store.EntraIdentity{TenantID: testTenant, ObjectID: testOID}, nil, "ip", "ua", false)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -29,17 +29,18 @@ type fakeAuth struct {
 	loggedOut  []string
 	viewer     *auth.Viewer // overrides the default admin viewer when set
 	identities []store.EntraIdentity
+	keeps      []bool // LoginIdentity's keep, per call
 }
 
-func (f *fakeAuth) LoginIdentity(_ context.Context, id store.EntraIdentity, roles []string, ip, ua string) (string, error) {
-	f.identities = append(f.identities, id)
+func (f *fakeAuth) LoginIdentity(_ context.Context, id store.EntraIdentity, roles []string, ip, ua string, keep bool) (string, error) {
+	f.identities, f.keeps = append(f.identities, id), append(f.keeps, keep)
 	if id.ObjectID == "unprovisioned" {
 		return "", auth.ErrNotProvisioned
 	}
 	return goodToken, nil
 }
 
-func (f *fakeAuth) Login(_ context.Context, email, password, code, ip, ua string) (string, error) {
+func (f *fakeAuth) Login(_ context.Context, email, password, code, ip, ua string, keep bool) (string, error) {
 	switch {
 	case email == "throttled@example.com":
 		return "", auth.ErrThrottled

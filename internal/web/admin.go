@@ -19,6 +19,8 @@ type adminUser struct {
 	Roles  []store.Membership
 	Self   bool
 	Tokens []tokenRow // active MCP tokens, when MCP is on
+	// Sessions are where they're signed in (devices.go).
+	Sessions []deviceRow
 }
 
 type adminBody struct {
@@ -41,7 +43,8 @@ var adminNotices = map[string]string{
 	"enabled":  "User enabled.",
 	"deleted":  "User deleted, with their roles, sessions and tokens. The audit log keeps their entries.",
 
-	"token-revoked": "MCP token revoked.",
+	"token-revoked":   "MCP token revoked.",
+	"session-revoked": "Session ended: that device is signed out.",
 }
 
 func (s *server) adminUsers(w http.ResponseWriter, r *http.Request, v *auth.Viewer) {
@@ -69,6 +72,10 @@ func (s *server) renderAdmin(w http.ResponseWriter, r *http.Request, v *auth.Vie
 			return
 		}
 		au := adminUser{User: u, Roles: ms, Self: u.ID == v.UserID}
+		if au.Sessions, err = s.liveSessions(r, v, u.ID); err != nil {
+			s.fail(w, r, v, err)
+			return
+		}
 		if body.MCP {
 			ts, err := s.st.ListMCPTokens(ctx, u.ID)
 			if err != nil {

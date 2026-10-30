@@ -1,4 +1,18 @@
 {{define "content"}}{{with .Body}}
+{{/* Phones (phone.go): what needs attention as cards, most urgent first. */}}
+<section class="phone-home" aria-labelledby="home-h">
+  <h1 id="home-h" class="visually-hidden">Home</h1>
+  {{if .Cards}}<div class="home-cards">{{range .Cards}}<a class="home-card {{.Class}}" href="{{.Href}}"><span class="n">{{num .N}}</span><span class="l">{{.Label}}</span><span class="s">{{.Sub}}</span></a>{{end}}</div>
+  {{else if .Fleet.Reported}}<p class="all-clear"><span class="pill ok">All clear</span> {{.Fleet.Reported}} host{{if ne .Fleet.Reported 1}}s{{end}} reporting.</p>
+  {{else}}<p class="empty">No hosts have reported yet. <a href="/hosts/new">Add a host</a> to get the install command for your first server.</p>{{end}}
+  {{if .Attention}}<div class="section-head"><h2>Hosts to look at</h2><a class="small" href="/hosts?sort=priority">By priority →</a></div>
+  <ul class="dash-list card">{{range $i, $h := .Attention}}{{if lt $i 5}}<li>
+    <div class="dl-main"><a href="{{hostURL $h.OrgSlug $h.Name}}"><strong>{{$h.Name}}</strong></a> <span class="env-chip">{{$h.EnvSlug}}</span><span class="muted small dl-right{{if $h.Stale}} stale{{end}}" title="{{time $h.R.LastSeen}}">{{ago $h.R.LastSeen}}</span></div>
+    <div>{{template "whyPills" $h}}</div>
+  </li>{{end}}{{end}}</ul>{{end}}
+</section>
+
+<div class="desk-home">
 <div class="head">
   <h1>Dashboard</h1>
   {{if .Hosts}}<span class="muted head-sub">{{.Fleet.Reported}} of {{.Hosts}} host{{if ne .Hosts 1}}s{{end}} reporting</span>{{end}}
@@ -94,5 +108,6 @@
     {{if .WaitingHosts}}<p class="muted small waiting">Waiting for first report: {{range $i, $h := .WaitingHosts}}{{if $i}}, {{end}}<a href="{{hostURL $h.OrgSlug $h.Name}}">{{$h.Name}}</a>{{end}}</p>{{end}}
     {{end}}
   </section>
+</div>
 </div>
 {{end}}{{end}}

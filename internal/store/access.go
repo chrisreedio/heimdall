@@ -432,13 +432,14 @@ func (s *Store) SyncAppRoles(ctx context.Context, userID int64, roles []string) 
 // AuthRequest is an in-flight OIDC login, keyed by the hash of its state.
 type AuthRequest struct {
 	Nonce, Verifier, ReturnTo string
+	Keep                      bool // keep the session on this device (a device session)
 	CreatedAt                 time.Time
 }
 
 func (s *Store) PutAuthRequest(ctx context.Context, stateHash [32]byte, r AuthRequest) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO auth_requests (state_hash, nonce, pkce_verifier, return_to, created_at) VALUES (?, ?, ?, ?, ?)`,
-		stateHash[:], r.Nonce, r.Verifier, r.ReturnTo, r.CreatedAt.UTC().Format(timeLayout))
+		INSERT INTO auth_requests (state_hash, nonce, pkce_verifier, return_to, keep, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		stateHash[:], r.Nonce, r.Verifier, r.ReturnTo, r.Keep, r.CreatedAt.UTC().Format(timeLayout))
 	return err
 }
 
@@ -449,8 +450,8 @@ func (s *Store) TakeAuthRequest(ctx context.Context, stateHash [32]byte, now tim
 	var created string
 	err := s.db.QueryRowContext(ctx, `
 		DELETE FROM auth_requests WHERE state_hash = ?
-		RETURNING nonce, pkce_verifier, return_to, created_at`, stateHash[:]).
-		Scan(&r.Nonce, &r.Verifier, &r.ReturnTo, &created)
+		RETURNING nonce, pkce_verifier, return_to, keep, created_at`, stateHash[:]).
+		Scan(&r.Nonce, &r.Verifier, &r.ReturnTo, &r.Keep, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return r, ErrNotFound
 	}

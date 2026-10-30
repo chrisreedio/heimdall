@@ -26,7 +26,18 @@ const testTenant = "11111111-1111-1111-1111-111111111111"
 // orgs acme and globex.
 func adminEnv(t *testing.T) *env {
 	t.Helper()
-	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) { c.EntraTenants = []string{testTenant} })
+	return adminEnvCfg(t, nil)
+}
+
+// adminEnvCfg is adminEnv with a hook to adjust the Config.
+func adminEnvCfg(t *testing.T, adjust func(*Config)) *env {
+	t.Helper()
+	e := newEnvCfg(t, "http://127.0.0.1:8080", nil, func(c *Config) {
+		c.EntraTenants = []string{testTenant}
+		if adjust != nil {
+			adjust(c)
+		}
+	})
 	ctx := t.Context()
 	secret := []byte("0123456789abcdefghij")
 	if id, err := e.st.CreateLocalUser(ctx, "test", "admin@example.com", "Admin", true, "$argon2id$x", secret); err != nil || id != 1 {

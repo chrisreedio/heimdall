@@ -1,0 +1,11 @@
+{{define "content"}}
+<div class="signin offline">
+<section class="card" aria-labelledby="offline-title">
+  <svg class="offline-mark" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 4.2-2.6M10 5.1A15 15 0 0 1 22 8.5M5 12a10 10 0 0 1 3-1.8M14.5 10.4A10 10 0 0 1 19 12M8.5 15.5a5 5 0 0 1 7 0M12 19h.01M3 3l18 18"/></svg>
+  <h1 id="offline-title">Can't reach the hub</h1>
+  <p class="sub">Is Tailscale connected? The hub is only reachable over your tailnet.</p>
+  {{/* href="" is this same address: retrying works without JavaScript. */}}
+  <a class="button" href="">Try again</a>
+</section>
+</div>
+{{end}}

@@ -15,24 +15,32 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 });
 
+// The installable app (pwa.go): register the service worker, which shows
+// an offline page when the hub can't be reached. Browsers allow it only on
+// HTTPS (or localhost), which tailscale serve provides.
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(function () {});
+}
+
 // Theme switcher: System -> Light -> Dark, remembered in this browser.
-// theme.js applies the saved choice before the page is drawn.
+// theme.js applies the saved choice before the page is drawn. There can be
+// more than one button (the sidebar's and the phone header's).
 document.addEventListener("DOMContentLoaded", function () {
-  var btn = document.querySelector(".theme-toggle");
-  if (!btn) return;
+  var btns = document.querySelectorAll(".theme-toggle");
+  if (!btns.length) return;
   var order = ["system", "light", "dark"];
   var mode = "system";
   try { mode = localStorage.getItem("heimdall-theme") || "system"; } catch (e) {}
   if (order.indexOf(mode) < 0) mode = "system";
   function show() {
-    btn.setAttribute("data-mode", mode);
     var label = "Theme: " + mode + " (click for " + order[(order.indexOf(mode) + 1) % 3] + ")";
-    btn.setAttribute("aria-label", label);
-    btn.title = label;
+    btns.forEach(function (btn) {
+      btn.setAttribute("data-mode", mode);
+      btn.setAttribute("aria-label", label);
+      btn.title = label;
+    });
   }
-  show();
-  btn.hidden = false;
-  btn.addEventListener("click", function () {
+  function next() {
     mode = order[(order.indexOf(mode) + 1) % 3];
     if (mode === "system") document.documentElement.removeAttribute("data-theme");
     else document.documentElement.setAttribute("data-theme", mode);
@@ -41,6 +49,11 @@ document.addEventListener("DOMContentLoaded", function () {
       else localStorage.setItem("heimdall-theme", mode);
     } catch (e) {}
     show();
+  }
+  show();
+  btns.forEach(function (btn) {
+    btn.hidden = false;
+    btn.addEventListener("click", next);
   });
 });
 

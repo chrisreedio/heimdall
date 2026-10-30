@@ -215,6 +215,7 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.
 		StaleAfter:   cfg.Hosts.StaleAfter.Duration,
 		Version:      version,
 		SessionMax:   cfg.UI.SessionMax.Duration,
+		SessionIdle:  cfg.UI.SessionIdle.Duration,
 		SSO:          sso,
 		LocalLogin:   cfg.Auth.LocalLogin,
 		EntraTenants: cfg.Auth.Entra.AllowedTenants,

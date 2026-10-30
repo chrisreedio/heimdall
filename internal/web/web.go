@@ -40,10 +40,12 @@ import (
 
 // Authenticator signs users in and resolves session cookies.
 type Authenticator interface {
-	Login(ctx context.Context, email, password, code, ip, userAgent string) (token string, err error)
+	// Login and LoginIdentity start a device session ("Keep me signed in
+	// on this device") when keep is set.
+	Login(ctx context.Context, email, password, code, ip, userAgent string, keep bool) (token string, err error)
 	// LoginIdentity starts a session for an identity SSO has validated.
 	// auth.ErrNotProvisioned means the user isn't set up in Heimdall.
-	LoginIdentity(ctx context.Context, id store.EntraIdentity, roles []string, ip, userAgent string) (token string, err error)
+	LoginIdentity(ctx context.Context, id store.EntraIdentity, roles []string, ip, userAgent string, keep bool) (token string, err error)
 	Session(ctx context.Context, token string) (*auth.Viewer, error)
 	Logout(ctx context.Context, token string) error
 }
@@ -58,12 +60,13 @@ type SSO interface {
 type SearchFunc func(ctx context.Context, query string, scope store.Scope) (*search.Result, error)
 
 type Config struct {
-	Updates    func() (updates.Release, bool) // newer release for the admin banner; nil = off
-	IngestURL  string                         // ingest.public_url, for install commands
-	BaseURL    string                         // e.g. https://heimdall.internal or http://127.0.0.1:8080
-	StaleAfter time.Duration                  // hosts.stale_after
-	Version    string
-	SessionMax time.Duration // cookie Max-Age
+	Updates     func() (updates.Release, bool) // newer release for the admin banner; nil = off
+	IngestURL   string                         // ingest.public_url, for install commands
+	BaseURL     string                         // e.g. https://heimdall.internal or http://127.0.0.1:8080
+	StaleAfter  time.Duration                  // hosts.stale_after
+	Version     string
+	SessionMax  time.Duration // cookie Max-Age
+	SessionIdle time.Duration // ui.session_idle, for which sessions the Devices list shows
 
 	SSO          SSO      // nil = single sign-on disabled
 	LocalLogin   bool     // password + TOTP sign-in; false hides the form and refuses POST /login
@@ -107,7 +110,7 @@ type Config struct {
 
 // CSP is the Content-Security-Policy sent with every response.
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
-	"form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+	"worker-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
 
 const (
 	maxFormBytes = 16 << 10
@@ -216,6 +219,9 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /account/assistants", s.requireAuth(s.assistantCreate))
 	mux.HandleFunc("POST /account/assistants/revoke", s.requireAuth(s.assistantRevoke))
 	mux.HandleFunc("GET /account/assistants/heimdall.mcpb", s.requireAuth(s.assistantBundle))
+	mux.HandleFunc("GET /account/devices", s.requireAuth(s.devicesPage)) // where you're signed in (devices.go)
+	mux.HandleFunc("POST /account/devices/revoke", s.requireAuth(s.deviceRevoke))
+	mux.HandleFunc("POST /admin/users/session-revoke", s.requireAuth(s.requireAdmin(s.adminSessionRevoke)))
 	// IP awareness: labels and policy (org admins), what's known about an address (ips.go).
 	mux.HandleFunc("GET /ips", s.requireAuth(s.ipsPage))
 	mux.HandleFunc("POST /ips/labels", s.requireAuth(s.ipLabelAdd))
@@ -239,6 +245,14 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("GET /admin/branding", s.requireAuth(s.requireAdmin(s.brandingPage)))
 	mux.HandleFunc("POST /admin/branding/{action}", s.requireAuthUpload(s.requireAdmin(s.brandingAction)))
 	mux.HandleFunc("GET /branding/{file}", s.brandFile)
+	// The installable app: manifest, service worker, offline page (pwa.go).
+	mux.HandleFunc("GET /manifest.webmanifest", s.manifest)
+	// The phone layout's tabs (phone.go); Home is the dashboard, Hosts /hosts.
+	mux.HandleFunc("GET /alerts", s.requireAuth(s.withScope(s.alertsPage)))
+	mux.HandleFunc("GET /defense", s.requireAuth(s.withScope(s.defensePage)))
+	mux.HandleFunc("GET /more", s.requireAuth(s.morePage))
+	mux.HandleFunc("GET /sw.js", s.serviceWorker)
+	mux.HandleFunc("GET /offline", s.offlinePage)
 	if cfg.AI != nil { // AI analysis: regenerate a brief or explain a host (operator+)
 		mux.HandleFunc("POST /ai/brief/{org}", s.requireAuth(s.aiBriefRun))
 		mux.HandleFunc("POST /hosts/{org}/{host}/ai", s.requireAuth(s.aiHostRun))
@@ -316,6 +330,9 @@ func (s *server) authed(maxBody int64, h authedHandler) http.HandlerFunc {
 				s.forbidden(w, r)
 				return
 			}
+		}
+		if v.Kept && v.Renewed { // a device session's expiry moved: so does its cookie's
+			s.setSession(w, v.SessionToken, s.sessionAge(true))
 		}
 		h(w, r, v)
 	}
@@ -412,6 +429,15 @@ func safeNext(p string) string {
 		return "/"
 	}
 	return p
+}
+
+// sessionAge is the session cookie's Max-Age, in seconds: a device
+// session's (renewed on use) or the configured ui.session_max.
+func (s *server) sessionAge(kept bool) int {
+	if kept {
+		return int(auth.DeviceSessionMax.Seconds())
+	}
+	return int(s.cfg.SessionMax.Seconds())
 }
 
 func (s *server) setSession(w http.ResponseWriter, token string, maxAge int) {
@@ -553,13 +579,16 @@ func (s *server) fail(w http.ResponseWriter, r *http.Request, v *auth.Viewer, er
 func parsePages() (map[string]*template.Template, error) {
 	names := []string{"login", "dashboard", "hosts", "host", "sites", "search", "notfound", "error",
 		"signedin", "noaccess", "admin_users", "plans", "plan", "changes", "drift", "anomalies", "addhost", "enroll", "site", "news", "handoff", "handoffbatch"}
-	names = append(names, "assistants")          // AI assistants (MCP tokens)
-	names = append(names, "ips", "ip", "person") // IP awareness (ips.go, people.go)
-	names = append(names, "cloudflare")          // Cloudflare overview (cloudflare.go)
-	names = append(names, "offenders")           // failed logins (logins.go)
-	names = append(names, "surface")             // attack-surface map (surface.go)
-	names = append(names, "bans")                // bans (bans.go)
-	names = append(names, "branding")            // branding (branding.go)
+	names = append(names, "assistants")                // AI assistants (MCP tokens)
+	names = append(names, "ips", "ip", "person")       // IP awareness (ips.go, people.go)
+	names = append(names, "cloudflare")                // Cloudflare overview (cloudflare.go)
+	names = append(names, "offenders")                 // failed logins (logins.go)
+	names = append(names, "surface")                   // attack-surface map (surface.go)
+	names = append(names, "bans")                      // bans (bans.go)
+	names = append(names, "branding")                  // branding (branding.go)
+	names = append(names, "devices")                   // sessions (devices.go)
+	names = append(names, "offline")                   // the app's offline page (pwa.go)
+	names = append(names, "alerts", "defense", "more") // the phone layout's tabs (phone.go)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/ai.html", "templates/"+n+".html")
@@ -688,6 +717,12 @@ var funcs = template.FuncMap{
 			cls = c
 		}
 		return map[string]any{"Href": href, "Icon": nav, "Label": label, "Count": count, "Tone": tone, "Class": cls, "Current": p.Nav == nav}
+	},
+	// tabItem is one tab of the phone layout's tab bar: tab is what
+	// page.Tab returns on its pages, icon a navicon name.
+	"tabItem": func(p page, href, tab, icon, label string, count int, tone any) map[string]any {
+		t, _ := tone.(string)
+		return map[string]any{"Href": href, "Icon": icon, "Label": label, "Count": count, "Tone": t, "Current": p.Tab() == tab}
 	},
 	// attn says how many need attention: "46 fixable now · 16 to watch (no fix yet)".
 	"attn": attnText,

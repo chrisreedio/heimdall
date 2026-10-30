@@ -1,0 +1,17 @@
+{{define "content"}}{{with .Body}}
+<h1>Alerts</h1>
+<p class="muted">Open anomalies, privileged access from addresses nobody knows (the last 7 days){{if .News}} and incidents in the news that affect your hosts{{end}}, newest first. <a href="/anomalies">Anomalies</a> is where they're acknowledged{{if .News}}; <a href="/news">News</a> has every incident{{end}}.</p>
+{{if .Items}}<ul class="alert-list">{{range .Items}}
+  <li class="card alert-item">
+    <div class="alert-head">
+      {{if eq .Kind "anomaly"}}<span class="sev sev-{{sev .Severity}}">{{.Severity}}</span>{{else if eq .Kind "news"}}<span class="pill bad">news</span>{{else}}<span class="pill warn">privilege</span>{{end}}
+      <a class="alert-title" href="{{.Href}}">{{.Title}}</a>
+      <span class="muted small alert-when">{{dayAgo (timep .At)}}</span>
+    </div>
+    {{with .Detail}}<div class="muted small clamp2" title="{{.}}">{{.}}</div>{{end}}
+    <div class="small alert-hosts">{{range $i, $h := .Hosts}}{{if lt $i 6}}{{if $i}}, {{end}}<a href="{{hostURL $h.OrgSlug $h.Name}}">{{$h.Name}}</a>{{if $.Body.ShowOrgs}} <span class="muted">{{$h.OrgSlug}}</span>{{end}}{{end}}{{end}}{{if gt (len .Hosts) 6}} <span class="muted">and {{len .Hosts}} in all</span>{{end}}</div>
+  </li>{{end}}
+</ul>
+{{if .More}}<p class="more">{{.More}} older not shown. <a href="/anomalies">All anomalies</a></p>{{end}}
+{{else}}<p class="empty">All clear: no open anomalies, no privileged access from unknown addresses{{if .News}} and nothing in the news affecting your hosts{{end}}.</p>{{end}}
+{{end}}{{end}}
