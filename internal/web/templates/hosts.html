@@ -49,7 +49,7 @@
       <div class="h-meta"><span class="env-chip" title="Environment">{{.EnvSlug}}</span>{{range .ShownTags}}<a class="tag" href="/hosts?tag={{.}}{{with $.Body.Org}}&amp;org={{.}}{{end}}">{{.}}</a>{{end}}{{with .MoreTags}}<span class="tag" title="{{join $tags ", "}}">+{{.}}</span>{{end}}</div>
     </td>
     {{if .Reported}}
-    <td class="h-os full"><span class="h-os-name">{{.R.OS}}</span>{{$s := lifeState .R.OSLife}}{{if or (eq $s "eol") (eq $s "soon")}} {{template "lifepill" .R.OSLife}}{{end}}{{range .NonOSEOL}} <span class="pill {{if eq .State "eol"}}bad{{else}}warn{{end}}" title="{{if .Life.EOLDate}}end of life {{fullDate .Life.EOLDate}}{{end}}">{{.Label}} {{if eq .State "eol"}}EoL{{else}}EoL in {{.Life.DaysLeft}}d{{end}}</span>{{end}}</td>
+    <td class="h-os full"><span class="h-os-name">{{.R.OS}}</span>{{$s := lifeState .R.OSLife}}{{if or (eq $s "eol") (eq $s "soon")}} {{template "lifepill" .R.OSLife}}{{end}}{{range .NonOSEOL}} <span class="pill {{if eq .State "eol"}}bad{{else}}warn{{end}}" title="{{if .Life.EOLDate}}end of life {{fullDate .Life.EOLDate}}{{end}}">{{.Label}} {{if eq .State "eol"}}EoL{{else}}EoL in {{.Life.DaysLeft}}d{{end}}</span>{{end}}{{template "sshpill" .SSH}}</td>
     <td class="num{{if not $c.KEV}} zero{{end}}" data-label="KEV">{{if $c.KEV}}<span class="badge kev">{{num $c.KEV}}</span>{{else}}<span class="muted">0</span>{{end}}</td>
     <td class="num{{if not .News}} zero{{end}}" data-label="News">{{if .News}}<a class="badge news" href="/news?affects=me">{{.News}}</a>{{else}}<span class="muted">0</span>{{end}}</td>
     <td class="num{{if not $c.FixUrgent}} zero{{end}}" data-label="Crit/high fix">{{if $c.FixUrgent}}<strong class="sub-bad">{{num $c.FixUrgent}}</strong>{{else}}<span class="muted">0</span>{{end}}</td>

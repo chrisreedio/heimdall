@@ -282,6 +282,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.recordSiteRepos(r.Context(), log, host, r)                 // repos.go
 		h.recordSiteBranches(r.Context(), log, host, r)              // branches.go
 		h.recordPHP(r.Context(), log, host, r)                       // php.go
+		h.recordSSH(r.Context(), log, host, r)                       // ssh.go
 		h.recordLogins(r.Context(), log, host, r)                    // opt-in login watch (logins.go)
 	}
 	if res.Status == http.StatusCreated && h.OnStored != nil {

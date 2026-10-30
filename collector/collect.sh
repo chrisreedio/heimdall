@@ -28,7 +28,7 @@ export LC_ALL=C
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export PATH
 
-VERSION=0.4.53
+VERSION=0.4.54
 FORMAT=heimdall.snapshot/v4
 
 die() { printf 'heimdall-collect: %s\n' "$*" >&2; exit 1; }
@@ -968,6 +968,117 @@ php_state() {
 	printf 'v1 cli=%s fpm=%s' "$cli" "${fpm:--}"
 }
 
+# ── SSH server settings (sent as X-Heimdall-SSH) ───────────────────────────
+
+# ssh_state: the X-Heimdall-SSH value,
+#
+#   v1 src=<g|files|unreadable|none> port=<p>,... listen=<addr>,...
+#      password=<yes|no|?> kbd=<yes|no|?> pam=<yes|no|?> root=<value|?>
+#
+# from sshd's effective settings (`sshd -G`, which OpenSSH 9.6 and later
+# run unprivileged) or, failing that, from reading sshd_config and the
+# files it includes; listen is the addresses something listens on at
+# those ports (/proc/net/tcp*, "-" for none). With the config unreadable
+# (root-only on Rocky), port 22 is assumed. It says what sshd allows, not
+# whether the network (a cloud firewall) lets anyone reach it.
+# HEIMDALL_SSHD, HEIMDALL_SSHD_CONFIG and HEIMDALL_PROC_NET are for tests.
+ssh_state() {
+	cfg=${HEIMDALL_SSHD_CONFIG:-/etc/ssh/sshd_config}
+	sshd=${HEIMDALL_SSHD:-$(command -v sshd 2>/dev/null || true)}
+	src=none conf=
+	if [ -n "$sshd" ] && [ -x "$sshd" ] &&
+		conf=$("$sshd" -G -f "$cfg" 2>/dev/null) && printf '%s\n' "$conf" | grep -q '^port '; then
+		src=g
+	elif [ -r "$cfg" ]; then
+		src=files conf=$(ssh_config_files "$cfg" | ssh_config_merge)
+	elif [ -e "$cfg" ] || { [ -n "$sshd" ] && [ -x "$sshd" ]; }; then
+		src=unreadable conf='port 22'
+	fi
+	[ "$src" != none ] || { echo 'v1 src=none'; return 0; }
+	printf '%s\n' "$conf" | awk -v src="$src" -v net="${HEIMDALL_PROC_NET:-/proc/net}" '
+		function hex(h,   i, n) { n = 0; h = toupper(h); for (i = 1; i <= length(h); i++) n = n * 16 + index("0123456789ABCDEF", substr(h, i, 1)) - 1; return n }
+		function yn(v) { return v == "yes" || v == "no" ? v : "?" }
+		$1 == "port" && $2 ~ /^[0-9]+$/ && !(($2 + 0) in want) { want[$2 + 0] = 1; ports = ports (ports == "" ? "" : ",") ($2 + 0) }
+		$1 == "passwordauthentication" { pw = $2 }
+		$1 == "kbdinteractiveauthentication" || $1 == "challengeresponseauthentication" { if (kbd == "") kbd = $2 }
+		$1 == "usepam" { pam = $2 }
+		$1 == "permitrootlogin" { root = ($2 == "without-password" ? "prohibit-password" : $2) }
+		END {
+			if (ports == "") { ports = "22"; want[22] = 1 }
+			n = 0
+			# IPv4: one little-endian word. IPv6: four of them.
+			while ((getline line < (net "/tcp")) > 0) {
+				split(line, f, " ")
+				if (f[4] != "0A" || split(f[2], a, ":") != 2 || length(a[1]) != 8 || !(hex(a[2]) in want)) continue
+				ip = hex(substr(a[1], 7, 2)) "." hex(substr(a[1], 5, 2)) "." hex(substr(a[1], 3, 2)) "." hex(substr(a[1], 1, 2))
+				if (!(ip in seen) && n < 8) { seen[ip] = 1; out = out (n++ ? "," : "") ip }
+			}
+			while ((getline line < (net "/tcp6")) > 0) {
+				split(line, f, " ")
+				if (f[4] != "0A" || split(f[2], a, ":") != 2 || length(a[1]) != 32 || !(hex(a[2]) in want)) continue
+				ip = ""
+				for (w = 0; w < 4; w++) {
+					x = substr(a[1], w * 8 + 1, 8); b = substr(x, 7, 2) substr(x, 5, 2) substr(x, 3, 2) substr(x, 1, 2)
+					ip = ip (w ? ":" : "") sprintf("%x:%x", hex(substr(b, 1, 4)), hex(substr(b, 5, 4)))
+				}
+				if (!(ip in seen) && n < 8) { seen[ip] = 1; out = out (n++ ? "," : "") ip }
+			}
+			if (src == "unreadable") { pw = "?"; kbd = "?"; pam = "?"; root = "?" }
+			if (root !~ /^(yes|no|prohibit-password|forced-commands-only)$/) root = "?"
+			printf "v1 src=%s port=%s listen=%s password=%s kbd=%s pam=%s root=%s", src, ports, (out == "" ? "-" : out), yn(pw), yn(kbd), yn(pam), root
+		}'
+}
+
+# ssh_config_files CONFIG: CONFIG with the files its Include lines name
+# spliced in where they stand (one level, as Debian and Ubuntu use it),
+# each followed by "#end" since a Match block ends with its file.
+ssh_config_files() {
+	dir=${1%/*}
+	while IFS= read -r line || [ -n "$line" ]; do
+		case $line in
+		[Ii][Nn][Cc][Ll][Uu][Dd][Ee][[:space:]]* | [Ii][Nn][Cc][Ll][Uu][Dd][Ee]=*)
+			# Globs expand only after a relative one is put under $dir.
+			set -f
+			pats=$(printf '%s\n' "${line#????????}" | tr '=' ' ')
+			for pat in $pats; do
+				case $pat in /*) ;; *) pat=$dir/$pat ;; esac
+				set +f
+				for f in $pat; do
+					if [ ! -f "$f" ] || [ ! -r "$f" ]; then continue; fi
+					grep -iv '^[[:space:]]*include[[:space:]=]' "$f" 2>/dev/null || true
+					echo '#end'
+				done
+				set -f
+			done
+			set +f
+			;;
+		*) printf '%s\n' "$line" ;;
+		esac
+	done <"$1"
+}
+
+# ssh_config_merge: sshd_config lines on stdin as `sshd -G` would print the
+# keywords ssh_state reads: lower-case, the first value of each winning
+# (every Port counts), Match blocks skipped, and sshd's defaults for the
+# rest.
+ssh_config_merge() {
+	awk '
+		$1 == "#end" { inmatch = 0; next }
+		{ sub(/#.*/, ""); sub(/=/, " "); if (NF < 2) next; k = tolower($1); v = tolower($2) }
+		k == "match" { inmatch = (v != "all"); next }
+		inmatch { next }
+		k == "port" { ports[++np] = v; next }
+		k == "challengeresponseauthentication" { k = "kbdinteractiveauthentication" }
+		!(k in val) { val[k] = v }
+		END {
+			if (np == 0) ports[++np] = 22
+			for (i = 1; i <= np; i++) print "port " ports[i]
+			d["passwordauthentication"] = "yes"; d["kbdinteractiveauthentication"] = "yes"
+			d["usepam"] = "no"; d["permitrootlogin"] = "prohibit-password"
+			for (k in d) print k " " (k in val ? val[k] : d[k])
+		}'
+}
+
 # site_branches: the X-Heimdall-Site-Branches value for the sites in a
 # snapshot on stdin, "v1 <root> <ref>,..." (just "v1" when none are
 # known), at most about 4 KB.
@@ -1314,6 +1425,8 @@ EOF
 	branches_header="header = \"X-Heimdall-Site-Branches: $(site_branches <"$tmp/snapshot.json" | tr -cd 'A-Za-z0-9._~:/@+, -' | cut -c1-4096)\""
 	# The PHP versions in use outside the sites' sockets (php_state).
 	php_header="header = \"X-Heimdall-PHP: $(php_state | tr -cd 'a-z0-9.=, -' | cut -c1-200)\""
+	# sshd's settings and listening addresses (ssh_state).
+	ssh_header="header = \"X-Heimdall-SSH: $(ssh_state | tr -cd 'a-z0-9.:=,? -' | cut -c1-400)\""
 
 	# The token goes to curl on stdin via --config (printf is a shell
 	# builtin), so it never appears in any process's arguments. The reply
@@ -1323,7 +1436,7 @@ EOF
 	status=$(printf '%s\n' \
 		"header = \"Authorization: Bearer $token\"" \
 		'header = "Content-Type: application/json"' \
-		"$encoding" "$cacert" "$hostname_header" "$machine_header" "$triggers_header" "$repos_header" "$branches_header" "$php_header" "$(privilege_config)" "$(logins_config)" |
+		"$encoding" "$cacert" "$hostname_header" "$machine_header" "$triggers_header" "$repos_header" "$branches_header" "$php_header" "$ssh_header" "$(privilege_config)" "$(logins_config)" |
 		"$curl" --config - --silent --show-error \
 			--proto '=https,http' --tlsv1.2 \
 			--connect-timeout 10 --max-time 120 \
@@ -1565,7 +1678,7 @@ set_hub() {
 usage() {
 	cat >&2 <<'EOF'
 usage: heimdall-collect --print | --push | --site-repos | --site-branches |
-                        --php | --deploy-watches | --logins | --version
+                        --php | --ssh | --deploy-watches | --logins | --version
        heimdall-collect deployed
        sudo heimdall-collect upgrade [vX.Y.Z] [--watch-privilege-users |
                                      --watch-privilege | --no-watch-privilege]
@@ -1580,6 +1693,8 @@ usage: heimdall-collect --print | --push | --site-repos | --site-branches |
                 print the sites' checked-out branches --push would send
   --php         print the PHP versions in use --push would send (the command
                 line's and the running PHP-FPMs')
+  --ssh         print sshd's settings and listening addresses --push would
+                send
   --deploy-watches
                 print the paths watched for site deploys (install.sh puts
                 them in heimdall-collect-changes.path)
@@ -1622,7 +1737,7 @@ case $1 in
 deployed) deployed; exit 0 ;; # any user, root too: it only touches a file
 # For heimdall-collect-soon.service (root), not for people:
 event-allowed) if event_allowed; then exit 0; else exit 1; fi ;;
---print | --push | --site-repos | --site-branches | --php | --deploy-watches | --logins) ;;
+--print | --push | --site-repos | --site-branches | --php | --ssh | --deploy-watches | --logins) ;;
 *) usage ;;
 esac
 
@@ -1636,6 +1751,7 @@ case $1 in
 --site-repos) sites_json | site_repos; echo ;;
 --site-branches) sites_json | site_branches; echo ;;
 --php) php_state; echo ;;
+--ssh) ssh_state; echo ;;
 --deploy-watches) deploy_watches ;;
 --logins) logins_header "${HEIMDALL_LOGIN_COUNTS:-/var/lib/heimdall-logins/counts}" | sed -n 's/^header = "X-Heimdall-Logins: \(.*\)"$/\1/p' ;;
 esac

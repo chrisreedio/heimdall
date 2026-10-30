@@ -36,12 +36,25 @@ chmod 0700 ~alice/.ssh
 # Root logins by key, for the root-ssh case.
 mkdir -p /root/.ssh
 cp /tmp/k.pub /root/.ssh/authorized_keys
-printf 'PermitRootLogin prohibit-password\nUsePAM yes\n' >/etc/ssh/sshd_config.d/00-test.conf 2>/dev/null ||
-	printf 'PermitRootLogin prohibit-password\nUsePAM yes\n' >>/etc/ssh/sshd_config
+# In the config rather than on sshd's command line, for collect.sh --ssh.
+conf='PermitRootLogin prohibit-password\nUsePAM yes\nPasswordAuthentication no\nPort 2222\nListenAddress 127.0.0.1\nListenAddress ::1\n'
+# shellcheck disable=SC2059 # the format is ours
+printf "$conf" >/etc/ssh/sshd_config.d/00-test.conf 2>/dev/null || printf "$conf" >>/etc/ssh/sshd_config
 
 sh "$dir/privilege-watch.sh" install "$dir/privilege-hook" users
-"$(command -v sshd)" -o ListenAddress=127.0.0.1 -o ListenAddress=::1 -p 2222
+"$(command -v sshd)"
 sleep 1
+
+# The collector's view of this sshd, unprivileged: its effective settings
+# (sshd -G) where the config is readable, else only that it's unreadable.
+got=$(su alice -s /bin/sh -c "sh '$dir/collect.sh' --ssh")
+if su alice -s /bin/sh -c 'test -r /etc/ssh/sshd_config'; then
+	want='v1 src=g port=2222 listen=127.0.0.1,0:0:0:0:0:0:0:1 password=no kbd=no pam=yes root=prohibit-password'
+else
+	want='v1 src=unreadable port=22 listen=- password=? kbd=? pam=? root=?'
+fi
+[ "$got" = "$want" ] || fail "collect.sh --ssh: got '$got', want '$want'"
+printf 'ok   collect.sh --ssh: %s\n' "$got"
 
 # run ADDR USER CMD: CMD in a login over SSH with a terminal, as sudo and
 # su need for PAM_TTY.

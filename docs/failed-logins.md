@@ -92,6 +92,8 @@ A success is `Accepted <method> for <user> from <ip>`; it sets **then succeeded*
 
 Counts are stored per host, address and day, and kept **30 days**. Ingest checks every value (counts, times within the day and not in the future, addresses parsed and canonicalized, days only around today) and caps a push at 3 days and 200 addresses. A malformed header is ignored; it never fails the push.
 
+Failed logins from internet addresses (anything outside the tailnet, private networks and loopback) are also the hub's evidence that a server's SSH is **reachable from the internet**: a cloud firewall in front of it would have stopped them. The host page's SSH fact shows "reached from the internet" when any came in the last 14 days, beside what sshd allows ([SSH settings](collector.md#ssh-settings)).
+
 ### Known addresses are never offenders
 
 Every address goes through [IP awareness](ip-awareness.md). If anything about the **address itself** is known, it's shown under **Known addresses** but never counted as an offender:

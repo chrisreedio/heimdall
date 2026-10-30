@@ -9,11 +9,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 )
 
 // collectorSum is collectorDigest at CollectorChanged.
-const collectorSum = "abe419805d080f2e034824f4b21528d670e6b07369fec5c177384e40784324c5"
+const collectorSum = "b6ade890b13d4c98e5fd50d8de0fc7e30d8cda303e9c4ddce31c08e612078ace"
 
 // versionLine is a collector script's version number, which every release
 // changes.
@@ -61,7 +62,8 @@ func TestCollectorChanged(t *testing.T) {
 
 func TestCollectorBehind(t *testing.T) {
 	t.Parallel()
-	for v, want := range map[string]bool{"0.4.41": true, "v0.4.48": true, "0.4.49": false, "0.4.53": false, "v1.0.0": false, "dev": false, "": false} {
+	at := strings.TrimPrefix(CollectorChanged, "v")
+	for v, want := range map[string]bool{"0.4.41": true, "v0.4.48": true, at: false, "v" + at: false, "v99.0.0": false, "dev": false, "": false} {
 		if got := CollectorBehind(v); got != want {
 			t.Errorf("CollectorBehind(%q) = %v, want %v", v, got, want)
 		}
