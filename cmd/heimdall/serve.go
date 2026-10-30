@@ -93,10 +93,11 @@ func cmdServe(a *app, args []string) error {
 		ipSyncers[i] = ipinfo.Then(sy, resolveKnown)
 	}
 	ipinfo.Run(a.ctx, log, ipSyncers...)
-	go everyHour(a.ctx, resolveKnown)       // for sign-ins, which no sync announces
-	h.IPs = ips                             // privilege sessions' sources (internal/privilege/source.go)
-	h.TrustedEdge = cloudflareTrustedEdge() // CF-Connecting-IP from Cloudflare's edge only; nil when off (cloudflare.go)
-	startBans(a.ctx, cfg, s, log, ips)      // bans and their alerts (bans.go)
+	go everyHour(a.ctx, resolveKnown)           // for sign-ins, which no sync announces
+	h.IPs = ips                                 // privilege sessions' sources (internal/privilege/source.go)
+	h.TrustedEdge = cloudflareTrustedEdge()     // CF-Connecting-IP from Cloudflare's edge only; nil when off (cloudflare.go)
+	startBans(a.ctx, cfg, s, log, ips)          // bans and their alerts (bans.go)
+	pushService = startPush(a.ctx, cfg, s, log) // the app's notifications (push.go)
 
 	aiSvc := newAIService(cfg, s, log) // nil when [ai] is off
 	if aiSvc != nil {
@@ -228,7 +229,10 @@ func newUIServer(cfg config.Config, s *store.Store, log *slog.Logger, aiSvc *ai.
 		Cloudflare:   cfg.Cloudflare.Enabled,
 		Tailnet:      cfg.Tailscale.Enabled,
 	}
-	wcfg.Bans = bansService                                 // set by startBans (bans.go)
+	wcfg.Bans = bansService // set by startBans (bans.go)
+	if pushService != nil { // set by startPush (push.go)
+		wcfg.Push = pushService
+	}
 	wcfg.BehindTailscaleServe = cfg.UI.BehindTailscaleServe // tailscale serve's client headers (web/tsproxy.go)
 	wcfg.BehindProxy, wcfg.TrustedEdge = cfg.UI.BehindProxy, cloudflareTrustedEdge()
 	if cloudflareLists != nil { // set by newCloudflare (cloudflare.go): sync the IP lists when an admin maps one

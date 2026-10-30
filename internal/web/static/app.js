@@ -413,3 +413,98 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!isNaN(d)) el.textContent = (el.getAttribute("data-prefix") || "") + text(el.getAttribute("data-ts"), d, now);
   });
 });
+
+// Notifications (notifications.go): "Turn on notifications" asks for
+// permission (browsers allow that only from a click), subscribes through
+// the service worker with the hub's VAPID key, and posts the subscription
+// with the page's form, CSRF token included. "Turn off" unsubscribes the
+// browser too. Where the Push API is missing it says why: on iPhone and
+// iPad, only an app added to the Home Screen has it.
+document.addEventListener("DOMContentLoaded", function () {
+  var box = document.querySelector("[data-push]");
+  if (!box) return;
+  var msg = box.querySelector("[data-push-msg]");
+  var btn = box.querySelector("[data-push-on]");
+  var form = document.getElementById("push-subscribe");
+  var off = box.querySelector("form[data-push-off]");
+  var ua = navigator.userAgent;
+  var ios = /iPhone|iPad|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  var installed = navigator.standalone === true || (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches);
+  function say(text) { msg.textContent = text; msg.hidden = !text; }
+  if (ios) box.querySelector("[data-push-ios]").hidden = installed;
+  var tz = document.querySelector("select[data-push-tz]");
+  var here = "";
+  try { here = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) {}
+  // The time zone picker: offer this browser's if it isn't listed.
+  if (tz && here && !Array.prototype.some.call(tz.options, function (o) { return o.value === here; })) {
+    var opt = document.createElement("option");
+    opt.value = here;
+    opt.textContent = here + " (this browser)";
+    tz.insertBefore(opt, tz.firstChild);
+  }
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window) || !window.isSecureContext) {
+    say(ios && !installed ? "Add this app to your Home Screen first, then open it from there to turn notifications on." :
+      "This browser can't receive notifications from the hub.");
+    return;
+  }
+  if (Notification.permission === "denied") {
+    say("Notifications are blocked for this site. Allow them in the browser's settings, then come back.");
+  }
+  function key() {
+    var s = box.getAttribute("data-push-key").replace(/-/g, "+").replace(/_/g, "/");
+    var raw = atob(s + "===".slice((s.length + 3) % 4));
+    var out = new Uint8Array(raw.length);
+    for (var i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+    return out;
+  }
+  function subscribe(reg) {
+    var opts = { userVisibleOnly: true, applicationServerKey: key() };
+    return reg.pushManager.subscribe(opts).catch(function (err) {
+      // Subscribed before with another key (a restored hub): start over.
+      return reg.pushManager.getSubscription().then(function (old) {
+        if (!old) throw err;
+        return old.unsubscribe().then(function () { return reg.pushManager.subscribe(opts); });
+      });
+    });
+  }
+  if (box.hasAttribute("data-push-here")) {
+    // On for this device: offer "Turn on again" only if the browser lost
+    // its subscription (site data cleared, say).
+    navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+      if (!sub) { btn.hidden = false; say("This browser no longer has its subscription. Turn notifications on again."); }
+    }).catch(function () {});
+  } else {
+    btn.hidden = false;
+  }
+  btn.addEventListener("click", function () {
+    btn.disabled = true;
+    say("");
+    Notification.requestPermission().then(function (p) {
+      if (p !== "granted") throw new Error(p === "denied" ? "blocked" : "dismissed");
+      return navigator.serviceWorker.ready;
+    }).then(subscribe).then(function (sub) {
+      var j = sub.toJSON();
+      form.elements.endpoint.value = j.endpoint;
+      form.elements.p256dh.value = j.keys.p256dh;
+      form.elements.auth.value = j.keys.auth;
+      form.elements.tz.value = here;
+      form.submit();
+    }).catch(function (err) {
+      btn.disabled = false;
+      var m = err && err.message;
+      say(m === "blocked" ? "Notifications are blocked for this site. Allow them in the browser's settings, then try again." :
+        m === "dismissed" ? "Notifications stay off: the browser didn't get permission." :
+        "Couldn't subscribe: " + (m || "the browser's push service didn't answer") + ".");
+    });
+  });
+  if (off) {
+    off.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      navigator.serviceWorker.ready.then(function (reg) { return reg.pushManager.getSubscription(); }).then(function (sub) {
+        if (!sub) return;
+        off.elements.endpoint.value = sub.endpoint;
+        return sub.unsubscribe();
+      }).catch(function () {}).then(function () { off.submit(); });
+    });
+  }
+});

@@ -114,6 +114,9 @@ type Config struct {
 
 	// Bans: [bans] (internal/bans); nil when it isn't set up.
 	Bans *bans.Service
+
+	// Push sends Web Push notifications (notifications.go); nil = off.
+	Push PushService
 }
 
 // CSP is the Content-Security-Policy sent with every response.
@@ -268,6 +271,12 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("GET /more", s.requireAuth(s.morePage))
 	mux.HandleFunc("GET /sw.js", s.serviceWorker)
 	mux.HandleFunc("GET /offline", s.offlinePage)
+	// Push notifications: this device on or off, a test, settings (notifications.go).
+	mux.HandleFunc("GET /account/notifications", s.requireAuth(s.notificationsPage))
+	mux.HandleFunc("POST /account/notifications/subscribe", s.requireAuth(s.pushSubscribe))
+	mux.HandleFunc("POST /account/notifications/unsubscribe", s.requireAuth(s.pushUnsubscribe))
+	mux.HandleFunc("POST /account/notifications/test", s.requireAuth(s.pushTest))
+	mux.HandleFunc("POST /account/notifications/settings", s.requireAuth(s.pushSettings))
 	if cfg.AI != nil { // AI analysis: regenerate a brief or explain a host (operator+)
 		mux.HandleFunc("POST /ai/brief/{org}", s.requireAuth(s.aiBriefRun))
 		mux.HandleFunc("POST /hosts/{org}/{host}/ai", s.requireAuth(s.aiHostRun))
@@ -610,6 +619,7 @@ func parsePages() (map[string]*template.Template, error) {
 	names = append(names, "security", "stepup", "stepup_resume") // step-up codes (stepup.go)
 	names = append(names, "offline")                             // the app's offline page (pwa.go)
 	names = append(names, "alerts", "defense", "more")           // the phone layout's tabs (phone.go)
+	names = append(names, "notifications")                       // push notifications (notifications.go)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/ai.html", "templates/"+n+".html")

@@ -2,7 +2,8 @@
 // installable as an app and shows a small offline page when the hub can't
 // be reached. It caches only static files: CSS, scripts and icons, whose
 // URLs carry a version. Pages and API answers are never cached; they're
-// behind a sign-in and always come from the hub.
+// behind a sign-in and always come from the hub. It also shows push
+// notifications, and opens the hub when one is tapped.
 "use strict";
 
 var VERSION = "__VERSION__"; // the hub's and the branding's (pwa.go)
@@ -10,6 +11,9 @@ var CACHE = "heimdall-static-" + VERSION;
 var OFFLINE = "/offline";
 // The offline page and everything it loads, at the URLs it uses (pwa.go).
 var PRECACHE = ["__PRECACHE__"];
+// Notifications' icon (the hub's app icon) and status-bar badge (pwa.go).
+var ICON = "__ICON__";
+var BADGE = "__BADGE__";
 
 self.addEventListener("install", function (event) {
   event.waitUntil(caches.open(CACHE).then(function (cache) {
@@ -52,5 +56,47 @@ self.addEventListener("fetch", function (event) {
         return res;
       });
     });
+  }));
+});
+
+// Push notifications (internal/push): the hub sends a small encrypted
+// JSON message, {title, body, url, tag}, that the browser decrypts. A
+// newer one with the same tag replaces the one showing. Nothing is kept
+// or cached; the notification only opens a page of the hub.
+self.addEventListener("push", function (event) {
+  var m = {};
+  try { m = event.data ? event.data.json() : {}; } catch (e) {}
+  var opts = {
+    body: typeof m.body === "string" ? m.body : "",
+    tag: typeof m.tag === "string" && m.tag ? m.tag : "heimdall",
+    renotify: true,
+    icon: ICON,
+    data: { url: sameSite(m.url) }
+  };
+  if (BADGE) opts.badge = BADGE;
+  var title = typeof m.title === "string" && m.title ? m.title : "Heimdall needs attention";
+  event.waitUntil(self.registration.showNotification(title, opts));
+});
+
+// sameSite keeps a notification's link on the hub: a path, never a URL
+// elsewhere.
+function sameSite(u) {
+  if (typeof u !== "string" || u.charAt(0) !== "/" || u.charAt(1) === "/" || u.charAt(1) === "\\") return "/";
+  return u;
+}
+
+// A tap opens the page: in a window of the app that's already open if
+// there is one, else a new one.
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+  var target = new URL(sameSite(event.notification.data && event.notification.data.url), self.location.origin).href;
+  event.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (wins) {
+    for (var i = 0; i < wins.length; i++) {
+      var w = wins[i];
+      if (new URL(w.url).origin === self.location.origin && "focus" in w) {
+        return w.focus().then(function (fw) { return (fw || w).navigate ? (fw || w).navigate(target) : null; });
+      }
+    }
+    return self.clients.openWindow(target);
   }));
 });

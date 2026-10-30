@@ -1,0 +1,84 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<h1>Notifications</h1>
+{{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+<p class="muted">{{.AppName}} can notify this phone or computer when something needs you: a known-exploited finding, a host that stopped reporting, a ban waiting for approval. Notifications come straight from this hub, encrypted for your device, and say at most what happened and on which host.</p>
+
+<section class="card push-here" aria-labelledby="ph-h"{{if .On}} data-push data-push-key="{{.Key}}"{{if .Here}} data-push-here{{end}}{{end}}>
+  <h2 id="ph-h">This device</h2>
+  {{if not .On}}<p class="muted">Notifications aren't available on this hub.</p>
+  {{else}}
+  <p class="push-state">{{if .Here}}<span class="pill ok">On</span> Notifications are on for this device.{{else}}<span class="pill">Off</span> Notifications are off for this device.{{end}}</p>
+  <p class="muted small" data-push-msg hidden></p>
+  <noscript><p class="muted small">Turning notifications on needs JavaScript.</p></noscript>
+  {{if .Insecure}}<p class="muted small">Browsers allow notifications only over HTTPS. Open the hub at its <code>https://</code> address (tailscale serve gives it one).</p>{{end}}
+  <div class="push-actions">
+    <form method="post" action="/account/notifications/subscribe" id="push-subscribe" class="inline">
+      <input type="hidden" name="csrf" value="{{$csrf}}">
+      <input type="hidden" name="endpoint"><input type="hidden" name="p256dh"><input type="hidden" name="auth"><input type="hidden" name="tz">
+      <button type="button" data-push-on hidden>{{if .Here}}Turn on again{{else}}Turn on notifications{{end}}</button>
+    </form>
+    {{if .Here}}
+    <form method="post" action="/account/notifications/test" class="inline">
+      <input type="hidden" name="csrf" value="{{$csrf}}">
+      <button type="submit">Send a test notification</button>
+    </form>
+    <form method="post" action="/account/notifications/unsubscribe" class="inline" data-push-off>
+      <input type="hidden" name="csrf" value="{{$csrf}}"><input type="hidden" name="endpoint">
+      <button type="submit" class="secondary">Turn off on this device</button>
+    </form>
+    {{end}}
+  </div>
+  <p class="muted small" data-push-ios hidden>On iPhone and iPad, notifications work only in the app: add this hub to your Home Screen first (Share, then <strong>Add to Home Screen</strong>), open it from there, and turn them on here.</p>
+  {{end}}
+</section>
+
+{{if .Devices}}
+<section class="card" aria-labelledby="pd-h">
+  <h2 id="pd-h">Your devices with notifications</h2>
+  <ul class="push-devices">{{range .Devices}}
+    <li><strong>{{or .Label "Unknown device"}}</strong>{{if .Here}} <span class="badge">this device</span>{{end}}
+      <div class="muted small">On since {{dayAgo (timep .CreatedAt)}} · {{if .LastError}}last send failed: {{.LastError}}{{else if .LastOKAt.IsZero}}nothing sent yet{{else}}last delivered {{dayAgo (timep .LastOKAt)}}{{end}}</div>
+    </li>{{end}}
+  </ul>
+  <p class="muted small">Signing out of a device, or revoking it on <a href="/account/devices">Devices</a>, turns its notifications off.</p>
+</section>
+{{end}}
+
+<form method="post" action="/account/notifications/settings" class="push-settings">
+  <input type="hidden" name="csrf" value="{{$csrf}}">
+  <section class="card" aria-labelledby="pk-h">
+    <h2 id="pk-h">What to send</h2>
+    <p class="muted">Only for organizations you can see. <strong>Daily digest</strong> collects them into one notification at 8 AM.</p>
+    {{range .Kinds}}{{$k := .}}
+    <fieldset class="push-kind">
+      <legend>{{.Label}}</legend>
+      <p class="muted small">{{.Help}}</p>
+      <div class="choice">{{range .Modes}}
+        <label><input type="radio" name="mode_{{$k.Kind}}" value="{{.Value}}"{{if eq .Value $k.Mode}} checked{{end}}><span>{{.Label}}</span></label>{{end}}
+      </div>
+    </fieldset>{{end}}
+  </section>
+
+  <section class="card" aria-labelledby="pq-h">
+    <h2 id="pq-h">Quiet hours</h2>
+    <label class="check"><input type="checkbox" name="quiet" value="1"{{if .Settings.Quiet}} checked{{end}}> Hold notifications during quiet hours</label>
+    <div class="push-hours">
+      <label>From <select name="quiet_start">{{range .Hours}}<option value="{{.Value}}"{{if eq .Value (printf "%d" $.Body.Settings.QuietStart)}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+      <label>to <select name="quiet_end">{{range .Hours}}<option value="{{.Value}}"{{if eq .Value (printf "%d" $.Body.Settings.QuietEnd)}} selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+      <label>Time zone <select name="tz" data-push-tz>{{if not .Settings.TimeZone}}<option value="" selected>UTC (not set)</option>{{end}}{{range .TimeZones}}<option value="{{.}}"{{if eq . $.Body.Settings.TimeZone}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+    </div>
+    <p class="muted small">What comes in during quiet hours waits until they end, then arrives as one notification. Known-exploited findings and privileged access from an unknown address come through anyway. The time zone is this browser's when you turn notifications on.</p>
+  </section>
+
+  <section class="card" aria-labelledby="pl-h">
+    <h2 id="pl-h">On the lock screen</h2>
+    <div class="push-detail">
+      <label class="check"><input type="radio" name="detail" value="host"{{if ne .Settings.Detail "hidden"}} checked{{end}}> <span><strong>Kind and host</strong><br><span class="muted small">"Known-exploited finding on web-01"</span></span></label>
+      <label class="check"><input type="radio" name="detail" value="hidden"{{if eq .Settings.Detail "hidden"}} checked{{end}}> <span><strong>Hidden</strong><br><span class="muted small">"{{.AppName}} needs attention", and nothing else</span></span></label>
+    </div>
+    <p class="muted small">Notifications never include package names, addresses or usernames.</p>
+  </section>
+  <div class="actions"><button type="submit">Save settings</button></div>
+</form>
+{{end}}{{end}}

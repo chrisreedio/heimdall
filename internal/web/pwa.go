@@ -19,8 +19,9 @@ import (
 
 // swCSP is the service worker's own CSP: a worker gets the policy its
 // script was served with, and it needs connect-src to pass the hub's
-// pages through (fetch). Pages keep CSP.
-const swCSP = "default-src 'none'; connect-src 'self'"
+// pages through (fetch), and img-src for notifications' icons. Pages keep
+// CSP.
+const swCSP = "default-src 'none'; connect-src 'self'; img-src 'self'"
 
 type manifestIcon struct {
 	Src     string `json:"src"`
@@ -95,13 +96,30 @@ func (s *server) serviceWorker(w http.ResponseWriter, r *http.Request) {
 	}
 	version, _ := json.Marshal(s.cfg.Version + "-b" + strconv.FormatInt(s.branding(r.Context()).Version, 10))
 	precache, _ := json.Marshal(s.precache(r))
+	icon, badge := s.notificationIcons(r)
+	iconJS, _ := json.Marshal(icon)
+	badgeJS, _ := json.Marshal(badge)
 	body := strings.Replace(string(src), `"__VERSION__"`, string(version), 1)
 	body = strings.Replace(body, `["__PRECACHE__"]`, string(precache), 1)
+	body = strings.Replace(body, `"__ICON__"`, string(iconJS), 1)
+	body = strings.Replace(body, `"__BADGE__"`, string(badgeJS), 1)
 	h := w.Header()
 	h.Set("Content-Type", "text/javascript; charset=utf-8")
 	h.Set("Cache-Control", "no-cache")
 	h.Set("Content-Security-Policy", swCSP)
 	w.Write([]byte(body))
+}
+
+// notificationIcons are the push notifications' icon, the hub's app icon,
+// and their status-bar badge: Heimdall's mark in white, which Android
+// shows as a silhouette. A branded hub has no badge of its own, so the
+// browser's is used.
+func (s *server) notificationIcons(r *http.Request) (icon, badge string) {
+	if b := s.branding(r.Context()); len(b.Icon192) > 0 {
+		return "/branding/icon-192.png?v=" + strconv.FormatInt(b.Version, 10), ""
+	}
+	v := "?v=" + url.QueryEscape(s.cfg.Version)
+	return "/static/icon-192.png" + v, "/static/badge-96.png" + v
 }
 
 // precache is what the service worker stores when it's installed: the
