@@ -18,7 +18,7 @@ Each hub is its own app. If you run two hubs, install both, and give each its ow
 2. Tap the Share button, then **Add to Home Screen**. The name and icon are the hub's; you can change the name here.
 3. Open it from the home screen and sign in. Tick **Keep me signed in on this device** so you don't have to sign in every time (see below).
 
-Only Safari can add apps to the home screen on iOS 16.3 and earlier; on later versions other browsers can too, from their share menu.
+The **More** tab repeats these steps until the app is installed. Only Safari can add apps to the home screen on iOS 16.3 and earlier; on later versions other browsers can too, from their share menu.
 
 **Android (Chrome):**
 
@@ -109,5 +109,6 @@ A service worker (`/sw.js`) keeps copies of the hub's static files: its styleshe
 ## Security notes
 
 - The app is the hub's UI under the same strict Content Security Policy: no inline scripts or styles, nothing from other sites. The policy allows a service worker and a manifest from the hub itself (`worker-src 'self'; manifest-src 'self'`). The service worker's own script gets `connect-src 'self'`, so it can pass the hub's pages through, and `img-src 'self'` for notifications' icons. The service worker shows a pushed notification and opens only a page of the hub when it's tapped (any other link becomes the home page); it keeps nothing from it.
+- Forms may only be sent to the hub, and to Microsoft's sign-in (`form-action 'self' https://login.microsoftonline.com`): **Sign in with Microsoft** and the Microsoft step-up are forms the hub answers with a redirect there, and browsers apply `form-action` to that redirect too.
 - The manifest (`/manifest.webmanifest`), the icons and the offline page are public, as the sign-in page is: they show the hub's name and icons and nothing else.
 - A device session is still a cookie that's `HttpOnly`, `Secure` and `SameSite=Strict`, as normal sessions are. The difference is only how long it lasts.

@@ -120,8 +120,12 @@ type Config struct {
 }
 
 // CSP is the Content-Security-Policy sent with every response.
+// form-action applies to a form's redirects too, so it names Microsoft's
+// sign-in: "Sign in with Microsoft" and the Microsoft step-up are forms
+// the hub answers with a redirect there.
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
-	"worker-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+	"worker-src 'self'; manifest-src 'self'; form-action 'self' " + entra.DefaultAuthority + "; " +
+	"frame-ancestors 'none'; base-uri 'none'"
 
 const (
 	maxFormBytes = 16 << 10

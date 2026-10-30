@@ -508,3 +508,10 @@ document.addEventListener("DOMContentLoaded", function () {
     });
   }
 });
+
+// The More page's install instructions: not once it's installed. CSS hides
+// them by display-mode; older iPhones only say so in navigator.standalone.
+document.addEventListener("DOMContentLoaded", function () {
+  var hint = document.querySelector(".install-hint");
+  if (hint && navigator.standalone === true) hint.remove();
+});

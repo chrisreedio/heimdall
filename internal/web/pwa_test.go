@@ -100,8 +100,13 @@ func TestCSPStaysStrict(t *testing.T) {
 			t.Errorf("CSP lacks %s", want)
 		}
 	}
+	// Forms may go here and to Microsoft's sign-in, which they redirect to.
+	if !strings.Contains(csp, "form-action 'self' https://login.microsoftonline.com;") {
+		t.Errorf("CSP's form-action doesn't allow Microsoft's sign-in")
+	}
+	rest := strings.Replace(csp, " https://login.microsoftonline.com;", ";", 1)
 	for _, bad := range []string{"unsafe-inline", "unsafe-eval", "*", "connect-src", "http:", "https:"} {
-		if strings.Contains(csp, bad) {
+		if strings.Contains(rest, bad) {
 			t.Errorf("CSP has %s", bad)
 		}
 	}
@@ -120,7 +125,7 @@ func TestPhonePages(t *testing.T) {
 		"/":        `class="tab" aria-current="page"><svg`,
 		"/alerts":  "<h1>Alerts</h1>",
 		"/defense": "Repeat offenders, last 24 hours",
-		"/more":    `href="/account/devices"`,
+		"/more":    `<b>Add to Home Screen</b>`,
 	} {
 		w := e.get(path, signedIn(e))
 		if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), want) || !strings.Contains(w.Body.String(), `<nav class="tabbar"`) {
