@@ -209,6 +209,17 @@ For many servers, a loop is enough:
 for h in web-01 web-02 db-01; do ssh "$h" sudo heimdall-collect upgrade; done
 ```
 
+## Branding
+
+Admins can make a hub look like their own on **Admin → Branding** (`/admin/branding`). It matters most when you run more than one hub, so they're easy to tell apart in browser tabs and on phones. Each setting has a button that puts back Heimdall's own, and every change is in the audit log (`branding.name`, `branding.logo.reset` and so on).
+
+- **Display name**, up to 30 characters: the sidebar, the sign-in page, browser tabs and the phone app's name. Without one it's `[mcp] name` if you set it, else "Heimdall".
+- **Logo**: a PNG of up to 512 KB, in the sidebar header and on the sign-in page in place of Heimdall's mark. Larger images are scaled to fit 512 pixels.
+- **App icon**: a square PNG, at least 512 × 512 and up to 1 MB. The hub makes the 512, 192, 180 (iPhone home screen) and 32 pixel (browser tab) versions from it.
+- **Accent color**: buttons and highlights, in both themes. The hub refuses a color that wouldn't keep white button text readable (WCAG AA, 4.5:1) or that wouldn't stand out against the dark theme's page (3:1), and says which.
+
+Uploads are PNG only. The hub decodes each one and encodes it again before storing it in the database, so only the pixels are kept: no metadata, nothing hidden after the image. The files are served from the hub itself under `/branding/`, with the branding's version in their URL, so browsers cache them until the next change. The sign-in page shows the logo and name, so they're visible to anyone who can reach the UI.
+
 ## Threat news
 
 Heimdall can cross-reference a curated "being exploited right now" incident feed with your hosts' findings, so the dashboard says "2 in the news affect your hosts" and the News page lists what's happening. It's off by default, because the hub makes no outbound calls you haven't turned on. Turn it on in `heimdall.toml` and restart:

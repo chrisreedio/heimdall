@@ -302,6 +302,10 @@ label.check { display: inline-flex; gap: .35rem; align-items: center; }
 /* Logo mark beside the product name */
 .brand { display: inline-flex; align-items: center; gap: .45rem; }
 .brand img { display: block; }
+/* A custom logo (branding.go) keeps its shape within the mark's height. */
+.brand img.brand-logo { width: auto; height: 22px; max-width: 140px; object-fit: contain; }
+.signin .mark.brand-logo { width: auto; height: 56px; max-width: 220px; object-fit: contain; }
+[data-side="rail"] .side .brand img.brand-logo { max-width: 40px; }
 
 /* Add a host: a narrow, stepped page */
 .wizard { max-width: 760px; margin: 0 auto; }
@@ -1184,3 +1188,12 @@ h3.dang-zone { margin: 18px 0 6px; font-size: 15px; }
   table.dangling th:nth-child(4) { width: 10%; }
   table.dangling td:first-child { overflow-wrap: anywhere; }
 }
+
+/* Branding settings (branding.go): what's in use now, then the form. */
+.brand-set h2 { margin-top: 0; }
+.brand-now { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+.brand-now img.brand-preview { width: auto; max-width: 100%; height: 56px; object-fit: contain; }
+.brand-now img.brand-icon { border-radius: 14px; }
+.brand-set .brand-reset { margin-top: 12px; }
+.card.brand-set form.row input[type=color] { min-width: 0; width: 64px; height: 38px; padding: 2px; }
+.card.brand-set form.row input[type=file] { min-width: 0; max-width: 100%; }

@@ -1,8 +1,8 @@
 {{define "content"}}{{with .Body}}
 <div class="signin">
 <section class="card" aria-labelledby="signin-title">
-  <img class="mark" src="/static/icon.svg" alt="" width="56" height="56">
-  <h1 id="signin-title">Sign in to Heimdall</h1>
+  {{if $.Brand.Logo}}<img class="mark brand-logo" src="{{$.Brand.Logo}}" alt="" height="56">{{else}}<img class="mark" src="/static/icon.svg" alt="" width="56" height="56">{{end}}
+  <h1 id="signin-title">Sign in to {{$.Brand.Name}}</h1>
   <p class="sub">Server inventory, vulnerabilities and patching</p>
   {{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
   {{with devLogin}}<form method="post" action="/_dev/login" class="dev-login">

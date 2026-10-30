@@ -1,0 +1,59 @@
+{{define "content"}}{{$csrf := .CSRF}}{{with .Body}}
+<h1>Branding</h1>
+{{if .Notice}}<p class="notice" role="status">{{.Notice}}</p>{{end}}
+{{if .Error}}<p class="alert" role="alert">{{.Error}}</p>{{end}}
+<p class="muted">How this hub presents itself to everyone who signs in: in the sidebar, on the sign-in page, in browser tabs and as the app on phones. Each setting can go back to Heimdall's own.</p>
+
+<section class="card brand-set" aria-labelledby="bn-h">
+  <h2 id="bn-h">Display name</h2>
+  <p class="muted">Up to {{.MaxName}} characters. Without one, this hub is called <strong>{{.DefaultName}}</strong>.</p>
+  <form method="post" action="/admin/branding/name" class="row">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <label>Name <input type="text" name="name" value="{{.Name}}" maxlength="{{.MaxName}}" placeholder="{{.DefaultName}}" autocomplete="off"></label>
+    <button type="submit">Save name</button>
+  </form>
+  {{if .Name}}{{template "brandreset" (dict "CSRF" $csrf "What" "name" "Label" "Use the default name")}}{{end}}
+</section>
+
+<section class="card brand-set" aria-labelledby="ba-h">
+  <h2 id="ba-h">Accent color</h2>
+  <p class="muted">Buttons and highlights, in the light and dark themes. It has to keep white text readable (4.5:1) and stand out against both themes' pages (3:1); colors that don't are refused with the reason. Mid-tone blues, greens and purples usually pass.</p>
+  <form method="post" action="/admin/branding/accent" class="row">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <label>Color <input type="color" name="accent" value="{{or .Accent .DefaultAccent}}"></label>
+    <button type="submit">Save color</button>
+  </form>
+  {{if .Accent}}<p class="small muted">Now <code>{{.Accent}}</code>; Heimdall's is <code>{{.DefaultAccent}}</code> (light) and a lighter blue in the dark theme.</p>
+  {{template "brandreset" (dict "CSRF" $csrf "What" "accent" "Label" "Use Heimdall's color")}}{{end}}
+</section>
+
+<section class="card brand-set" aria-labelledby="bl-h">
+  <h2 id="bl-h">Logo</h2>
+  <p class="muted">Shown in the sidebar and on the sign-in page, in place of Heimdall's mark, at 22 and 56 pixels tall. A PNG of up to 512 KB; it's scaled to fit 512 pixels. Use one that reads on light and dark backgrounds.</p>
+  <div class="brand-now">{{if .Logo}}<img class="brand-preview" src="{{.Logo}}" alt="The current logo" height="56">{{else}}<img src="/static/icon.svg" alt="Heimdall's mark" width="56" height="56"><span class="muted small">Heimdall's mark</span>{{end}}</div>
+  <form method="post" action="/admin/branding/logo" enctype="multipart/form-data" class="row">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <label>PNG file <input type="file" name="logo" accept="image/png" required></label>
+    <button type="submit">Upload logo</button>
+  </form>
+  {{if .Logo}}{{template "brandreset" (dict "CSRF" $csrf "What" "logo" "Label" "Use Heimdall's mark")}}{{end}}
+</section>
+
+<section class="card brand-set" aria-labelledby="bi-h">
+  <h2 id="bi-h">App icon</h2>
+  <p class="muted">The icon on phones' home screens and in browser tabs. A square PNG, at least 512 × 512 and up to 1 MB; the hub makes the smaller sizes from it. Keep the important part away from the edges: phones round the corners.</p>
+  <div class="brand-now">{{if .Icon}}<img class="brand-icon" src="{{.Icon}}" alt="The current app icon" width="64" height="64">{{else}}<img class="brand-icon" src="/static/icon-192.png" alt="Heimdall's icon" width="64" height="64"><span class="muted small">Heimdall's icon</span>{{end}}</div>
+  <form method="post" action="/admin/branding/icon" enctype="multipart/form-data" class="row">
+    <input type="hidden" name="csrf" value="{{$csrf}}">
+    <label>PNG file <input type="file" name="icon" accept="image/png" required></label>
+    <button type="submit">Upload icon</button>
+  </form>
+  {{if .Icon}}{{template "brandreset" (dict "CSRF" $csrf "What" "icon" "Label" "Use Heimdall's icon")}}{{end}}
+</section>
+{{end}}{{end}}
+
+{{/* brandreset: a setting's "back to Heimdall's" button. */}}
+{{define "brandreset"}}<form method="post" action="/admin/branding/reset-{{.What}}" class="inline brand-reset">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <button type="submit" class="secondary">{{.Label}}</button>
+  </form>{{end}}

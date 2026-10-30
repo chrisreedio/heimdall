@@ -13,6 +13,7 @@ import (
 	"html/template"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net"
 	"net/http"
 	"net/netip"
@@ -144,7 +145,8 @@ type server struct {
 	tokenLimit tokenLimiter // MCP token creation, per user
 	// handoffLimit: one hand-off per site and agent every few minutes.
 	handoffLimit handoffLimiter
-	nav          navCache // the sidebar's badges, per user (nav.go)
+	nav          navCache   // the sidebar's badges, per user (nav.go)
+	brand        brandCache // the hub's branding (branding.go)
 }
 
 // New returns the UI handler.
@@ -233,6 +235,10 @@ func New(cfg Config, st *store.Store, a Authenticator, search SearchFunc, log *s
 	mux.HandleFunc("POST /bans/resume", s.requireAuth(s.banPause(false)))
 	mux.HandleFunc("POST /bans/zones", s.requireAuth(s.banZone))
 	mux.HandleFunc("POST /admin/users/mcp-revoke", s.requireAuth(s.requireAdmin(s.adminTokenRevoke)))
+	// Branding: the hub's name, accent, logo and app icon (branding.go).
+	mux.HandleFunc("GET /admin/branding", s.requireAuth(s.requireAdmin(s.brandingPage)))
+	mux.HandleFunc("POST /admin/branding/{action}", s.requireAuthUpload(s.requireAdmin(s.brandingAction)))
+	mux.HandleFunc("GET /branding/{file}", s.brandFile)
 	if cfg.AI != nil { // AI analysis: regenerate a brief or explain a host (operator+)
 		mux.HandleFunc("POST /ai/brief/{org}", s.requireAuth(s.aiBriefRun))
 		mux.HandleFunc("POST /hosts/{org}/{host}/ai", s.requireAuth(s.aiHostRun))
@@ -286,7 +292,15 @@ type authedHandler func(http.ResponseWriter, *http.Request, *auth.Viewer)
 
 // requireAuth sends signed-out GETs to the login page, refuses other
 // signed-out requests, and checks Origin and CSRF on every POST.
-func (s *server) requireAuth(h authedHandler) http.HandlerFunc {
+func (s *server) requireAuth(h authedHandler) http.HandlerFunc { return s.authed(maxFormBytes, h) }
+
+// requireAuthUpload is requireAuth for forms that upload a file
+// (multipart, up to maxUploadBytes).
+func (s *server) requireAuthUpload(h authedHandler) http.HandlerFunc {
+	return s.authed(maxUploadBytes, h)
+}
+
+func (s *server) authed(maxBody int64, h authedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		v, err := s.viewer(r)
 		if err != nil {
@@ -298,7 +312,7 @@ func (s *server) requireAuth(h authedHandler) http.HandlerFunc {
 			return
 		}
 		if r.Method == http.MethodPost {
-			if !s.sameOrigin(r) || !s.parseForm(w, r) || !auth.ValidCSRF(v.SessionToken, r.PostForm.Get(csrfField)) {
+			if !s.sameOrigin(r) || !s.parseBody(w, r, maxBody) || !auth.ValidCSRF(v.SessionToken, r.PostForm.Get(csrfField)) {
 				s.forbidden(w, r)
 				return
 			}
@@ -374,7 +388,16 @@ func loopbackAliases(origin string) []string {
 }
 
 func (s *server) parseForm(w http.ResponseWriter, r *http.Request) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+	return s.parseBody(w, r, maxFormBytes)
+}
+
+// parseBody parses a form of up to maxBody bytes, multipart (an upload)
+// only when maxBody allows more than a plain form.
+func (s *server) parseBody(w http.ResponseWriter, r *http.Request, maxBody int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt == "multipart/form-data" && maxBody > maxFormBytes {
+		return r.ParseMultipartForm(maxBody) == nil
+	}
 	return r.ParseForm() == nil
 }
 
@@ -419,6 +442,7 @@ var staticTypes = map[string]string{
 	".css": "text/css; charset=utf-8",
 	".js":  "text/javascript; charset=utf-8",
 	".svg": "image/svg+xml",
+	".png": "image/png",
 }
 
 func (s *server) static(w http.ResponseWriter, r *http.Request) {
@@ -457,6 +481,7 @@ type page struct {
 	CF      bool             // [cloudflare] is on (shows the Cloudflare link to operators)
 	Perm    navPerm          // which sidebar links to show (nav.go)
 	Counts  navCounts        // the sidebar's badges
+	Brand   brandView        // the hub's name, logo and icons (branding.go)
 	Body    any
 }
 
@@ -493,6 +518,7 @@ func (s *server) renderPage(w http.ResponseWriter, r *http.Request, status int, 
 	p.News = s.cfg.News
 	p.MCP = s.cfg.MCP.Enabled
 	p.CF = s.cfg.Cloudflare
+	p.Brand = s.brandView(r.Context())
 	if p.Viewer != nil {
 		p.CSRF = auth.CSRFToken(p.Viewer.SessionToken)
 	}
@@ -533,6 +559,7 @@ func parsePages() (map[string]*template.Template, error) {
 	names = append(names, "offenders")           // failed logins (logins.go)
 	names = append(names, "surface")             // attack-surface map (surface.go)
 	names = append(names, "bans")                // bans (bans.go)
+	names = append(names, "branding")            // branding (branding.go)
 	pages := make(map[string]*template.Template, len(names))
 	for _, n := range names {
 		t, err := template.New(n).Funcs(funcs).ParseFS(templatesFS, "templates/layout.html", "templates/partials.html", "templates/ai.html", "templates/"+n+".html")
@@ -708,6 +735,15 @@ var funcs = template.FuncMap{
 	"timep": func(t time.Time) *time.Time { return &t },
 	// unmet: a known-false requirement check (nil means unknown).
 	"unmet": func(b *bool) bool { return b != nil && !*b },
+	// dict builds a partial's input from key, value pairs.
+	"dict": func(kv ...any) map[string]any {
+		m := make(map[string]any, len(kv)/2)
+		for i := 0; i+1 < len(kv); i += 2 {
+			k, _ := kv[i].(string)
+			m[k] = kv[i+1]
+		}
+		return m
+	},
 	"first": func(s []string) string {
 		if len(s) == 0 {
 			return ""
