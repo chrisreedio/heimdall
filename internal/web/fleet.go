@@ -153,7 +153,7 @@ func (s *server) fleet(r *http.Request, v *auth.Viewer, org string) ([]fleetHost
 			row.Pending, row.PendingSecurity, row.News = st.PendingUpdates, st.PendingSecurity, st.News
 			row.Collector = strings.TrimSpace(st.CollectorVersion)
 			if row.Collector != "" && release {
-				row.CollectorBehind = updates.Newer(s.cfg.Version, "v"+strings.TrimPrefix(row.Collector, "v"))
+				row.CollectorBehind = updates.CollectorBehind(row.Collector)
 			}
 			if t, err := triggers.Parse(st.Triggers); err == nil {
 				row.ChangeWatch = t.ChangeWatch()

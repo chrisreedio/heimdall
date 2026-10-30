@@ -158,7 +158,7 @@ func TestValidate(t *testing.T) {
 }
 
 func aiOn(c *Config, endpoint string) {
-	c.AI.Enabled, c.AI.Endpoint, c.AI.Deployment = true, endpoint, "6.1 sol"
+	c.AI.Enabled, c.AI.Endpoint, c.AI.Deployment = true, endpoint, "my-deployment"
 }
 
 func TestAIConfig(t *testing.T) {
